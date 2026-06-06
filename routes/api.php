@@ -94,6 +94,7 @@ Route::prefix('dayshift')->group(function () {
   Route::get("dayshift-list", [DayShiftController::class, 'DayShiftList']);
   Route::get("print-report/{dayshift_id}", [DayShiftController::class, 'printReport']);
   Route::get("print-report-shift/{dayshift_detail_id}", [DayShiftController::class, 'printReportByShift']);
+  Route::get("pending-order", [DayShiftController::class, 'pendingOrder']);
 });
 
 

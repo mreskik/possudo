@@ -190,15 +190,19 @@ class OrderServices
                       JOIN mr_item mi on mi.id = mic.item_id
 
                       WHERE mpd.id = ?", [$inded]);
-          if ($qtye > $menueee[0]->stok_qty) {
-            throw new \Exception("Stok yang tersedia untuk " . $menueee[0]->name . " hanya " . $menueee[0]->stok_qty);
+
+          if ($menueee[0]->stok_qty > 0 && $menueee[0]->flag_soldout != true) {
+
+            if ($qtye > $menueee[0]->stok_qty) {
+              throw new \Exception("Stok yang tersedia untuk " . $menueee[0]->name . " hanya " . $menueee[0]->stok_qty);
+            }
+
+            MasterItemModel::where('id', $menueee[0]->id)->update([
+              'stok_qty' => ($menueee[0]->stok_qty - $qtye),
+              'flag_soldout' => (($menueee[0]->stok_qty - $qtye) === 0)
+
+            ]);
           }
-
-          MasterItemModel::where('id', $menueee[0]->id)->update([
-            'stok_qty' => ($menueee[0]->stok_qty - $qtye),
-            'flag_soldout' => (($menueee[0]->stok_qty - $qtye) === 0)
-
-          ]);
         }
 
         TrOrderModel::create($order);
@@ -320,14 +324,18 @@ class OrderServices
                       JOIN mr_item mi on mi.id = mic.item_id
 
                       WHERE mpd.id = ?", [$inded]);
-          if ($qtye > $menueee[0]->stok_qty) {
-            throw new \Exception("Stok yang tersedia untuk " . $menueee[0]->name . " hanya " . $menueee[0]->stok_qty);
-          }
 
-          MasterItemModel::where('id', $menueee[0]->id)->update([
-            'stok_qty' => ($menueee[0]->stok_qty - $qtye),
-            'flag_soldout' => (($menueee[0]->stok_qty - $qtye) === 0)
-          ]);
+          if ($menueee[0]->stok_qty > 0 && $menueee[0]->flag_soldout != true) {
+
+            if ($qtye > $menueee[0]->stok_qty) {
+              throw new \Exception("Stok yang tersedia untuk " . $menueee[0]->name . " hanya " . $menueee[0]->stok_qty);
+            }
+
+            MasterItemModel::where('id', $menueee[0]->id)->update([
+              'stok_qty' => ($menueee[0]->stok_qty - $qtye),
+              'flag_soldout' => (($menueee[0]->stok_qty - $qtye) === 0)
+            ]);
+          }
         }
 
         TrOrderModel::where('order_number', $order_number)

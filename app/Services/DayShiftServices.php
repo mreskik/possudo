@@ -497,10 +497,22 @@ class DayShiftServices
         }
       }
 
-      $avg_netsales_per_pax = $avg_netsales_per_pax / $pax_total;
-      $avg_grosssales_per_pax = $avg_grosssales_per_pax / $pax_total;
-      $avg_netsales_per_bill = $avg_netsales_per_bill / $number_of_bill;
-      $avg_grosssales_per_bill = $avg_grosssales_per_bill / $number_of_bill;
+      $avg_netsales_per_pax = $pax_total > 0
+        ? $avg_netsales_per_pax / $pax_total
+        : 0;
+
+      $avg_grosssales_per_pax = $pax_total > 0
+        ? $avg_grosssales_per_pax / $pax_total
+        : 0;
+
+      $avg_netsales_per_bill = $number_of_bill > 0
+        ? $avg_netsales_per_bill / $number_of_bill
+        : 0;
+
+      $avg_grosssales_per_bill = $number_of_bill > 0
+        ? $avg_grosssales_per_bill / $number_of_bill
+        : 0;
+
 
       //ORDER DETAIL AND PACKAGE YANG PAID 
       //daftar item order yang paid dan tidak cancel item
@@ -546,7 +558,11 @@ class DayShiftServices
       $ulid_orderdetail_concat = trim($ulid_orderdetail_concat, ",");
 
 
-      $sales_by_menu = DB::select("
+      $sales_by_menu = [];
+      $sales_by_category = [];
+      if (count($list_ordernumber->paid) > 0) {
+
+        $sales_by_menu = DB::select("
       SELECT
         gabungan.menu_name,
         sum( gabungan.qty ) as qty,
@@ -595,7 +611,7 @@ class DayShiftServices
         menu_name
       ");
 
-      $sales_by_category = DB::select("SELECT
+        $sales_by_category = DB::select("SELECT
 				mcc.name as category_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
@@ -645,9 +661,7 @@ class DayShiftServices
 				JOIN mr_category mcc on mcc.id = gabungan.category_id
       GROUP BY
         category_name");
-
-
-
+      }
 
       //payment method detail
       // $payment_detail_list = TrOrderPaymentModel::whereIn('payment_number', $list_payment_number);
@@ -698,7 +712,7 @@ class DayShiftServices
         "sales_by_table" => $sales_by_table_section
       ];
     } catch (\Throwable $e) {
-      return $e;
+      throw $e;
     }
   }
 
@@ -758,9 +772,9 @@ class DayShiftServices
         ", [$starttime, $endtime]);
       }
 
-      if (count($data_order_list) == 0) {
-        throw new \Exception('tidak ada transaksi !');
-      }
+      // if (count($data_order_list) == 0) {
+      //   throw new \Exception('tidak ada transaksi !');
+      // }
 
       // Log::info($data_dayshift);
       // Log::info($data_order_list);
@@ -834,11 +848,22 @@ class DayShiftServices
         }
       }
 
-      $avg_netsales_per_pax = $avg_netsales_per_pax / $pax_total;
+      $avg_netsales_per_pax = $pax_total > 0
+        ? $avg_netsales_per_pax / $pax_total
+        : 0;
 
-      $avg_grosssales_per_pax = $avg_grosssales_per_pax / $pax_total;
-      $avg_netsales_per_bill = $avg_netsales_per_bill / $number_of_bill;
-      $avg_grosssales_per_bill = $avg_grosssales_per_bill / $number_of_bill;
+      $avg_grosssales_per_pax = $pax_total > 0
+        ? $avg_grosssales_per_pax / $pax_total
+        : 0;
+
+      $avg_netsales_per_bill = $number_of_bill > 0
+        ? $avg_netsales_per_bill / $number_of_bill
+        : 0;
+
+      $avg_grosssales_per_bill = $number_of_bill > 0
+        ? $avg_grosssales_per_bill / $number_of_bill
+        : 0;
+
 
       //ORDER DETAIL AND PACKAGE YANG PAID 
       //daftar item order yang paid dan tidak cancel item
@@ -883,8 +908,11 @@ class DayShiftServices
       }
       $ulid_orderdetail_concat = trim($ulid_orderdetail_concat, ",");
 
+      $sales_by_menu = [];
+      $sales_by_category = [];
+      if (count($list_ordernumber->paid) > 0) {
 
-      $sales_by_menu = DB::select("
+        $sales_by_menu = DB::select("
       SELECT
         gabungan.menu_name,
         sum( gabungan.qty ) as qty,
@@ -933,7 +961,7 @@ class DayShiftServices
         menu_name
       ");
 
-      $sales_by_category = DB::select("SELECT
+        $sales_by_category = DB::select("SELECT
 				mcc.name as category_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
@@ -983,8 +1011,7 @@ class DayShiftServices
 				JOIN mr_category mcc on mcc.id = gabungan.category_id
       GROUP BY
         category_name");
-
-
+      }
 
 
       //payment method detail

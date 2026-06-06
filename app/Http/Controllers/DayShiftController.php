@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\DayShiftDetailModel;
+use App\Models\TrOrderModel;
 use App\Services\DayShiftServices;
 use App\Services\PrintServices;
 use Illuminate\Http\Request;
@@ -178,6 +179,23 @@ class DayShiftController extends Controller
             return response()->json([
                 "code" => 0,
                 "message" => "ashiappp"
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 100,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
+
+    function pendingOrder()
+    {
+        try {
+            $data = TrOrderModel::where('status', 'pending')->get();
+
+            return response()->json([
+                'code' => 0,
+                'data' => $data
             ]);
         } catch (\Throwable $e) {
             return response()->json([
