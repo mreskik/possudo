@@ -171,6 +171,7 @@ return new class extends Migration
             $table->unsignedBigInteger("layout_width")->default(0);
             $table->string("layout_image_src")->nullable();
             $table->boolean("is_active")->nullable();
+            $table->boolean("can_hold")->nullable();
             $table->string("type");
         });
 
@@ -411,6 +412,37 @@ return new class extends Migration
             'customer_display_left' => 0,
             'customer_display_top' => 0
         ]]);
+
+        Schema::create("mr_user", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->string("username");
+            $table->string("fullname")->nullable();
+            $table->unsignedBigInteger("role_id");
+            $table->string("email");
+            $table->string("sandi");
+        });
+
+        Schema::create("mr_role_access", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->unsignedBigInteger("role_id");
+            $table->unsignedBigInteger("menu_id");
+            $table->boolean("view");
+            $table->boolean("update");
+            $table->boolean("insert");
+            $table->boolean("delete");
+            $table->boolean("approve");
+        });
+
+        Schema::create("mr_menu_app", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->string("menu");
+            $table->string("submenu");
+        });
+
+        Schema::create("mr_session", function (Blueprint $table) {
+            $table->uuid("session_id");
+            $table->string("data");
+        });
     }
 
     /**
@@ -446,5 +478,10 @@ return new class extends Migration
         Schema::dropIfExists("mr_payment_method_visit_purpose");
         Schema::dropIfExists("mr_branch_visit_purpose");
         Schema::dropIfExists("mr_visit_purpose");
+
+        Schema::dropIfExists("mr_user");
+        Schema::dropIfExists("mr_role_access");
+        Schema::dropIfExists("mr_menu_app");
+        Schema::dropIfExists("mr_session");
     }
 };

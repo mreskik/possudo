@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use stdClass;
 
 class OrderServices
 {
@@ -34,16 +35,16 @@ class OrderServices
 
       // MODULE TAKING ORDER = TO
       $kode_modul = "NO";
-      $formatnumber = now()->format("YmdHi");
+      $formatnumber = now()->format("YmdHis");
 
-      $komposisi = $kode_modul . $branch_data->branch_code . $formatnumber;
+      $komposisi = $kode_modul . $branch_data->branch_code . $branch_data->company_id . $formatnumber;
       return $komposisi;
     } catch (\Throwable $e) {
       throw $e;
     }
   }
 
-  public static function SaveOrder(Request $datajson)
+  public static function SaveOrder($datajson)
   {
     $batch = 0;
     try {
@@ -71,7 +72,7 @@ class OrderServices
 
         $order = [
           "terminal_id" => 1,
-          "order_name" => $datajson->orderName,
+          "order_name" => ($datajson->orderName == '') ? '' : $datajson->orderName,
           "branch_id" => $branch->id,
           "customer_phone_number" =>  $datajson->customerPhoneNumber,
           "order_source" => $datajson->orderSource,
@@ -82,11 +83,12 @@ class OrderServices
           "order_queue" => $order_queue,
           "order_in" => $datetime_now,
 
+          "table_id" => $datajson->tableId,
+
           "total_batch" => $batch,
           "member_id" => $datajson->memberId,
           "visit_purpose_id" => $datajson->visitPurposeId,
           "pax" => $datajson->orderPax,
-          "status" => 'pending',
 
           "waiter_name" => 'JUSE',
           "sender_name" => 'JUSE',
@@ -97,6 +99,16 @@ class OrderServices
           "total_tax" => $datajson->totalTax,
           "total_billing" => $datajson->totalBilling,
         ];
+
+
+        //cek flag table section hold
+        if ($tablesectionnow->can_hold) {
+          $order['status'] = 'hold';
+        } else {
+          $order['status'] = 'pending';
+        }
+
+
 
         // cek orderan baru
         // cek batch dan ordernumber 
@@ -116,69 +128,69 @@ class OrderServices
 
         //pengecekan stok
         $datagrouping_ = [];
+        if ($datajson->listOrder) {
+          foreach ($datajson->listOrder as $item) {
 
-        foreach ($datajson->listOrder as $item) {
-
-          $ida = $item['menuPricelistId'];
-          $datagrouping_[$ida] = ($datagrouping_[$ida] ?? 0) + $item['qty'];
+            $ida = $item['menuPricelistId'];
+            $datagrouping_[$ida] = ($datagrouping_[$ida] ?? 0) + $item['qty'];
 
 
-          // Log::info($item);
-          $mumu = [
-            'ulid' => (string)Str::ulid(),
-            'order_number' => $order['order_number'],
-
-            'pricelist_detail_id' => $item['menuPricelistId'],
-            'menu_id' => $item['menuId'],
-            'qty' => $item['qty'],
-            'flag_inclusive_tax' => $item['flagInclusiveTax'],
-            'base_price' => $item['price'],
-            'menu_price' => $item['menuPrice'],
-
-            'tax_id' => $item['taxId'],
-            'tax_type' => $item['taxType'],
-            'tax_rate' => $item['taxRate'],
-            'tax_value' => $item['taxValue'],
-
-            'promo_id' => $item['promoId'],
-            'discount_rate' => $item['discountRate'],
-            'discount_value' => $item['discountValue'],
-
-            'total' => $item['total'],
-
-            'notes' => $item['notes'],
-            'batch' => $order['total_batch'],
-          ];
-
-          $order_detail[] = $mumu;
-
-          foreach ($item['menuPackageList'] as $item_package) {
-            $order_detail_package[] = [
+            // Log::info($item);
+            $mumu = [
               'ulid' => (string)Str::ulid(),
-              'tr_order_detail_ulid' => $mumu['ulid'],
+              'order_number' => $order['order_number'],
 
-              'menu_package_id' => $item_package['menuPackageId'],
-              'menu_id' => $item_package['menuId'],
-              'qty' => $item_package['qty'],
-              'flag_inclusive_tax' => $item_package['flagInclusiveTax'],
-              'base_price' => $item_package['price'],
-              'menu_price' => $item_package['menuPrice'],
+              'pricelist_detail_id' => $item['menuPricelistId'],
+              'menu_id' => $item['menuId'],
+              'qty' => $item['qty'],
+              'flag_inclusive_tax' => $item['flagInclusiveTax'],
+              'base_price' => $item['price'],
+              'menu_price' => $item['menuPrice'],
 
-              'tax_id' => $item_package['taxId'],
-              'tax_type' => $item_package['taxType'],
-              'tax_rate' => $item_package['taxRate'],
-              'tax_value' => $item_package['taxValue'],
+              'tax_id' => $item['taxId'],
+              'tax_type' => $item['taxType'],
+              'tax_rate' => $item['taxRate'],
+              'tax_value' => $item['taxValue'],
 
-              'promo_id' => $item_package['promoId'],
-              'discount_rate' => $item_package['discountRate'],
-              'discount_value' => $item_package['discountValue'],
-              'total' => $item_package['total'],
+              'promo_id' => $item['promoId'],
+              'discount_rate' => $item['discountRate'],
+              'discount_value' => $item['discountValue'],
 
-              'notes' => $item_package['notes'],
+              'total' => $item['total'],
+
+              'notes' => $item['notes'],
+              'batch' => $order['total_batch'],
             ];
+
+            $order_detail[] = $mumu;
+
+            foreach ($item['menuPackageList'] as $item_package) {
+              $order_detail_package[] = [
+                'ulid' => (string)Str::ulid(),
+                'tr_order_detail_ulid' => $mumu['ulid'],
+
+                'menu_package_id' => $item_package['menuPackageId'],
+                'menu_id' => $item_package['menuId'],
+                'qty' => $item_package['qty'],
+                'flag_inclusive_tax' => $item_package['flagInclusiveTax'],
+                'base_price' => $item_package['price'],
+                'menu_price' => $item_package['menuPrice'],
+
+                'tax_id' => $item_package['taxId'],
+                'tax_type' => $item_package['taxType'],
+                'tax_rate' => $item_package['taxRate'],
+                'tax_value' => $item_package['taxValue'],
+
+                'promo_id' => $item_package['promoId'],
+                'discount_rate' => $item_package['discountRate'],
+                'discount_value' => $item_package['discountValue'],
+                'total' => $item_package['total'],
+
+                'notes' => $item_package['notes'],
+              ];
+            }
           }
         }
-
         DB::beginTransaction();
 
 
@@ -231,7 +243,7 @@ class OrderServices
 
         $order_number = $datajson->orderNumber;
 
-        $current_table_order = TrOrderModel::where('order_number', $order_number)->where('status', 'pending')
+        $current_table_order = TrOrderModel::where('order_number', $order_number)->whereIn('status', ['pending', 'hold'])
           ->first();
         $batch = $current_table_order->total_batch;
         // Log::info($datajson);
@@ -363,6 +375,8 @@ class OrderServices
     }
   }
 
+
+
   public static function ViewOrder(string $order_number)
   {
     try {
@@ -380,11 +394,16 @@ class OrderServices
       tro.sub_total as subTotal,
       tro.total_tax as totalTax,
       tro.total_billing as totalBilling,
-      tro.table_section_id as tableSectionId
+      tro.table_section_id as tableSectionId,
+      tro.table_id as tableId,
+      mt.name as tableName,
+      tro.status as status
 
       FROM tr_order tro
       JOIN mr_visit_purpose mvp on mvp.id = tro.visit_purpose_id
-      WHERE tro.order_number = ? and tro.status = ?", [$order_number, 'pending']);
+      LEFT JOIN mr_table mt on mt.id = tro.table_id
+      WHERE tro.order_number = ? ", [$order_number]);
+      // WHERE tro.order_number = ? and tro.status  IN ('pending', 'hold')", [$order_number]);
 
       $data_order_detail = DB::select("
       SELECT
@@ -449,7 +468,6 @@ class OrderServices
 
 
       $data_order[0]->listOrder = $data_order_detail;
-
       return $data_order[0];
     } catch (\Throwable $e) {
       throw $e;
@@ -485,18 +503,18 @@ class OrderServices
     }
   }
 
-  public static function CancelOrder(string $order_number, string $notes)
+  public static function CancelOrder(string $order_number, $notes = '')
   {
     try {
-      $order = TrOrderModel::where("order_number", $order_number)->first();
+
+
+      //hanya order pending dan hold 
+      $order = TrOrderModel::where("order_number", $order_number)->whereIn("status", ['pending', 'hold'])->first();
 
       if (!$order) {
-        throw new \Exception('data order tidak ditemukan');
+        throw new \Exception('bukan order pending / hold!');
       }
 
-      if ($order->status != 'pending') {
-        throw new \Exception('status order bukan pending');
-      }
 
       TrOrderModel::where('order_number', $order_number)->update([
         "status" => "cancel",
@@ -506,6 +524,395 @@ class OrderServices
 
       return "cancel order success!";
     } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  public static function listTableBySection(int $tablesection_id)
+  {
+    try {
+
+      $list_data = DB::select("
+                    SELECT
+                    mt.*,
+                    tro.order_number,
+                    tro.order_in,
+                    tro.status
+
+                    FROM mr_table mt
+                    LEFT JOIN tr_order tro on tro.table_id = mt.id AND tro.status IN ('pending', 'hold')
+                    WHERE mt.table_section_id = ? AND tro.order_number is null", [$tablesection_id]);
+      return $list_data;
+    } catch (\Throwable $err) {
+      throw $err;
+    }
+  }
+
+  public static function listTableBySectionAll(int $tablesection_id)
+  {
+    try {
+
+      $list_data = DB::select("
+                    SELECT
+                    mt.*,
+                    tro.order_number,
+                    tro.order_in,
+                    tro.status
+
+                    FROM mr_table mt
+                    LEFT JOIN tr_order tro on tro.table_id = mt.id AND tro.status IN ('pending', 'hold')
+                    WHERE mt.table_section_id = ? ", [$tablesection_id]);
+      return $list_data;
+    } catch (\Throwable $err) {
+      throw $err;
+    }
+  }
+
+  public static function SaveMoveTable(string $order_number, $tablesection_id, $table_id = null)
+  {
+    try {
+
+      $orderdetail = TrOrderModel::where('order_number', $order_number)
+        ->whereIn('status', ['pending', 'hold'])->first();
+      $tablesection = TableSectionModel::where('id', $tablesection_id)->first();
+
+
+
+
+
+      if (!$orderdetail) {
+        throw new \Exception('order tidak ditemukan! ');
+      }
+
+      $perubahan = ["table_section_id" => $tablesection->id];
+      if ($tablesection->type == 'dinein') {
+        if ($table_id == null) {
+          throw new \Exception('table harus dipilih! ');
+        }
+
+
+        if ($tablesection->can_hold) {
+          $perubahan["status"] = 'hold';
+        } else {
+          $perubahan["status"] = 'pending';
+        }
+
+        if ($table_id != null) {
+          $exists = DB::selectOne("
+          SELECT
+          mt.*,
+          tro.order_number,
+          tro.order_in,
+          tro.status
+          
+          FROM mr_table mt
+          JOIN tr_order tro on tro.table_id = mt.id AND tro.status IN ('pending', 'hold')
+          WHERE mt.id = ?", [$table_id]);
+          if ($exists) {
+            throw new \Exception('Table masih ada order !');
+          }
+        }
+
+
+
+        $perubahan["table_id"] = $table_id;
+        $perubahan["order_type"] = $tablesection->type;
+        TrOrderModel::where('order_number', $orderdetail->order_number)->update($perubahan);
+      } else if ($tablesection->type == 'takeaway') {
+
+        //takeway moveorder yang canhold langsung berubah ke hold dari yang pending
+        if ($tablesection->can_hold) {
+          $perubahan["status"] = 'hold';
+        } else {
+          $perubahan["status"] = 'pending';
+        }
+
+
+        $perubahan["table_id"] = null;
+        $perubahan["order_type"] = $tablesection->type;
+        TrOrderModel::where('order_number', $orderdetail->order_number)->update($perubahan);
+      }
+      return "Move Table Success!";
+    } catch (\Throwable $err) {
+      throw $err;
+    }
+  }
+
+  public static function SaveMoveItem(string $order_number_before, int $visit_purpose_id, int $to_tablesection_id, int $to_table_id, array $list_item)
+  {
+    try {
+
+
+      $tablesectionquery = TableSectionModel::where('id', $to_tablesection_id)->first();
+      if (!$tablesectionquery) {
+        throw new \Exception("table section tidak ditemukan!");
+      }
+      if ($tablesectionquery->type == 'dinein') {
+
+        //cek table apakah punya order number
+        $table_detail = collect(DB::select("
+                    SELECT
+                    mt.*,
+                    tro.order_number,
+                    tro.order_in,
+                    tro.status
+
+                    FROM mr_table mt
+                    LEFT JOIN tr_order tro on tro.table_id = mt.id AND tro.status IN ('pending', 'hold')
+                    WHERE mt.id = ? ", [$to_table_id]))->first();
+
+        //jika belum punya ordernumber
+        if ($table_detail->order_number == null) {
+          DB::beginTransaction();
+
+          $data = new stdClass;
+          $data->orderNumber = '';
+          $data->customerPhoneNumber = '';
+
+          $data->orderName = "";
+          $data->memberId = null;
+          $data->listOrder = [];
+          $data->orderPax = 1;
+          $data->orderSource = "pos";
+          $data->subTotal = 0;
+          $data->tableId = $table_detail->id;
+          $data->tableSectionId = $table_detail->table_section_id;
+          $data->totalBilling = 0;
+          $data->totalItem = 0;
+          $data->totalTax = 0;
+          $data->visitPurposeId = $visit_purpose_id;
+          $order_number_new = self::SaveOrder($data);
+
+          if ($order_number_new == '') {
+            throw new \Exception('gagal create order number!');
+          }
+
+          // $list_item_after_filter = [];
+          $list_item_ = json_decode(json_encode($list_item));
+          foreach ($list_item_ as $item) {
+            $itemquery = TrOrderDetailModel::where('ulid', $item->ulid)->first();
+
+            if ($item->moveQty > 0 && $itemquery->cancel_at == null) {
+              // $list_item_after_filter[] = $item;
+              $sisa = ($itemquery->qty - $item->moveQty);
+
+              //jika di pindah semua 
+              if ($sisa == 0) {
+                $itemquery->update([
+                  'order_number' => $order_number_new
+                ]);
+
+                //jika di pindah sebagian 
+              } else {
+                // update yang lama
+                TrOrderDetailModel::where('ulid', $itemquery->ulid)->update([
+                  'qty' => $sisa
+                ]);
+
+                // buat baru
+                $yangbaru = $itemquery->replicate();
+                $yangbaru->ulid = (string) Str::ulid();
+                $yangbaru->order_number = $order_number_new;
+                $yangbaru->qty = $item->moveQty;
+                $yangbaru->save();
+
+                $list_itempackagequery = TrOrderDetailPackageModel::where(
+                  'tr_order_detail_ulid',
+                  $itemquery->ulid
+                )->get();
+
+                if (count($list_itempackagequery) > 0) {
+                  foreach ($list_itempackagequery as $itempackage) {
+                    $itempackage_baru = $itempackage->replicate();
+
+                    $itempackage_baru->ulid = (string) Str::ulid();
+                    $itempackage_baru->tr_order_detail_ulid = $yangbaru->ulid;
+                    $itempackage_baru->save();
+                  }
+                }
+              }
+            }
+          }
+
+          // if (count($list_item_after_filter) == 0) {
+          //   throw new \Exception('tidak ada item yang dipilih!');
+          // }
+
+          // jika order list telah di pindah ke yang baru yang lama orderanya di tutup
+          $datalistitemorder_lama = TrOrderDetailModel::where('order_number', $order_number_before)->get();
+          Log::info($datalistitemorder_lama);
+
+          if (count($datalistitemorder_lama) == 0) {
+
+            TrOrderModel::where('order_number', $order_number_before)->update([
+              'status' => 'moved',
+              'moved_at' => now(),
+              'moved_by' => null
+            ]);
+            Log::info('success');
+          }
+
+          DB::commit();
+          return "success move item";
+          // sudah punya order number
+        } else {
+          // $list_item_after_filter = [];
+          $list_item_ = json_decode(json_encode($list_item));
+          foreach ($list_item_ as $item) {
+            $itemquery = TrOrderDetailModel::where('ulid', $item->ulid)->first();
+
+            if ($item->moveQty > 0 && $itemquery->cancel_at == null) {
+              // $list_item_after_filter[] = $item;
+              $sisa = ($itemquery->qty - $item->moveQty);
+
+              //jika di pindah semua 
+              if ($sisa == 0) {
+                $itemquery->update([
+                  'order_number' => $table_detail->order_number
+                ]);
+
+                //jika di pindah sebagian 
+              } else {
+                // update yang lama
+                TrOrderDetailModel::where('ulid', $itemquery->ulid)->update([
+                  'qty' => $sisa
+                ]);
+
+                // buat baru
+                $yangbaru = $itemquery->replicate();
+                $yangbaru->ulid = (string) Str::ulid();
+                $yangbaru->order_number = $table_detail->order_number;
+                $yangbaru->qty = $item->moveQty;
+                $yangbaru->save();
+
+                $list_itempackagequery = TrOrderDetailPackageModel::where(
+                  'tr_order_detail_ulid',
+                  $itemquery->ulid
+                )->get();
+
+                if (count($list_itempackagequery) > 0) {
+                  foreach ($list_itempackagequery as $itempackage) {
+                    $itempackage_baru = $itempackage->replicate();
+
+                    $itempackage_baru->ulid = (string) Str::ulid();
+                    $itempackage_baru->tr_order_detail_ulid = $yangbaru->ulid;
+                    $itempackage_baru->save();
+                  }
+                }
+              }
+            }
+          }
+
+          // jika order list telah di pindah ke yang baru yang lama orderanya di tutup
+          $datalistitemorder_lama = TrOrderDetailModel::where('order_number', $order_number_before)->get();
+          if (count($datalistitemorder_lama) == 0) {
+            TrOrderModel::where('order_number', $order_number_before)->update([
+              'status' => 'moved',
+              'moved_at' => now(),
+              'moved_by' => null
+            ]);
+          }
+
+          // if (count($list_item_after_filter) == 0) {
+          //   throw new \Exception('tidak ada item yang dipilih!');
+          // }
+
+          DB::commit();
+          return "success move item";
+        }
+      } elseif ($tablesectionquery->type == 'takeaway') {
+
+        DB::beginTransaction();
+
+        $data = new stdClass;
+        $data->orderNumber = '';
+        $data->customerPhoneNumber = '';
+
+        $data->orderName = "";
+        $data->memberId = null;
+        $data->listOrder = [];
+        $data->orderPax = 1;
+        $data->orderSource = "pos";
+        $data->subTotal = 0;
+        $data->tableId = null;
+        $data->tableSectionId = $to_tablesection_id;
+        $data->totalBilling = 0;
+        $data->totalItem = 0;
+        $data->totalTax = 0;
+        $data->visitPurposeId = $visit_purpose_id;
+        $order_number_new = self::SaveOrder($data);
+
+        if ($order_number_new == '') {
+          throw new \Exception('gagal create order number!');
+        }
+
+        // $list_item_after_filter = [];
+        $list_item_ = json_decode(json_encode($list_item));
+        foreach ($list_item_ as $item) {
+          $itemquery = TrOrderDetailModel::where('ulid', $item->ulid)->first();
+
+          if ($item->moveQty > 0 && $itemquery->cancel_at == null) {
+            // $list_item_after_filter[] = $item;
+            $sisa = ($itemquery->qty - $item->moveQty);
+
+            //jika di pindah semua 
+            if ($sisa == 0) {
+              $itemquery->update([
+                'order_number' => $order_number_new
+              ]);
+
+              //jika di pindah sebagian 
+            } else {
+              // update yang lama
+              TrOrderDetailModel::where('ulid', $itemquery->ulid)->update([
+                'qty' => $sisa
+              ]);
+
+              // buat baru
+              $yangbaru = $itemquery->replicate();
+              $yangbaru->ulid = (string) Str::ulid();
+              $yangbaru->order_number = $order_number_new;
+              $yangbaru->qty = $item->moveQty;
+              $yangbaru->save();
+
+              $list_itempackagequery = TrOrderDetailPackageModel::where(
+                'tr_order_detail_ulid',
+                $itemquery->ulid
+              )->get();
+
+              if (count($list_itempackagequery) > 0) {
+                foreach ($list_itempackagequery as $itempackage) {
+                  $itempackage_baru = $itempackage->replicate();
+
+                  $itempackage_baru->ulid = (string) Str::ulid();
+                  $itempackage_baru->tr_order_detail_ulid = $yangbaru->ulid;
+                  $itempackage_baru->save();
+                }
+              }
+            }
+          }
+        }
+
+        // jika order list telah di pindah ke yang baru yang lama orderanya di tutup
+        $datalistitemorder_lama = TrOrderDetailModel::where('order_number', $order_number_before)->get();
+        if (count($datalistitemorder_lama) == 0) {
+          TrOrderModel::where('order_number', $order_number_before)->update([
+            'status' => 'moved',
+            'moved_at' => now(),
+            'moved_by' => null
+          ]);
+        }
+
+        // if (count($list_item_after_filter) == 0) {
+        //   throw new \Exception('tidak ada item yang dipilih!');
+        // }
+
+        DB::commit();
+        return "success move item";
+      }
+    } catch (\Throwable $e) {
+      DB::rollBack();
+      Log::info($e);
       throw $e;
     }
   }

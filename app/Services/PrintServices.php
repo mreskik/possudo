@@ -570,8 +570,8 @@ class PrintServices
         Log::info("table section tidak ditemukan!");
         return;
       }
-
-      $data_station = StationModel::where('id', $table_section->tablechecker_station_id)->first();
+      $settingan = SettingModel::first();
+      $data_station = StationModel::where('id', $settingan->default_station)->first();
 
       if (!$data_station) {
         return;
@@ -749,7 +749,9 @@ class PrintServices
         return;
       }
 
-      $data_station = StationModel::where('id', $table_section->tablechecker_station_id)->first();
+      $settingan = SettingModel::first();
+      $data_station = StationModel::where('id', $settingan->default_station)->first();
+
       if (!$data_station) {
         return;
       }

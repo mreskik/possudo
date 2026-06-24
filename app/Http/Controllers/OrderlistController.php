@@ -8,10 +8,11 @@ use Illuminate\Http\Request;
 class OrderlistController extends Controller
 {
     //
-    public function getOrderlistTakaway(Request $request)
+    public function getOrderList(Request $request)
     {
         try {
-            $takawaylist = OrderlistServices::getOrderlistTakaway();
+            $tablesection_id = $request->tablesection_id;
+            $takawaylist = OrderlistServices::getOrderList($tablesection_id);
             return response()->json([
                 "code" => 0,
                 "data" => $takawaylist

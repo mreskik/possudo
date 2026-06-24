@@ -10,6 +10,7 @@ use App\Models\MasterItemModel;
 use App\Models\MasterItemPackageDetailModel;
 use App\Models\MasterItemPackageGroupModel;
 use App\Models\MasterItemPackageModel;
+use App\Models\MasterMenuAppModel;
 use App\Models\MasterPaymentMethodGroupModel;
 use App\Models\MasterPaymentMethodModel;
 use App\Models\MasterPaymentMethodTypeModel;
@@ -18,7 +19,10 @@ use App\Models\MasterPricelistDetailModel;
 use App\Models\MasterPricelistModel;
 use App\Models\MasterTableSectionPrintCategorySettingModel;
 use App\Models\MasterTaxModel;
+use App\Models\MasterUser;
+use App\Models\MasterUserModel;
 use App\Models\MasterVisitPurposeModel;
+use App\Models\RoleAccessModel;
 use App\Models\SetupConfigModel;
 use Illuminate\Support\Facades\Http;
 use App\Models\StationModel;
@@ -477,6 +481,60 @@ class SetupServices
       if ($response->json('code') == 0) {
         MasterVisitPurposeModel::truncate();
         MasterVisitPurposeModel::insert($response->json('data'));
+      } else {
+      }
+      return $response;
+    } catch (\Throwable $e) {
+      return $e;
+    }
+  }
+
+  public function getMasterUser(string $username, string $password, int $branch_id)
+  {
+    try {
+      $response = Http::post($this->endpoint . '/pos/setup/get_master_user/' . $branch_id, [
+        'username' => $username,
+        'password' => $password,
+      ]);
+      if ($response->json('code') == 0) {
+        MasterUserModel::truncate();
+        MasterUserModel::insert($response->json('data'));
+      } else {
+      }
+      return $response;
+    } catch (\Throwable $e) {
+      return $e;
+    }
+  }
+
+  public function getMasterRoleAccess(string $username, string $password, int $branch_id)
+  {
+    try {
+      $response = Http::post($this->endpoint . '/pos/setup/get_master_role_access/' . $branch_id, [
+        'username' => $username,
+        'password' => $password,
+      ]);
+      if ($response->json('code') == 0) {
+        RoleAccessModel::truncate();
+        RoleAccessModel::insert($response->json('data'));
+      } else {
+      }
+      return $response;
+    } catch (\Throwable $e) {
+      return $e;
+    }
+  }
+
+  public function getMenuApp(string $username, string $password, int $branch_id)
+  {
+    try {
+      $response = Http::post($this->endpoint . '/pos/setup/get_menu_app/' . $branch_id, [
+        'username' => $username,
+        'password' => $password,
+      ]);
+      if ($response->json('code') == 0) {
+        MasterMenuAppModel::truncate();
+        MasterMenuAppModel::insert($response->json('data'));
       } else {
       }
       return $response;

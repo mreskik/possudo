@@ -11,4 +11,6 @@ class TrOrderDetailPackageModel extends Model
     //
     protected $table = 'tr_order_detail_package';
     protected $guarded = [];
+    protected $primaryKey = 'ulid';
+    public $timestamps = false;
 }

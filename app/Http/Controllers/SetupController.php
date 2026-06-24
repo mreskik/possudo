@@ -474,6 +474,66 @@ class SetupController extends Controller
     }
   }
 
+  public function getMasterUser(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getMasterUser($username, $password, $branch_id);
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json([
+        'code' => 100,
+        'message' => $e->getMessage()
+      ]);
+    }
+  }
+
+  public function getMasterRoleAccess(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getMasterRoleAccess($username, $password, $branch_id);
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json([
+        'code' => 100,
+        'message' => $e->getMessage()
+      ]);
+    }
+  }
+
+  public function getMenuApp(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getMenuApp($username, $password, $branch_id);
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json([
+        'code' => 100,
+        'message' => $e->getMessage()
+      ]);
+    }
+  }
+
   public function ChangeStatusInstall(int $status)
   {
     try {

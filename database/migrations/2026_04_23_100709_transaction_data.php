@@ -25,6 +25,8 @@ return new class extends Migration
             $table->string('order_source'); // pos , qr
             $table->string("order_type"); //dinein / takeaway
             $table->unsignedBigInteger('table_section_id')->nullable();
+            $table->unsignedBigInteger('table_id')->nullable();
+
             $table->unsignedBigInteger("total_batch")->default(1); // total batch
             $table->date("order_date");
             $table->unsignedBigInteger("order_queue");
@@ -33,7 +35,7 @@ return new class extends Migration
             $table->unsignedBigInteger("member_id")->nullable();
             $table->unsignedBigInteger("visit_purpose_id");
             $table->unsignedBigInteger("pax")->default(1);
-            $table->string("status"); // pending, cancel, paid, void
+            $table->string("status"); // pending, hold, cancel, paid, void, moved
 
             $table->string("waiter_name")->nullable();
             $table->string("sender_name")->nullable();
@@ -63,6 +65,9 @@ return new class extends Migration
             $table->unsignedBigInteger("payment_by")->nullable();
             $table->unsignedBigInteger("print_ke")->default(0);
             $table->string("payment_notes")->nullable()->default('');
+
+            $table->timestamp("moved_at")->nullable();
+            $table->unsignedBigInteger("moved_by")->nullable();
 
             $table->timestamps();
             $table->unsignedBigInteger("created_by")->nullable();
@@ -189,6 +194,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger("dayshift_id");
             $table->dateTime("shift_time");
+            $table->unsignedBigInteger("shift_number");
             $table->unsignedBigInteger("shift_user_id");
             $table->timestamp("sync_at");
         });

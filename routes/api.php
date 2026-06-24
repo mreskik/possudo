@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BranchMenuController;
 use App\Http\Controllers\CheckerController;
 use App\Http\Controllers\DayShiftController;
@@ -7,6 +8,7 @@ use App\Http\Controllers\MasterController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderlistController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PushDataController;
 use App\Http\Controllers\SalesController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\SetupController;
@@ -40,6 +42,10 @@ Route::prefix('setup')->group(function () {
   Route::post('get_payment_method_visit_purpose/{branch_id}', [SetupController::class, 'getMasterPaymentMethodVisitPurpose']);
   Route::post('get_branch_visit_purpose/{branch_id}', [SetupController::class, 'getMasterBranchVisitPurpose']);
   Route::post('get_visit_purpose/{branch_id}', [SetupController::class, 'getMasterVisitPurpose']);
+  Route::post('get_master_user/{branch_id}', [SetupController::class, 'getMasterUser']);
+  Route::post('get_master_role_access/{branch_id}', [SetupController::class, 'getMasterRoleAccess']);
+  Route::post('get_menu_app/{branch_id}', [SetupController::class, 'getMenuApp']);
+
   Route::get('install_success/{status}', [SetupController::class, 'ChangeStatusInstall']);
 });
 
@@ -62,10 +68,14 @@ Route::prefix('order')->group(function () {
   Route::get('view-order/{order_number}', [OrderController::class, 'viewOrder']);
   Route::get('only-view/{order_number}', [OrderController::class, 'onlyViewOrder']);
   Route::get('print-bill', [OrderController::class, 'PrintBill']);
+  Route::get('list-table-by-section/{tablesection_id}', [OrderController::class, 'ListTableBySection']);
+  Route::get('list-table-by-section-all/{tablesection_id}', [OrderController::class, 'ListTableBySectionAll']);
+  Route::post('save-move-table', [OrderController::class, 'SaveMoveTable']);
+  Route::post('save-move-item', [OrderController::class, 'SaveMoveItem']);
 });
 
 Route::prefix('orderlist')->group(function () {
-  Route::any('order-takeaway', [OrderlistController::class, 'getOrderlistTakaway']);
+  Route::any('by-tablesection/{tablesection_id}', [OrderlistController::class, 'getOrderlist']);
 });
 Route::prefix("sales")->group(function () {
   Route::get('get-sales-list', [SalesController::class, 'GetSalesList']);
@@ -76,6 +86,8 @@ Route::prefix("sales")->group(function () {
 
 Route::prefix('payment')->group(function () {
   Route::post('save-payment', [PaymentController::class, 'savePayment']);
+  Route::post('edit-payment', [PaymentController::class, 'editPayment']);
+  Route::get('view-payment/{order_number}', [PaymentController::class, 'viewPayment']);
 });
 Route::prefix('setting')->group(function () {
   Route::post('save', [SettingController::class, 'save']);
@@ -102,9 +114,23 @@ Route::prefix('cek')->group(function () {
   Route::any('cek', [CheckerController::class, 'cek']);
 });
 
+Route::prefix('auth')->group(function () {
+  Route::post('login', [AuthController::class, 'login']);
+  Route::get('logout', [AuthController::class, 'logout']);
+  Route::get('info', [AuthController::class, 'info']);
+});
+
 
 Route::prefix('branch-menu')->group(function () {
   Route::get('load', [BranchMenuController::class, 'load']);
   Route::post('save-soldout', [BranchMenuController::class, 'saveSoldout']);
   Route::post('save-stokqty', [BranchMenuController::class, 'saveStokQTY']);
+});
+
+
+//pushdata ke server erp
+Route::prefix('push')->group(function () {
+  Route::get('data-order', [PushDataController::class, 'PushDataOrder']);
+  Route::get('data-order-detail', [PushDataController::class, 'PushDataOrderDetail']);
+  Route::get('data-order-detail-package', [PushDataController::class, 'PushDataOrderDetailPackage']);
 });

@@ -435,6 +435,7 @@ class DayShiftServices
       $list_ordernumber->void = [];
 
       $pendingsales = 0;
+      $holdsales = 0;
 
       // hitung per order
       $netsales = 0;
@@ -458,14 +459,30 @@ class DayShiftServices
       $void_total = 0;
 
       $list_payment_number = [];
-      foreach ($data_order_list as $orderitem) {
+
+      // 
+
+      $orderpendinghold = TrOrderModel::whereIn('status', ['pending', 'hold'])->get();
+      foreach ($orderpendinghold as $orderitem) {
         //itungan pending sales   
         if ($orderitem->status == "pending") {
           $pendingsales += $orderitem->total_billing;
-
           //masukkan ke list order number pending
           $list_ordernumber->pending[] = $orderitem->order_number;
         }
+
+        //itungan hold sales
+        if ($orderitem->status == "hold") {
+          $holdsales += $orderitem->total_billing;
+          //masukkan ke list order number pending
+          // $list_ordernumber->pending[] = $orderitem->order_number;
+        }
+      }
+
+
+      // itungan data fix (paid, cancel, void)
+      foreach ($data_order_list as $orderitem) {
+
         //sementara pakai subtotal dulu nanti kalau udah implementasi discount baru di cek lagi
         //itungan net sales
         if ($orderitem->status == "paid") {
@@ -688,6 +705,7 @@ class DayShiftServices
         "dayshift" => $data_dayshift,
         "dayshift_detail" => $data_dayshift_detail,
         "sales_recapitulation" => [
+          ["pl" => 1, "key" => "Hold Sales", "amount" => $holdsales],
           ["pl" => 1, "key" => "Pending Sales", "amount" => $pendingsales],
           ["pl" => 1, "key" => "Net Sales", "amount" => $netsales],
           ["pl" => 40, "key" => "Netsales Delivery Cost", "amount" => $netsales_dc_total],
@@ -786,6 +804,7 @@ class DayShiftServices
       $list_ordernumber->void = [];
 
       $pendingsales = 0;
+      $holdsales = 0;
 
       // hitung per order
       $netsales = 0;
@@ -808,15 +827,28 @@ class DayShiftServices
       $cancel_total = 0;
       $void_total = 0;
 
-      $list_payment_number = [];
-      foreach ($data_order_list as $orderitem) {
+
+      $orderpendinghold = TrOrderModel::whereIn('status', ['pending', 'hold'])->get();
+      foreach ($orderpendinghold as $orderitem) {
         //itungan pending sales   
         if ($orderitem->status == "pending") {
           $pendingsales += $orderitem->total_billing;
-
           //masukkan ke list order number pending
           $list_ordernumber->pending[] = $orderitem->order_number;
         }
+
+        //itungan hold sales
+        if ($orderitem->status == "hold") {
+          $holdsales += $orderitem->total_billing;
+          //masukkan ke list order number pending
+          // $list_ordernumber->pending[] = $orderitem->order_number;
+        }
+      }
+
+
+      $list_payment_number = [];
+      foreach ($data_order_list as $orderitem) {
+
         //sementara pakai subtotal dulu nanti kalau udah implementasi discount baru di cek lagi
         //itungan net sales
         if ($orderitem->status == "paid") {
@@ -1039,6 +1071,7 @@ class DayShiftServices
 
         "dayshift" => $data_dayshift,
         "sales_recapitulation" => [
+          ["pl" => 1, "key" => "Hold Sales", "amount" => $holdsales],
           ["pl" => 1, "key" => "Pending Sales", "amount" => $pendingsales],
           ["pl" => 1, "key" => "Net Sales", "amount" => $netsales],
           ["pl" => 40, "key" => "Netsales Delivery Cost", "amount" => $netsales_dc_total],

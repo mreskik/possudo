@@ -63,6 +63,8 @@ class OrderController extends Controller
         }
     }
 
+    // public function viewOrderForPayment()
+
     public function viewOrder(Request $request)
     {
         try {
@@ -109,5 +111,86 @@ class OrderController extends Controller
         // }
         PrintServices::PrintBill($order);
         return '';
+    }
+
+    public function ListTableBySection(Request $request)
+    {
+        try {
+            $table_section_id = $request->tablesection_id;
+            $list = OrderServices::listTableBySection($table_section_id);
+
+            return response()->json([
+                'code' => 0,
+                'data' => $list
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function ListTableBySectionAll(Request $request)
+    {
+        try {
+            $table_section_id = $request->tablesection_id;
+            $list = OrderServices::listTableBySectionAll($table_section_id);
+
+            return response()->json([
+                'code' => 0,
+                'data' => $list
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function SaveMoveTable(Request $request)
+    {
+        try {
+
+            $order_number = $request->input("order_number");
+            $tablesection_id = $request->input("tablesection_id");
+            $table_id = $request->input("table_id");
+            $message = OrderServices::SaveMoveTable($order_number, $tablesection_id, $table_id);
+
+            return response()->json([
+                'code' => 0,
+                'message' => $message
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function SaveMoveItem(Request $request)
+    {
+        try {
+
+            $order_number = $request->input("order_number");
+            $visit_purpose_id = $request->input("visit_purpose_id");
+            $tablesection_id = $request->input("tablesection_id");
+            $table_id = $request->input("table_id");
+            $list_item = $request->input("list_item");
+
+            $message = OrderServices::SaveMoveItem($order_number, $visit_purpose_id, $tablesection_id, $table_id, $list_item);
+
+            return response()->json([
+                'code' => 0,
+                'message' => $message
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage()
+            ]);
+        }
     }
 }
