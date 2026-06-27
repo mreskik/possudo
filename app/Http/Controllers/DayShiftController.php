@@ -52,9 +52,9 @@ class DayShiftController extends Controller
     {
         try {
 
-            $dayshift_id = $request->dayshift_id;
+            $dayshift_ulid = $request->dayshift_ulid;
             //belum filter
-            $data = DayShiftServices::EndShift($dayshift_id);
+            $data = DayShiftServices::EndShift($dayshift_ulid);
             return response()->json([
                 "code" => 0,
                 "message" => $data
@@ -86,8 +86,8 @@ class DayShiftController extends Controller
     function ListDayShiftDetail(Request $request)
     {
         try {
-            $dayshift_id = $request->dayshift_id;
-            $data = DayShiftDetailModel::where('dayshift_id', $dayshift_id)->get();
+            $dayshift_ulid = $request->dayshift_ulid;
+            $data = DayShiftDetailModel::where('dayshift_ulid', $dayshift_ulid)->get();
 
             return response()->json([
                 "code" => 0,
@@ -123,7 +123,7 @@ class DayShiftController extends Controller
     {
         try {
 
-            $data = DayShiftServices::GetReport($request->dayshift_id);
+            $data = DayShiftServices::GetReport($request->dayshift_ulid);
 
             return response()->json([
                 "code" => 0,
@@ -157,8 +157,8 @@ class DayShiftController extends Controller
     function printReport(Request $request)
     {
         try {
-            $dayshift_id = $request->dayshift_id;
-            PrintServices::PrintReport($dayshift_id);
+            $dayshift_ulid = $request->dayshift_ulid;
+            PrintServices::PrintReport($dayshift_ulid);
             return response()->json([
                 "code" => 0,
                 "message" => "ashiappp"

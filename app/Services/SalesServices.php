@@ -16,7 +16,7 @@ class SalesServices
   {
     try {
 
-      $dayshift = DaySiftModel::where('dayout_time', null)->orderBy('id', 'desc')->first();
+      $dayshift = DaySiftModel::where('dayout_time', null)->orderBy('ulid', 'desc')->first();
 
       $data = DB::select("
       SELECT 

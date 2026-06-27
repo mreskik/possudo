@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\BranchModel;
+use App\Models\DayShiftDetailModel;
+use App\Models\DaySiftModel;
 use App\Models\MasterItemModel;
 use App\Models\MasterPricelistDetailModel;
 use App\Models\TableSectionModel;
@@ -69,8 +71,9 @@ class OrderServices
           throw new \Exception("table Section tidak valid!");
         }
         // 
-
+        $dayshift = DaySiftModel::where("dayout_time", null)->first();
         $order = [
+          "dayshift_ulid" => $dayshift->ulid,
           "terminal_id" => 1,
           "order_name" => ($datajson->orderName == '') ? '' : $datajson->orderName,
           "branch_id" => $branch->id,
@@ -239,8 +242,6 @@ class OrderServices
         return $order_number;
       } else { //versi tambah pesanan tapi masih belum bisa cancel menu
 
-
-
         $order_number = $datajson->orderNumber;
 
         $current_table_order = TrOrderModel::where('order_number', $order_number)->whereIn('status', ['pending', 'hold'])
@@ -365,6 +366,12 @@ class OrderServices
             "done_print" => true,
           ]);
         }
+
+        //sync update
+        TrOrderModel::where("order_number", $order_number)->update(["sync_at" => null]);
+        TrOrderDetailModel::where("order_number", $order_number)->update(["sync_at" => null]);
+        // TrOrderDetailPackageModel::where("order_number", $order_number)->update(["sync_at" => null]);
+        //
         DB::commit();
 
         return $order_number;
@@ -585,6 +592,7 @@ class OrderServices
       }
 
       $perubahan = ["table_section_id" => $tablesection->id];
+      $perubahan = ["sync_at" => null];
       if ($tablesection->type == 'dinein') {
         if ($table_id == null) {
           throw new \Exception('table harus dipilih! ');

@@ -9,6 +9,7 @@ use App\Models\TrOrderPaymentModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use stdClass;
 
 
@@ -55,7 +56,8 @@ class PaymentServices
         'payment_number' => $payment_number,
         'status' => 'paid',
         'order_out' => now(),
-        'payment_at' => now()
+        'payment_at' => now(),
+        'sync_at' => null
       ]);
 
 
@@ -63,6 +65,7 @@ class PaymentServices
 
       foreach ($datajson->payment_detail as $item) {
         $payment_detail[] = [
+          'ulid' => (string)Str::ulid(),
           'payment_number' => $payment_number,
           'payment_method_id' => $item['payment_method_id'],
           'payment_amount' => $item['payment_amount'],
@@ -120,6 +123,7 @@ class PaymentServices
       $payment_detail = [];
       foreach ($datajson->payment_detail as $item) {
         $payment_detail[] = [
+          'ulid' => (string)Str::ulid(),
           'payment_number' => $dataorder->payment_number,
           'payment_method_id' => $item['payment_method_id'],
           'payment_amount' => $item['payment_amount'],

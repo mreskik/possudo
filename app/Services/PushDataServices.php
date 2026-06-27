@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\TrOrderDetailModel;
 use App\Models\TrOrderDetailPackageModel;
 use App\Models\TrOrderModel;
+use App\Models\TrOrderPaymentModel;
 use Carbon\Carbon;
 use DateTime;
 use Illuminate\Support\Facades\DB;
@@ -199,6 +200,56 @@ class PushDataServices
         //update di lokal pos bahwa sudah sync at
         foreach ($list_data_order_detail_package as $item) {
           TrOrderDetailPackageModel::where("ulid", $item->ulid)->update([
+            "sync_at" => $datetime
+          ]);
+        }
+
+        DB::commit();
+        return 'success';
+      } else {
+        throw new \Exception($response->json('message'));
+      }
+    } catch (\Throwable $e) {
+      if (DB::transactionLevel() > 0) {
+        DB::rollBack();
+      }
+      throw $e;
+    }
+  }
+
+  function pushDataOrderPayment()
+  {
+
+    $datetime = now()->toISOString(true);
+    try {
+
+      $list_data_order_payment = TrOrderPaymentModel::where('sync_at', null)->get();
+
+      foreach ($list_data_order_payment as $item) {
+        // $item->flag_inclusive_tax = (bool)$item->flag_inclusive_tax;
+        // $item->done_print = (bool)$item->done_print;
+
+        // if ($item->tax_rate == null) {
+        //   $item->tax_rate = '0';
+        // }
+
+        if ($item->sync_at == null) {
+          $item->sync_at = $datetime;
+        }
+      }
+
+      // return $list_data_order_detail_package;
+
+
+      $response = Http::asJson()->post($this->endpoint . "/pos/push/data_order_payment", [
+        "list_order_payment" => $list_data_order_payment
+      ]);
+      if ($response->json('code') == 0) {
+
+        DB::beginTransaction();
+        //update di lokal pos bahwa sudah sync at
+        foreach ($list_data_order_payment as $item) {
+          TrOrderPaymentModel::where("ulid", $item->ulid)->update([
             "sync_at" => $datetime
           ]);
         }

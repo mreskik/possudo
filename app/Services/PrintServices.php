@@ -166,7 +166,7 @@ class PrintServices
       /////////////////////
       // self::resizeGambar(public_path("img/logo1.png"), 165);
 
-      $imageLogo = EscposImage::load(public_path("assets\img\logo_resize.png"), false);
+      $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
       $order_number = $data_order->order_number;
       $charPerLine = $data_station->line_character;
       $table_section_name = $table_section->name;
@@ -307,7 +307,7 @@ class PrintServices
       /////////////////////
       // self::resizeGambar(public_path("img/logo1.png"), 165);
 
-      $imageLogo = EscposImage::load(public_path("assets\img\logo_resize.png"), false);
+      $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
 
       $order_number = $data_order->order_number;
       // $charPerLine = 48;
@@ -600,7 +600,7 @@ class PrintServices
       $data_visitpurpose = MasterVisitPurposeModel::where('id', $data_order->visit_purpose_id)->first();
       $konektor = new WindowsPrintConnector($data_station->printer_name);
       $print = new Printer($konektor);
-      $imageLogo = EscposImage::load(public_path("assets\img\logo_resize.png"), false);
+      $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
       $branch = BranchModel::first();
 
       $textHeader =  $branch->printing_header;
@@ -771,7 +771,7 @@ class PrintServices
       $print = new Printer($konektor);
       /////////////////////
       // self::resizeGambar(public_path("img/logo1.png"), 165);
-      // $imageLogo = EscposImage::load(public_path("assets\img\logo_resize.png"), false);
+      // $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
 
       $order_number = $data_order->order_number;
       $charPerLine = $data_station->line_character;
@@ -871,14 +871,14 @@ class PrintServices
     }
   }
 
-  static function PrintReport($id, $is_dayshift_detail = false)
+  static function PrintReport($ulid, $is_dayshift_detail = false)
   {
     $datareport = null;
     if (!$is_dayshift_detail) {
-      $datareport = DayShiftServices::GetReport($id);
+      $datareport = DayShiftServices::GetReport($ulid);
     } else {
       try {
-        $datareport = DayShiftServices::GetReportByShiftDetail($id);
+        $datareport = DayShiftServices::GetReportByShiftDetail($ulid);
       } catch (\Throwable $e) {
         throw $e;
       }

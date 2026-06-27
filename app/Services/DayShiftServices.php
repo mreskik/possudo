@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use stdClass;
+use Illuminate\Support\Str;
 
 class DayShiftServices
 {
@@ -21,7 +22,8 @@ class DayShiftServices
   public static function GetDayShift()
   {
     try {
-      $data = DaySiftModel::where('dayout_time', null)->orderBy("id", 'desc')->first();
+      $data = DaySiftModel::where('dayout_time', null)->orderBy("ulid", 'desc')->first();
+      Log::info($data);
       return $data;
     } catch (\Throwable $e) {
       throw $e;
@@ -45,6 +47,7 @@ class DayShiftServices
       //   }
 
       DaySiftModel::create([
+        "ulid" => (string)Str::ulid(),
         "branch_id" => $branch->id,
         "dayin_time" => $datetimenow,
         "dayin_total" => $start_cash,
@@ -57,11 +60,11 @@ class DayShiftServices
     }
   }
 
-  public static function EndShift(int $id_dayshift)
+  public static function EndShift(string $ulid_dayshift)
   {
     try {
       // cek current dayshift 
-      $current_dayshift = DaySiftModel::where("id", $id_dayshift)->first();
+      $current_dayshift = DaySiftModel::where("ulid", $ulid_dayshift)->first();
       if ($current_dayshift) {
         if ($current_dayshift->dayout_time != null) {
           throw new \Exception('tidak bisa end shift karena belum start day!');
@@ -71,7 +74,8 @@ class DayShiftServices
       }
 
       DayShiftDetailModel::create([
-        "dayshift_id" => $current_dayshift->id,
+        "ulid" => (string)Str::ulid(),
+        "dayshift_ulid" => $current_dayshift->ulid,
         "shift_time" => now(),
         "shift_user_id" => 1,
       ]);
@@ -85,11 +89,11 @@ class DayShiftServices
   {
     try {
 
-      $dayshift_id = $request->input("dayshift_id");
+      $dayshift_ulid = $request->input("dayshift_ulid");
       $aktual_ending_cash = $request->input("aktual_ending_cash");
       $notes = $request->input("notes");
 
-      $current_dayshift = DaySiftModel::where("id", $dayshift_id)->first();
+      $current_dayshift = DaySiftModel::where("ulid", $dayshift_ulid)->first();
       if (!$current_dayshift) {
         throw new \Exception("tidak pernah start day!");
       }
@@ -97,7 +101,7 @@ class DayShiftServices
         throw new \Exception("sudah pernah end day!");
       }
 
-      DaySiftModel::where("id", $dayshift_id)->update([
+      DaySiftModel::where("ulid", $dayshift_ulid)->update([
         "dayout_time" => now(),
         "dayout_total" => $aktual_ending_cash,
         "dayout_notes" => $notes
@@ -398,11 +402,11 @@ class DayShiftServices
     }
   }
 
-  public static function GetReport($dayshift_id = null)
+  public static function GetReport($dayshift_ulid = null)
   {
     try {
-      $data_dayshift = DaySiftModel::where('id', $dayshift_id)->first();
-      $data_dayshift_detail = DayShiftDetailModel::where('dayshift_id', $dayshift_id)->get();
+      $data_dayshift = DaySiftModel::where('ulid', $dayshift_ulid)->first();
+      $data_dayshift_detail = DayShiftDetailModel::where('dayshift_ulid', $dayshift_ulid)->get();
 
       $data_order_list = [];
       if ($data_dayshift->dayout_time != null) {
@@ -734,18 +738,18 @@ class DayShiftServices
     }
   }
 
-  public static function GetReportByShiftDetail($shiftdetail_id = null)
+  public static function GetReportByShiftDetail($shiftdetail_ulid = null)
   {
     try {
-      $data_dayshift_detail = DayShiftDetailModel::where('id', $shiftdetail_id)->first();
-      $data_dayshift = DaySiftModel::where('id', $data_dayshift_detail->dayshift_id)->first();
+      $data_dayshift_detail = DayShiftDetailModel::where('ulid', $shiftdetail_ulid)->first();
+      $data_dayshift = DaySiftModel::where('ulid', $data_dayshift_detail->dayshift_ulid)->first();
 
 
       $starttime = $data_dayshift->dayin_time;
       $endtime = $data_dayshift_detail->shift_time;
 
-      $dayshift_detail = DayShiftDetailModel::where('dayshift_id', $data_dayshift_detail->dayshift_id)
-        ->orderBy('id', 'asc')->get();
+      $dayshift_detail = DayShiftDetailModel::where('dayshift_ulid', $data_dayshift_detail->dayshift_ulid)
+        ->orderBy('ulid', 'asc')->get();
 
       $data_dayshift->shift_queue = 1;
 
@@ -753,7 +757,7 @@ class DayShiftServices
       if (count($dayshift_detail) > 1) {
         $index = 0;
         foreach ($dayshift_detail as $ite) {
-          if ($ite->id == $shiftdetail_id) {
+          if ($ite->id == $shiftdetail_ulid) {
             break;
           }
           $index = $index + 1;
@@ -1103,7 +1107,7 @@ class DayShiftServices
   public static function GetDayshiftList()
   {
     try {
-      $dayshift_list = DaySiftModel::orderBy('id', 'desc')->get();
+      $dayshift_list = DaySiftModel::orderBy('ulid', 'desc')->get();
       return $dayshift_list;
     } catch (\Throwable $e) {
       throw $e;

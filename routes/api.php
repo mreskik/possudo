@@ -98,13 +98,13 @@ Route::prefix('setting')->group(function () {
 Route::prefix('dayshift')->group(function () {
   Route::get('get', [DayShiftController::class, 'CurrentDay']);
   Route::post('start', [DayShiftController::class, 'StartDay']);
-  Route::get('end-shift/{dayshift_id}', [DayShiftController::class, 'Endshift']);
-  Route::get('detail-list/{dayshift_id}', [DayShiftController::class, 'ListDayShiftDetail']);
+  Route::get('end-shift/{dayshift_ulid}', [DayShiftController::class, 'Endshift']);
+  Route::get('detail-list/{dayshift_ulid}', [DayShiftController::class, 'ListDayShiftDetail']);
   Route::post("end-day", [DayShiftController::class, 'EndDay']);
   // Route::get("report-all", [DayShiftController::class, 'ReportAll']);
-  Route::get("report/{dayshift_id}", [DayShiftController::class, 'Report']);
+  Route::get("report/{dayshift_ulid}", [DayShiftController::class, 'Report']);
   Route::get("dayshift-list", [DayShiftController::class, 'DayShiftList']);
-  Route::get("print-report/{dayshift_id}", [DayShiftController::class, 'printReport']);
+  Route::get("print-report/{dayshift_ulid}", [DayShiftController::class, 'printReport']);
   Route::get("print-report-shift/{dayshift_detail_id}", [DayShiftController::class, 'printReportByShift']);
   Route::get("pending-order", [DayShiftController::class, 'pendingOrder']);
 });
@@ -133,4 +133,5 @@ Route::prefix('push')->group(function () {
   Route::get('data-order', [PushDataController::class, 'PushDataOrder']);
   Route::get('data-order-detail', [PushDataController::class, 'PushDataOrderDetail']);
   Route::get('data-order-detail-package', [PushDataController::class, 'PushDataOrderDetailPackage']);
+  Route::get('data-order-payment', [PushDataController::class, 'PushDataOrderPayment']);
 });

@@ -17,6 +17,10 @@ return new class extends Migration
 
             $table->string("order_number")->primary();
             $table->string("payment_number")->nullable()->unique();
+
+            $table->ulid("dayshift_ulid");
+            // $table->ulid("shift_ulid");
+
             $table->unsignedBigInteger("branch_id");
 
             $table->unsignedBigInteger("terminal_id");
@@ -149,7 +153,7 @@ return new class extends Migration
 
         // payment detail
         Schema::create("tr_order_payment", function (Blueprint $table) {
-            $table->id();
+            $table->ulid()->primary();
             $table->string("payment_number");
 
             $table->unsignedBigInteger("payment_method_id");
@@ -173,7 +177,7 @@ return new class extends Migration
 
         // day in out
         Schema::create("tr_dayshift", function (Blueprint $table) {
-            $table->id();
+            $table->ulid()->primary();
             $table->unsignedBigInteger("branch_id");
 
             $table->dateTime("dayin_time")->nullable();
@@ -191,8 +195,8 @@ return new class extends Migration
         });
 
         Schema::create("tr_dayshift_detail", function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger("dayshift_id");
+            $table->ulid()->primary();
+            $table->ulid("dayshift_ulid");
             $table->dateTime("shift_time");
             $table->unsignedBigInteger("shift_number");
             $table->unsignedBigInteger("shift_user_id");
