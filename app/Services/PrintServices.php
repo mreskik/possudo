@@ -463,14 +463,17 @@ class PrintServices
       }
 
 
-
+      $total_item = 0;
+      foreach ($data_order_detail as $item) {
+        $total_item += $item->qty;
+      }
 
       foreach ($data_order_detail as $item) {
 
         if (count($item->package_detail) == 0) {
 
           //ITEM BIASA
-          $total_qty = $item->qty;
+          // $total_qty = $item->qty;
           foreach ($datasubcategorystation as $stationnary) {
             if ($item->subcategory_id == $stationnary->sub_category_id) {
               $data_station = StationModel::where('id', $stationnary->station_id)->first();
@@ -480,7 +483,7 @@ class PrintServices
 
                   $ngeprint->setNamePrinter($data_station->printer_name);
                   $ngeprint->setText($data_order->order_in);
-                  $ngeprint->setText($data_order->order_queue . " | " . $data_order->order_name . " | $i/$total_qty");
+                  $ngeprint->setText($data_order->order_queue . " | " . $data_order->order_name . " | $i/$total_item");
                   $ngeprint->setText($data_visitpurpose->name);
                   $ngeprint->setText($item->name);
                   if ($item->notes && $item->notes != '') {
