@@ -3,13 +3,30 @@
 namespace App\Services;
 
 use App\Models\MasterItemModel;
+use Illuminate\Support\Facades\DB;
 
 class BranchMenuServices
 {
   static function load()
   {
     try {
-      $data = MasterItemModel::get();
+      $data = DB::select("
+      SELECT DISTINCT
+      mi.*
+      from mr_branch_visit_purpose mbvp
+      JOIN mr_pricelist_detail mpd on mpd.pricelist_id = mbvp.pricelist_id
+      LEFT JOIN mr_item_conv mic on mic.id=mpd.item_conv_detail_id
+      JOIN mr_item mi on mi.id = mic.item_id
+      ");
+
+      foreach ($data as $item) {
+        if ($item->flag_soldout) {
+          $item->flag_soldout = true;
+        } else {
+          $item->flag_soldout = false;
+        }
+      }
+
       return $data;
     } catch (\Throwable $e) {
       throw $e;

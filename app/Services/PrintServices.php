@@ -8,6 +8,7 @@ use App\Models\MasterVisitPurposeModel;
 use App\Models\SettingModel;
 use App\Models\StationModel;
 use App\Models\TableSectionModel;
+use App\Models\TrOrderDetailPackageModel;
 use App\Models\TrOrderModel;
 use App\Models\TrPaymentModel;
 use Illuminate\Support\Facades\DB;
@@ -120,6 +121,7 @@ class PrintServices
   {
     try {
 
+
       $table_section =  TableSectionModel::where('id', $table_section_id)->first();
       if (!$table_section) {
         Log::info("table section tidak ditemukan!");
@@ -138,6 +140,7 @@ class PrintServices
         return;
       }
 
+
       // $done_print = 'and trod.done_print = false';
       // if ($test) {
       //   $done_print = '';
@@ -153,6 +156,10 @@ class PrintServices
       ";
 
       $data_order_detail = DB::select($mbe, [$order_number]);
+      if (count($data_order_detail) == 0) {
+        Log::info('data order detail kosong jadi gak di print untuk order ' . $order_number);
+        return;
+      }
 
       // if (count($data_order_detail) > 0) {
       //   return;
@@ -296,9 +303,10 @@ class PrintServices
       WHERE trod.order_number = ? and trod.done_print = false
       ", [$order_number]);
 
-      // if (count($data_order_detail) > 0) {
-      //   return;
-      // }
+      if (count($data_order_detail) == 0) {
+        Log::info('data order detail kosong jadi gak di print untuk order ' . $order_number);
+        return;
+      }
 
       $data_visitpurpose = MasterVisitPurposeModel::where('id', $data_order->visit_purpose_id)->first();
 
@@ -445,8 +453,50 @@ class PrintServices
       WHERE trod.order_number = ? " . $doneprint, [$order_number]);
 
 
-      foreach ($data_order_detail as $order_item) {
-        // $package = [];
+      // foreach ($data_order_detail as $order_item) {
+      //   // $package = [];
+      //   $listpackagedetail = DB::select("
+      //           SELECT
+      //           trod.ulid,
+      //           trod.menu_id,
+      //           trod.qty,
+      //           trod.notes,
+      //           mi.* 
+      //           FROM tr_order_detail_package trod
+      //           JOIN mr_item_conv mic on mic.id = trod.menu_id
+      //           JOIN mr_item mi on mi.id = mic.item_id
+
+      //           WHERE trod.tr_order_detail_ulid = ?", [$order_item->ulid]);
+      //   $order_item->package_detail = $listpackagedetail;
+      // }
+
+
+      // $data_order_detail_package = TrOrderDetailPackageModel:: 
+
+      $total_item = 0;
+      $daftar_menu_mau_print = [];
+
+      foreach ($data_order_detail as $item) {
+        $total_item += $item->qty;
+
+        $master_item = DB::select("
+               SELECT
+                mic.id as itemconv_id,
+                mi.id as item_id,
+                mi.short_name as item_name,
+                mi.subcategory_id
+                FROM mr_item_conv mic
+                JOIN mr_item mi on mi.id = mic.item_id
+                WHERE mic.id = ? ", [$item->menu_id]);
+
+        // DISINI NGECEK ITEM SPARATE PRINT ATAU ENGGA SAAT INI BELUM IMPLEMENTASI (DARI MASTER ITEM ATAS INI) NARIK DATA MASTER ITEM NANTI ADA KOLOM SPARATE
+        // SEKARANG BELUM IMPLEMENTASI JADI SEMENTARA TAK SPARATE DULU UNTUK SEKARANG IMPLEMENTASI NO DULU
+
+        $print_tablesection_subcategory_setting = MasterTableSectionPrintCategorySettingModel::where('table_section_id', $table_section)
+          ->where("sub_category_id", $master_item[0]->subcategory_id)
+          ->first();
+
+        $ddata_package = [];
         $listpackagedetail = DB::select("
                 SELECT
                 trod.ulid,
@@ -458,104 +508,156 @@ class PrintServices
                 JOIN mr_item_conv mic on mic.id = trod.menu_id
                 JOIN mr_item mi on mi.id = mic.item_id
 
-                WHERE trod.tr_order_detail_ulid = ?", [$order_item->ulid]);
-        $order_item->package_detail = $listpackagedetail;
+                WHERE trod.tr_order_detail_ulid = ?", [$item->ulid]);
+
+        foreach ($listpackagedetail as $package) {
+          $master_item2 = DB::select("
+               SELECT
+                mic.id as itemconv_id,
+                mi.id as item_id,
+                mi.short_name as item_name,
+                mi.subcategory_id
+                FROM mr_item_conv mic
+                JOIN mr_item mi on mi.id = mic.item_id
+                WHERE mic.id = ? ", [$package->menu_id]);
+
+          $ddata_package[] = [
+            "qty" => $package->qty,
+            "item_name" => $master_item2[0]->item_name,
+            "item_notes" => $package->notes,
+          ];
+        }
+
+
+
+        for ($i = 0; $i < $item->qty; $i++) {
+          $daftar_menu_mau_print[] = [
+            "item_name" => $master_item[0]->item_name,
+            "station_id" => $print_tablesection_subcategory_setting->station_id,
+            "item_notes" => $item->notes,
+            "data_package" => $ddata_package,
+
+          ];
+        }
       }
 
+      // lopingan daftar menu yang mau di print 
+      $itungan_item = 1;
 
-      $total_item = 0;
-      foreach ($data_order_detail as $item) {
-        $total_item += $item->qty;
-      }
+      foreach ($daftar_menu_mau_print as $itemmauprint) {
+        $data_station = StationModel::where('id', $itemmauprint['station_id'])->first();
+        $ngeprintasek = new GeneralLabel;
+        $ngeprintasek->setNamePrinter($data_station->printer_name);
+        $ngeprintasek->setText($data_order->order_in);
+        $ngeprintasek->setText($data_order->order_queue . " | " . $data_order->order_name . " | $itungan_item/$total_item");
+        $ngeprintasek->setText($data_visitpurpose->name);
+        $ngeprintasek->setText($itemmauprint['item_name']);
 
-      foreach ($data_order_detail as $item) {
-
-        if (count($item->package_detail) == 0) {
-
-          //ITEM BIASA
-          // $total_qty = $item->qty;
-          foreach ($datasubcategorystation as $stationnary) {
-            if ($item->subcategory_id == $stationnary->sub_category_id) {
-              $data_station = StationModel::where('id', $stationnary->station_id)->first();
-              if ($data_station) {
-                for ($i = 1; $i <= $total_qty; $i++) {
-                  $ngeprint = new GeneralLabel;
-
-                  $ngeprint->setNamePrinter($data_station->printer_name);
-                  $ngeprint->setText($data_order->order_in);
-                  $ngeprint->setText($data_order->order_queue . " | " . $data_order->order_name . " | $i/$total_item");
-                  $ngeprint->setText($data_visitpurpose->name);
-                  $ngeprint->setText($item->name);
-                  if ($item->notes && $item->notes != '') {
-                    $ngeprint->setText(' notes : ' . $item->notes);
-                  }
-                  $ngeprint->sikat();
-                }
-              }
-            }
-          }
-        } else {
-
-
-          //VERSI PACKAGE
-          $total_qty = $item->qty;
-          foreach ($datasubcategorystation as $stationnary) {
-            if ($item->subcategory_id == $stationnary->sub_category_id) {
-              $data_station = StationModel::where('id', $stationnary->station_id)->first();
-
-              if ($data_station) {
-                for ($i = 1; $i <= $total_qty; $i++) {
-                  $ngeprint = new GeneralLabel;
-                  $ngeprint->setMargin(1, 5);
-
-                  $ngeprint->setNamePrinter($data_station->name);
-                  $ngeprint->setText($data_order->order_in);
-                  $ngeprint->setText($data_order->order_queue . " | " . $data_order->order_name . " | $i/$total_qty");
-                  $ngeprint->setText($data_visitpurpose->name);
-                  $ngeprint->setText($item->name);
-
-                  //itempackage
-                  $listpackagedetail = DB::select("
-                    SELECT
-                    trod.ulid,
-                    trod.menu_id,
-                    trod.qty,
-                    trod.notes,
-                    mi.* 
-                    FROM tr_order_detail_package trod
-                    JOIN mr_item_conv mic on mic.id = trod.menu_id
-                    JOIN mr_item mi on mi.id = mic.item_id
-
-                    WHERE trod.tr_order_detail_ulid = ?", [$item->ulid]);
-
-                  foreach ($listpackagedetail as $itempackage) {
-
-                    foreach ($datasubcategorystation as $stationnaryB) {
-
-                      if ($itempackage->subcategory_id == $stationnaryB->sub_category_id) {
-
-                        $data_station2 = StationModel::where('id', $stationnaryB->station_id)->first();
-                        if ($data_station2) {
-                          $ngeprint->setText(" " . $itempackage->qty . "x " . $itempackage->name);
-
-
-                          if ($itempackage->notes && $itempackage->notes != '') {
-                            $ngeprint->setText('   * ' . $itempackage->notes);
-                          }
-                        }
-                      }
-                    }
-                  }
-                  if ($item->notes && $item->notes != '') {
-                    $ngeprint->setText(' notes : ' . $item->notes);
-                  }
-                  $ngeprint->sikat();
-                }
-              }
+        if (count($itemmauprint['data_package']) > 0) {
+          foreach ($itemmauprint['data_package'] as $itempackage) {
+            $ngeprintasek->setText(" " . $itempackage['qty'] . "x " . $itempackage['item_name']);
+            if ($itempackage['item_notes'] && $itempackage['item_notes'] != '') {
+              $ngeprintasek->setText('   * ' . $itempackage['item_notes']);
             }
           }
         }
+        if ($item->notes && $item->notes != '') {
+          $ngeprintasek->setText(' notes : ' . $item->notes);
+        }
+        $ngeprintasek->sikat();
+        $itungan_item = $itungan_item + 1;
       }
+
+
+      // foreach ($data_order_detail as $item) {
+
+      //   if (count($item->package_detail) == 0) {
+      //     //ITEM BIASA
+      //     $total_qty = $item->qty;
+      //     foreach ($datasubcategorystation as $stationnary) {
+      //       if ($item->subcategory_id == $stationnary->sub_category_id) {
+      //         $data_station = StationModel::where('id', $stationnary->station_id)->first();
+      //         if ($data_station) {
+      //           for ($i = 1; $i <= $total_qty; $i++) {
+      //             $ngeprint = new GeneralLabel;
+
+      //             $ngeprint->setNamePrinter($data_station->printer_name);
+      //             $ngeprint->setText($data_order->order_in);
+      //             $ngeprint->setText($data_order->order_queue . " | " . $data_order->order_name . " | $itungan_item/$total_item");
+      //             $ngeprint->setText($data_visitpurpose->name);
+      //             $ngeprint->setText($item->name);
+      //             if ($item->notes && $item->notes != '') {
+      //               $ngeprint->setText(' notes : ' . $item->notes);
+      //             }
+      //             $ngeprint->sikat();
+
+      //             $itungan_item++;
+      //           }
+      //         }
+      //       }
+      //     }
+      //   } else {
+
+
+      //     //VERSI PACKAGE
+      //     $total_qty = $item->qty;
+      //     foreach ($datasubcategorystation as $stationnary) {
+      //       if ($item->subcategory_id == $stationnary->sub_category_id) {
+      //         $data_station = StationModel::where('id', $stationnary->station_id)->first();
+
+      //         if ($data_station) {
+      //           for ($i = 1; $i <= $total_qty; $i++) {
+      //             $ngeprint = new GeneralLabel;
+      //             $ngeprint->setMargin(1, 5);
+
+      //             $ngeprint->setNamePrinter($data_station->name);
+      //             $ngeprint->setText($data_order->order_in);
+      //             $ngeprint->setText($data_order->order_queue . " | " . $data_order->order_name . " | $i/$total_qty");
+      //             $ngeprint->setText($data_visitpurpose->name);
+      //             $ngeprint->setText($item->name);
+
+      //             //itempackage
+      //             $listpackagedetail = DB::select("
+      //               SELECT
+      //               trod.ulid,
+      //               trod.menu_id,
+      //               trod.qty,
+      //               trod.notes,
+      //               mi.* 
+      //               FROM tr_order_detail_package trod
+      //               JOIN mr_item_conv mic on mic.id = trod.menu_id
+      //               JOIN mr_item mi on mi.id = mic.item_id
+
+      //               WHERE trod.tr_order_detail_ulid = ?", [$item->ulid]);
+
+      //             foreach ($listpackagedetail as $itempackage) {
+
+      //               foreach ($datasubcategorystation as $stationnaryB) {
+
+      //                 if ($itempackage->subcategory_id == $stationnaryB->sub_category_id) {
+
+      //                   $data_station2 = StationModel::where('id', $stationnaryB->station_id)->first();
+      //                   if ($data_station2) {
+      //                     $ngeprint->setText(" " . $itempackage->qty . "x " . $itempackage->name);
+
+
+      //                     if ($itempackage->notes && $itempackage->notes != '') {
+      //                       $ngeprint->setText('   * ' . $itempackage->notes);
+      //                     }
+      //                   }
+      //                 }
+      //               }
+      //             }
+      //             if ($item->notes && $item->notes != '') {
+      //               $ngeprint->setText(' notes : ' . $item->notes);
+      //             }
+      //             $ngeprint->sikat();
+      //           }
+      //         }
+      //       }
+      //     }
+      //   }
+      // }
     } catch (\Throwable $e) {
       Log::info($e);
     }

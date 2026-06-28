@@ -51,7 +51,7 @@ class SettingController extends Controller
         if ($setting->use_customer_display) {
             //  exec("C:\Users\LENOVO\AppData\Local\Chromium\Application\chrome.exe --start-fullscreen --user-data-dir=C:\POS --window-position=$setting->customer_display_left,$setting->customer_display_top --new-window http://localhost:5173/display_customer");
 
-            exec("C:\Users\LENOVO\AppData\Local\Chromium\Application\chrome.exe --new-window http://localhost:5173/display_customer");
+            exec("chrome.exe --new-window http://localhost:5173/display_customer");
         }
 
         return response('');

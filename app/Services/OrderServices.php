@@ -264,13 +264,15 @@ class OrderServices
         //pengecekan stok
         $datagrouping_ = [];
         foreach ($datajson->listOrder as $item) {
-          $ida = $item['menuPricelistId'];
-          $datagrouping_[$ida] = ($datagrouping_[$ida] ?? 0) + $item['qty'];
 
 
           // Log::info($item);
           //oder detail yang tidak punya ulid
           if (!isset($item['ulid'])) {
+
+            $ida = $item['menuPricelistId'];
+            $datagrouping_[$ida] = ($datagrouping_[$ida] ?? 0) + $item['qty'];
+
             $mumu = [
               'ulid' => (string)Str::ulid(),
               'order_number' => $order_number,
