@@ -32,13 +32,16 @@ class AuthController extends Controller
                 "data" => json_encode($user)
             ]);
 
-            $cookie = cookie("sudo_pos_session", $session_id);
+            // $cookie = cookie("sudo_pos_session", $session_id);
+
 
             return response()->json([
                 "code" => 0,
                 "message" => "success login!",
-                "data" => $user
-            ])->withCookie($cookie);
+                "data" => [
+                    "token" => $session_id,
+                ]
+            ]);
         } catch (\Throwable $e) {
             return response()->json([
                 "code" => 100,
@@ -50,9 +53,9 @@ class AuthController extends Controller
     public function logout(Request $request)
     {
         try {
-            $session_id = Cookie::get("sudo_pos_session");
+            $token = $request->bearerToken();
 
-            SessionModel::where("session_id", $session_id)->delete();
+            SessionModel::where("session_id", $token)->delete();
 
             return response()->json([
                 "code" => 0,
@@ -70,9 +73,9 @@ class AuthController extends Controller
     {
         try {
 
-            $session_id = Cookie::get("sudo_pos_session");
+            $token = $request->bearerToken();
 
-            $data = SessionModel::where("session_id", $session_id)->first();
+            $data = SessionModel::where("session_id", $token)->first();
             $data_user = json_decode($data->data);
 
             return response()->json([

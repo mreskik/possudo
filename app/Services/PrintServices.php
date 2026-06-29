@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BranchModel;
+use App\Models\DayShiftDetailModel;
 use App\Models\MasterTableSectionPrintCategorySettingModel;
 use App\Models\MasterVisitPurposeModel;
 use App\Models\SettingModel;
@@ -976,18 +977,182 @@ class PrintServices
     }
   }
 
-  static function PrintReport($ulid, $is_dayshift_detail = false)
+  // static function PrintReport($ulid, $is_dayshift_detail = false)
+  // {
+  //   $datareport = null;
+  //   if (!$is_dayshift_detail) {
+  //     try {
+  //       $datareport = DayShiftServices::GetReport($ulid);
+  //     } catch (\Throwable $e) {
+  //       throw $e;
+  //     }
+  //   } else {
+  //     try {
+  //       $datareport = DayShiftServices::GetReportByShiftDetail($ulid);
+  //     } catch (\Throwable $e) {
+  //       throw $e;
+  //     }
+  //   }
+  //   $branch = BranchModel::first();
+  //   $setting = SettingModel::first();
+  //   $data_station = StationModel::where('id', $setting->default_station)->first();
+  //   if (!$data_station) {
+  //     return;
+  //   }
+  //   // Log::info($datareport);
+
+  //   $konektor = new WindowsPrintConnector($data_station->printer_name);
+  //   $print = new Printer($konektor);
+  //   $charPerLine = $data_station->line_character;
+
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   $print->setEmphasis();
+  //   $print->text("START\n");
+  //   $print->setEmphasis(false);
+  //   $print->text(self::separator("*", $charPerLine));
+  //   $print->setEmphasis();
+  //   $print->text("DAYSHIFT REPORT\n");
+  //   $print->setEmphasis(false);
+  //   $print->setJustification(Printer::JUSTIFY_LEFT);
+  //   $print->text(self::separator("=", $charPerLine));
+
+
+  //   $print->feed(1);
+  //   $print->text("Branch Name      : " . $branch->branch_name . "\n");
+  //   $print->text("Chasier          : " . "JUSE" . "\n");
+  //   $print->text("Print Time       : " . now() . "\n");
+
+  //   if ($datareport['dayshift']->start_time && $datareport['dayshift']->end_time) {
+  //     $print->text("\nShift Number     : " .  $datareport['dayshift']->shift_queue . "\n");
+  //     $print->text("Shift Start      : " . $datareport['dayshift']->start_time . "\n");
+  //     $print->text("Shift End        : " . $datareport['dayshift']->end_time . "\n");
+  //   } else {
+  //     $print->text("\nShift Number     : END DAY\n");
+  //     $print->text("Day Start        : " . $datareport['dayshift']->dayin_time . "\n");
+  //     $print->text("Day End          : " . (($datareport['dayshift']->dayout_time != null) ? $datareport['dayshift']->dayout_time : 'RUNNING') . "\n");
+  //   }
+
+
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->feed(1);
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   // $print->setEmphasis();
+  //   $print->text("SUMMARY REPORT\n");
+  //   // $print->feed(1);
+  //   // $print->setEmphasis(false);
+  //   $print->setJustification(Printer::JUSTIFY_LEFT);
+  //   $sales_recap = $datareport['sales_recapitulation'];
+
+  //   $print->text(self::kirikakan("Pending Total       :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
+  //   // $print->text(self::kirikakan("Sales Total         :", number_format($sales_total, 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("Discount Total      :", 0, $charPerLine));
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->setEmphasis(true);
+  //   $print->text(self::kirikakan("Net Sales Total     :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->setEmphasis(false);
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->text(self::kirikakan("Delivery Cost Total :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("OrderFee Total      :", number_format($sales_recap[3]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("SC Total            :", number_format($sales_recap[4]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("PB1 Total           :", number_format($sales_recap[6]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("VAT Total           :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("Platform Fee        :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("Voucher Sales       :", 0, $charPerLine));
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->setEmphasis(true);
+  //   $print->text(self::kirikakan("Gross Sales         :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->setEmphasis(false);
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->text(self::kirikakan("Number Of Pax       :", $sales_recap[9]["amount"], $charPerLine));
+  //   $print->text(self::kirikakan("Avg NetSales /Pax   :", number_format($sales_recap[10]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("Avg GrossSales /Pax :", number_format($sales_recap[11]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("Number Of Bills     :", $sales_recap[12]["amount"], $charPerLine));
+  //   $print->text(self::kirikakan("Avg NetSales /Bill  :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("Avg GrossSales /Bill:", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->feed(1);
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   // $print->setEmphasis();
+  //   $print->text("PAYMENT METHOD REPORT\n");
+  //   // $print->feed(1);
+  //   // $print->setEmphasis(false);
+  //   $print->setJustification(Printer::JUSTIFY_LEFT);
+  //   $totalpayment = 0;
+  //   foreach ($datareport['payment_recapitulation'] as $item) {
+  //     $totalpayment += $item->payment_amount;
+  //     $print->text(self::kirikakan($item->payment_method_name, number_format($item->payment_amount, 0, ',', '.'), $charPerLine));
+  //   }
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->setEmphasis(true);
+  //   $print->text(self::kirikakan("Total Payment", number_format($totalpayment, 0, ',', '.'), $charPerLine));
+  //   $print->setEmphasis(false);
+  //   $print->text(self::separator("-", $charPerLine));
+
+  //   // ///////////////////////////////////////////////
+  //   $print->feed(1);
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   // $print->setEmphasis();
+  //   $print->text("NET SALES BY MENU\n");
+  //   // $print->feed(1);
+  //   // $print->setEmphasis(false);
+  //   $print->setJustification(Printer::JUSTIFY_LEFT);
+  //   foreach ($datareport['sales_by_menu'] as $item) {
+  //     $print->text(self::threeline($item->qty, $item->menu_name, number_format($item->sub_total, 0, ',', '.'), $charPerLine));
+  //   }
+  //   $print->text(self::separator("-", $charPerLine));
+
+  //   // ////////////////////////////////////////////////////
+  //   $print->feed(1);
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   // $print->setEmphasis();
+  //   $print->text("NET SALES BY CATEGORY\n");
+  //   // $print->feed(1);
+  //   // $print->setEmphasis(false);
+  //   $print->setJustification(Printer::JUSTIFY_LEFT);
+  //   foreach ($datareport['sales_by_category'] as $item) {
+  //     $print->text(self::threeline($item->qty, $item->category_name, number_format($item->sub_total, 0, ',', '.'), $charPerLine));
+  //   }
+  //   $print->text(self::separator("-", $charPerLine));
+
+  //   // ////////////////////////////////////////////////////
+  //   $print->feed(1);
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   // $print->setEmphasis();
+  //   $print->text("NET SALES BY TABLE\n");
+  //   // $print->feed(1);
+  //   // $print->setEmphasis(false);
+  //   $print->setJustification(Printer::JUSTIFY_LEFT);
+  //   foreach ($datareport['sales_by_table'] as $item) {
+  //     $print->text(self::threeline($item->total_order, $item->table_name, number_format($item->total_amount, 0, ',', '.'), $charPerLine));
+  //   }
+  //   $print->text(self::separator("-", $charPerLine));
+
+
+  //   $print->feed(1);
+  //   $print->text(self::separator("*", $charPerLine));
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   $print->setEmphasis();
+  //   $print->text("END\n");
+
+
+  //   $print->feed(2);
+  //   $print->cut();
+  //   $print->close();
+  // }
+  static function PrintEndDay($dayshift_ulid)
   {
     $datareport = null;
-    if (!$is_dayshift_detail) {
-      $datareport = DayShiftServices::GetReport($ulid);
-    } else {
-      try {
-        $datareport = DayShiftServices::GetReportByShiftDetail($ulid);
-      } catch (\Throwable $e) {
-        throw $e;
-      }
+
+    try {
+      $datareport = DayShiftServices::GetReportDayshiftorEndDay($dayshift_ulid);
+    } catch (\Throwable $e) {
+      throw $e;
     }
+
+    // Log::info($datareport["sales_recapitulation"]);
+    // return;
+
+
     $branch = BranchModel::first();
     $setting = SettingModel::first();
     $data_station = StationModel::where('id', $setting->default_station)->first();
@@ -1001,15 +1166,15 @@ class PrintServices
     $charPerLine = $data_station->line_character;
 
     $print->setJustification(Printer::JUSTIFY_CENTER);
+    // $print->setEmphasis();
+    // $print->text("START\n");
+    // $print->setEmphasis(false);
+    $print->text(self::separator("-", $charPerLine));
     $print->setEmphasis();
-    $print->text("START\n");
-    $print->setEmphasis(false);
-    $print->text(self::separator("*", $charPerLine));
-    $print->setEmphasis();
-    $print->text("DAYSHIFT REPORT\n");
+    $print->text("ENDDAY REPORT\n");
     $print->setEmphasis(false);
     $print->setJustification(Printer::JUSTIFY_LEFT);
-    $print->text(self::separator("=", $charPerLine));
+    // $print->text(self::separator("=", $charPerLine));
 
 
     $print->feed(1);
@@ -1017,15 +1182,29 @@ class PrintServices
     $print->text("Chasier          : " . "JUSE" . "\n");
     $print->text("Print Time       : " . now() . "\n");
 
-    if ($datareport['dayshift']->start_time && $datareport['dayshift']->end_time) {
-      $print->text("\nShift Number     : " .  $datareport['dayshift']->shift_queue . "\n");
-      $print->text("Shift Start      : " . $datareport['dayshift']->start_time . "\n");
-      $print->text("Shift End        : " . $datareport['dayshift']->end_time . "\n");
-    } else {
-      $print->text("\nShift Number     : END DAY\n");
-      $print->text("Day Start        : " . $datareport['dayshift']->dayin_time . "\n");
-      $print->text("Day End          : " . (($datareport['dayshift']->dayout_time != null) ? $datareport['dayshift']->dayout_time : 'RUNNING') . "\n");
-    }
+    // $jumlahsparate = count($datareport['dayshift_detail']);
+    // if ($jumlahsparate == 0) {
+    // $print->text("\nShift Number     : " .  1 . "\n");
+    // } else {
+    // $print->text("\nShift Number     : " .  $jumlahsparate + 1 . "\n");
+    // }
+    // if ($jumlahsparate >= 1) {
+    Log::info($datareport['dayshift_detail']);
+    // $print->text("Shift Start      : " . $datareport['dayshift_detail']->last()->shift_time . "\n");
+    // } else {
+    $print->feed(1);
+
+    $print->text("Day Start        : " . $datareport['dayshift']->dayin_time . "\n");
+    $print->text("Day End          : " . $datareport['dayshift']->dayout_time . "\n");
+    // }
+    // return;
+    // if($datareport['dayshift']->dayout_time)
+    // $print->text("Shift End        : "  . "\n");
+    // } else {
+    //   $print->text("\nShift Number     : END DAY\n");
+    //   $print->text("Day Start        : " . $datareport['dayshift']->dayin_time . "\n");
+    //   $print->text("Day End          : " . (($datareport['dayshift']->dayout_time != null) ? $datareport['dayshift']->dayout_time : 'RUNNING') . "\n");
+    // }
 
 
     $print->text(self::separator("-", $charPerLine));
@@ -1038,44 +1217,50 @@ class PrintServices
     $print->setJustification(Printer::JUSTIFY_LEFT);
     $sales_recap = $datareport['sales_recapitulation'];
 
-    $print->text(self::kirikakan("Pending Total       :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Hold Total          :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Pending Total       :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Sales Total         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
     // $print->text(self::kirikakan("Sales Total         :", number_format($sales_total, 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("Discount Total      :", 0, $charPerLine));
+    $print->text(self::kirikakan("SC Total            :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("PB1 Total           :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("VAT Total           :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::separator("-", $charPerLine));
     $print->setEmphasis(true);
-    $print->text(self::kirikakan("Net Sales Total     :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Net Sales Total     :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Gross Sales         :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
     $print->setEmphasis(false);
     $print->text(self::separator("-", $charPerLine));
-    $print->text(self::kirikakan("Delivery Cost Total :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("OrderFee Total      :", number_format($sales_recap[3]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("SC Total            :", number_format($sales_recap[4]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("PB1 Total           :", number_format($sales_recap[6]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("VAT Total           :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Platform Fee        :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Voucher Sales       :", 0, $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->setEmphasis(true);
-    $print->text(self::kirikakan("Gross Sales         :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(false);
-    $print->text(self::separator("-", $charPerLine));
-    $print->text(self::kirikakan("Number Of Pax       :", $sales_recap[9]["amount"], $charPerLine));
-    $print->text(self::kirikakan("Avg NetSales /Pax   :", number_format($sales_recap[10]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Avg GrossSales /Pax :", number_format($sales_recap[11]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Number Of Bills     :", $sales_recap[12]["amount"], $charPerLine));
-    $print->text(self::kirikakan("Avg NetSales /Bill  :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Avg GrossSales /Bill:", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->feed(1);
+
+    // $print->text(self::kirikakan("Delivery Cost Total :", number_format($sales_recap[3]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("OrderFee Total      :", number_format($sales_recap[4]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Platform Fee        :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Voucher Sales       :", 0, $charPerLine));
+    // $print->text(self::separator("-", $charPerLine));
+    // $print->setEmphasis(true);
+    // $print->setEmphasis(false);
+
+    // $print->text(self::separator("-", $charPerLine));
+    // $print->text(self::kirikakan("Number Of Pax       :", $sales_recap[10]["amount"], $charPerLine));
+    // $print->text(self::kirikakan("Avg NetSales /Pax   :", number_format($sales_recap[11]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Avg GrossSales /Pax :", number_format($sales_recap[12]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Number Of Bills     :", $sales_recap[13]["amount"], $charPerLine));
+    // $print->text(self::kirikakan("Avg NetSales /Bill  :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Avg GrossSales /Bill:", number_format($sales_recap[15]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::separator("-", $charPerLine));
+    // $print->feed(1);
     $print->setJustification(Printer::JUSTIFY_CENTER);
     // $print->setEmphasis();
-    $print->text("PAYMENT METHOD REPORT\n");
-    // $print->feed(1);
+    $print->feed(1);
+    $print->text("PAYMENT METHOD SUMMARY\n");
     // $print->setEmphasis(false);
     $print->setJustification(Printer::JUSTIFY_LEFT);
     $totalpayment = 0;
     foreach ($datareport['payment_recapitulation'] as $item) {
       $totalpayment += $item->payment_amount;
       $print->text(self::kirikakan($item->payment_method_name, number_format($item->payment_amount, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan(" - Qty", $item->qty, $charPerLine));
+      $print->text(self::kirikakan(" - Total", number_format($item->payment_amount, 0, ',', '.'), $charPerLine));
     }
     $print->text(self::separator("-", $charPerLine));
     $print->setEmphasis(true);
@@ -1085,53 +1270,576 @@ class PrintServices
 
     // ///////////////////////////////////////////////
     $print->feed(1);
-    $print->setJustification(Printer::JUSTIFY_CENTER);
-    // $print->setEmphasis();
-    $print->text("NET SALES BY MENU\n");
-    // $print->feed(1);
-    // $print->setEmphasis(false);
-    $print->setJustification(Printer::JUSTIFY_LEFT);
-    foreach ($datareport['sales_by_menu'] as $item) {
-      $print->text(self::threeline($item->qty, $item->menu_name, number_format($item->sub_total, 0, ',', '.'), $charPerLine));
-    }
-    $print->text(self::separator("-", $charPerLine));
+    // $print->setJustification(Printer::JUSTIFY_CENTER);
+    // // $print->setEmphasis();
 
-    // ////////////////////////////////////////////////////
-    $print->feed(1);
-    $print->setJustification(Printer::JUSTIFY_CENTER);
-    // $print->setEmphasis();
-    $print->text("NET SALES BY CATEGORY\n");
-    // $print->feed(1);
-    // $print->setEmphasis(false);
-    $print->setJustification(Printer::JUSTIFY_LEFT);
-    foreach ($datareport['sales_by_category'] as $item) {
-      $print->text(self::threeline($item->qty, $item->category_name, number_format($item->sub_total, 0, ',', '.'), $charPerLine));
-    }
-    $print->text(self::separator("-", $charPerLine));
+    // $print->text("NET SALES BY MENU\n");
+    // $print->setJustification(Printer::JUSTIFY_LEFT);
+    // foreach ($datareport['sales_by_menu'] as $item) {
+    //   $print->text(self::threeline($item->qty, $item->menu_name, number_format($item->sub_total, 0, ',', '.'), $charPerLine));
+    // }
+    // $print->text(self::separator("-", $charPerLine));
 
-    // ////////////////////////////////////////////////////
-    $print->feed(1);
-    $print->setJustification(Printer::JUSTIFY_CENTER);
-    // $print->setEmphasis();
-    $print->text("NET SALES BY TABLE\n");
+    // // ////////////////////////////////////////////////////
     // $print->feed(1);
-    // $print->setEmphasis(false);
-    $print->setJustification(Printer::JUSTIFY_LEFT);
-    foreach ($datareport['sales_by_table'] as $item) {
-      $print->text(self::threeline($item->total_order, $item->table_name, number_format($item->total_amount, 0, ',', '.'), $charPerLine));
-    }
-    $print->text(self::separator("-", $charPerLine));
+    // $print->setJustification(Printer::JUSTIFY_CENTER);
+    // $print->text("NET SALES BY CATEGORY\n");
+    // $print->setJustification(Printer::JUSTIFY_LEFT);
+    // foreach ($datareport['sales_by_category'] as $item) {
+    //   $print->text(self::threeline($item->qty, $item->category_name, number_format($item->sub_total, 0, ',', '.'), $charPerLine));
+    // }
+    // $print->text(self::separator("-", $charPerLine));
+
+    // // ////////////////////////////////////////////////////
+    // $print->feed(1);
+    // $print->setJustification(Printer::JUSTIFY_CENTER);
+    // // $print->setEmphasis();
+    // $print->text("NET SALES BY TABLE\n");
+    // $print->setJustification(Printer::JUSTIFY_LEFT);
+    // foreach ($datareport['sales_by_table'] as $item) {
+    //   $print->text(self::threeline($item->total_order, $item->table_name, number_format($item->total_amount, 0, ',', '.'), $charPerLine));
+    // }
+
+    // $print->text(self::separator("-", $charPerLine));
 
 
     $print->feed(1);
-    $print->text(self::separator("*", $charPerLine));
+    // $print->text(self::separator("*", $charPerLine));
     $print->setJustification(Printer::JUSTIFY_CENTER);
     $print->setEmphasis();
-    $print->text("END\n");
+    // $print->text("END\n");
 
 
     $print->feed(2);
     $print->cut();
     $print->close();
   }
+
+  static function PrintCurrentShift($dayshift_ulid)
+  {
+    $datareport = null;
+
+    try {
+      $datareport = DayShiftServices::GetReportCurrentShift($dayshift_ulid);
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+
+    // Log::info($datareport["sales_recapitulation"]);
+    // return;
+
+
+    $branch = BranchModel::first();
+    $setting = SettingModel::first();
+    $data_station = StationModel::where('id', $setting->default_station)->first();
+    if (!$data_station) {
+      return;
+    }
+    // Log::info($datareport);
+
+    $konektor = new WindowsPrintConnector($data_station->printer_name);
+    $print = new Printer($konektor);
+    $charPerLine = $data_station->line_character;
+
+    $print->setJustification(Printer::JUSTIFY_CENTER);
+    // $print->setEmphasis();
+    // $print->text("START\n");
+    // $print->setEmphasis(false);
+    $print->text(self::separator("-", $charPerLine));
+    $print->setEmphasis();
+    $print->text("SHIFT REPORT\n");
+    $print->setEmphasis(false);
+    $print->setJustification(Printer::JUSTIFY_LEFT);
+    // $print->text(self::separator("=", $charPerLine));
+
+
+    $print->feed(1);
+    $print->text("Branch Name      : " . $branch->branch_name . "\n");
+    $print->text("Chasier          : " . "JUSE" . "\n");
+    $print->text("Print Time       : " . now() . "\n");
+
+    $jumlahsparate = count($datareport['dayshift_detail']);
+    if ($jumlahsparate == 0) {
+      $print->text("\nShift Number     : " .  1 . "\n");
+    } else {
+      $print->text("\nShift Number     : " .  $jumlahsparate + 1 . "\n");
+    }
+    if ($jumlahsparate >= 1) {
+      Log::info($datareport['dayshift_detail']);
+      $print->text("Shift Start      : " . $datareport['dayshift_detail']->last()->shift_time . "\n");
+    } else {
+      $print->text("Shift Start      : " . $datareport['dayshift']->dayin_time . "\n");
+    }
+    // return;
+    // if($datareport['dayshift']->dayout_time)
+    $print->text("Shift End        : "  . "\n");
+    // } else {
+    //   $print->text("\nShift Number     : END DAY\n");
+    //   $print->text("Day Start        : " . $datareport['dayshift']->dayin_time . "\n");
+    //   $print->text("Day End          : " . (($datareport['dayshift']->dayout_time != null) ? $datareport['dayshift']->dayout_time : 'RUNNING') . "\n");
+    // }
+
+
+    $print->text(self::separator("-", $charPerLine));
+    $print->feed(1);
+    $print->setJustification(Printer::JUSTIFY_CENTER);
+    // $print->setEmphasis();
+    $print->text("SUMMARY REPORT\n");
+    // $print->feed(1);
+    // $print->setEmphasis(false);
+    $print->setJustification(Printer::JUSTIFY_LEFT);
+    $sales_recap = $datareport['sales_recapitulation'];
+
+    $print->text(self::kirikakan("Hold Total          :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Pending Total       :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Sales Total         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Sales Total         :", number_format($sales_total, 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Discount Total      :", 0, $charPerLine));
+    $print->text(self::kirikakan("SC Total            :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("PB1 Total           :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("VAT Total           :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::separator("-", $charPerLine));
+    $print->setEmphasis(true);
+    $print->text(self::kirikakan("Net Sales Total     :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Gross Sales         :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
+    $print->setEmphasis(false);
+    $print->text(self::separator("-", $charPerLine));
+
+    // $print->text(self::kirikakan("Delivery Cost Total :", number_format($sales_recap[3]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("OrderFee Total      :", number_format($sales_recap[4]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Platform Fee        :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Voucher Sales       :", 0, $charPerLine));
+    // $print->text(self::separator("-", $charPerLine));
+    // $print->setEmphasis(true);
+    // $print->setEmphasis(false);
+
+    // $print->text(self::separator("-", $charPerLine));
+    // $print->text(self::kirikakan("Number Of Pax       :", $sales_recap[10]["amount"], $charPerLine));
+    // $print->text(self::kirikakan("Avg NetSales /Pax   :", number_format($sales_recap[11]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Avg GrossSales /Pax :", number_format($sales_recap[12]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Number Of Bills     :", $sales_recap[13]["amount"], $charPerLine));
+    // $print->text(self::kirikakan("Avg NetSales /Bill  :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Avg GrossSales /Bill:", number_format($sales_recap[15]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::separator("-", $charPerLine));
+    // $print->feed(1);
+    $print->setJustification(Printer::JUSTIFY_CENTER);
+    // $print->setEmphasis();
+    $print->feed(1);
+    $print->text("PAYMENT METHOD SUMMARY\n");
+    // $print->setEmphasis(false);
+    $print->setJustification(Printer::JUSTIFY_LEFT);
+    $totalpayment = 0;
+    foreach ($datareport['payment_recapitulation'] as $item) {
+      $totalpayment += $item->payment_amount;
+      $print->text(self::kirikakan($item->payment_method_name, number_format($item->payment_amount, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan(" - Qty", $item->qty, $charPerLine));
+      $print->text(self::kirikakan(" - Total", number_format($item->payment_amount, 0, ',', '.'), $charPerLine));
+    }
+    $print->text(self::separator("-", $charPerLine));
+    $print->setEmphasis(true);
+    $print->text(self::kirikakan("Total Payment", number_format($totalpayment, 0, ',', '.'), $charPerLine));
+    $print->setEmphasis(false);
+    $print->text(self::separator("-", $charPerLine));
+
+    // ///////////////////////////////////////////////
+    $print->feed(1);
+    // $print->setJustification(Printer::JUSTIFY_CENTER);
+    // // $print->setEmphasis();
+
+    // $print->text("NET SALES BY MENU\n");
+    // $print->setJustification(Printer::JUSTIFY_LEFT);
+    // foreach ($datareport['sales_by_menu'] as $item) {
+    //   $print->text(self::threeline($item->qty, $item->menu_name, number_format($item->sub_total, 0, ',', '.'), $charPerLine));
+    // }
+    // $print->text(self::separator("-", $charPerLine));
+
+    // // ////////////////////////////////////////////////////
+    // $print->feed(1);
+    // $print->setJustification(Printer::JUSTIFY_CENTER);
+    // $print->text("NET SALES BY CATEGORY\n");
+    // $print->setJustification(Printer::JUSTIFY_LEFT);
+    // foreach ($datareport['sales_by_category'] as $item) {
+    //   $print->text(self::threeline($item->qty, $item->category_name, number_format($item->sub_total, 0, ',', '.'), $charPerLine));
+    // }
+    // $print->text(self::separator("-", $charPerLine));
+
+    // // ////////////////////////////////////////////////////
+    // $print->feed(1);
+    // $print->setJustification(Printer::JUSTIFY_CENTER);
+    // // $print->setEmphasis();
+    // $print->text("NET SALES BY TABLE\n");
+    // $print->setJustification(Printer::JUSTIFY_LEFT);
+    // foreach ($datareport['sales_by_table'] as $item) {
+    //   $print->text(self::threeline($item->total_order, $item->table_name, number_format($item->total_amount, 0, ',', '.'), $charPerLine));
+    // }
+
+    // $print->text(self::separator("-", $charPerLine));
+
+
+    $print->feed(1);
+    // $print->text(self::separator("*", $charPerLine));
+    $print->setJustification(Printer::JUSTIFY_CENTER);
+    $print->setEmphasis();
+    // $print->text("END\n");
+
+
+    $print->feed(2);
+    $print->cut();
+    $print->close();
+  }
+
+  static function PrintPerShiftv2($dayshift_detail_ulid)
+  {
+    $datareport = null;
+    $shiftcurent = DayShiftDetailModel::where("ulid", $dayshift_detail_ulid)->first();
+
+    try {
+      $datareport = DayShiftServices::GetReportPerShift($dayshift_detail_ulid);
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+
+    // Log::info($datareport["sales_recapitulation"]);
+    // return;
+
+
+    $branch = BranchModel::first();
+    $setting = SettingModel::first();
+    $data_station = StationModel::where('id', $setting->default_station)->first();
+    if (!$data_station) {
+      return;
+    }
+    // Log::info($datareport);
+
+    $konektor = new WindowsPrintConnector($data_station->printer_name);
+    $print = new Printer($konektor);
+    $charPerLine = $data_station->line_character;
+
+    $print->setJustification(Printer::JUSTIFY_CENTER);
+    // $print->setEmphasis();
+    // $print->text("START\n");
+    // $print->setEmphasis(false);
+    $print->text(self::separator("-", $charPerLine));
+    $print->setEmphasis();
+    $print->text("SHIFT REPORT\n");
+    $print->setEmphasis(false);
+    $print->setJustification(Printer::JUSTIFY_LEFT);
+    // $print->text(self::separator("=", $charPerLine));
+
+
+    $print->feed(1);
+    $print->text("Branch Name      : " . $branch->branch_name . "\n");
+    $print->text("Chasier          : " . "JUSE" . "\n");
+    $print->text("Print Time       : " . now() . "\n");
+
+    // $jumlahsparate = count($datareport['dayshift_detail']);
+    $nomer = 1;
+    if ($shiftcurent) {
+      foreach ($datareport['dayshift_detail'] as $kecilkecil) {
+        if ($kecilkecil->ulid == $shiftcurent->ulid) {
+          break;
+        }
+        $nomer = $nomer + 1;
+      }
+    }
+
+    // if ($jumlahsparate == 0) {
+    //   $print->text("\nShift Number     : " .   . "\n");
+    // } else {
+    $print->text("\nShift Number     : " .  $nomer . "\n");
+    // }
+    // if ($shiftcurent) {
+    //   if(count( $datareport['dayshift_detail']))
+    //   Log::info($datareport['dayshift_detail']);
+    //   $print->text("Shift Start      : " . $datareport['dayshift_detail']->last()->shift_time . "\n");
+    // } else {
+    //   $print->text("Shift Start      : " . $datareport['dayshift']->dayin_time . "\n");
+    // }
+    $jumlahsparate = count($datareport['dayshift_detail']);
+
+    if ($nomer == 1) {
+      // Log::info($datareport['dayshift_detail']);
+      $print->text("Shift Start      : " . $datareport['dayshift']->dayin_time . "\n");
+    } else {
+      $print->text("Shift Start      : " . $datareport['dayshift_detail'][$nomer - 2]->shift_time . "\n");
+    }
+
+    // return;
+    // if($datareport['dayshift']->dayout_time)
+    $print->text("Shift End        : " . $shiftcurent->shift_time . "\n");
+    // } else {
+    //   $print->text("\nShift Number     : END DAY\n");
+    //   $print->text("Day Start        : " . $datareport['dayshift']->dayin_time . "\n");
+    //   $print->text("Day End          : " . (($datareport['dayshift']->dayout_time != null) ? $datareport['dayshift']->dayout_time : 'RUNNING') . "\n");
+    // }
+
+
+    $print->text(self::separator("-", $charPerLine));
+    $print->feed(1);
+    $print->setJustification(Printer::JUSTIFY_CENTER);
+    // $print->setEmphasis();
+    $print->text("SUMMARY REPORT\n");
+    // $print->feed(1);
+    // $print->setEmphasis(false);
+    $print->setJustification(Printer::JUSTIFY_LEFT);
+    $sales_recap = $datareport['sales_recapitulation'];
+
+    $print->text(self::kirikakan("Hold Total          :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Pending Total       :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Sales Total         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Sales Total         :", number_format($sales_total, 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Discount Total      :", 0, $charPerLine));
+    $print->text(self::kirikakan("SC Total            :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("PB1 Total           :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("VAT Total           :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::separator("-", $charPerLine));
+    $print->setEmphasis(true);
+    $print->text(self::kirikakan("Net Sales Total     :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan("Gross Sales         :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
+    $print->setEmphasis(false);
+    $print->text(self::separator("-", $charPerLine));
+
+    // $print->text(self::kirikakan("Delivery Cost Total :", number_format($sales_recap[3]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("OrderFee Total      :", number_format($sales_recap[4]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Platform Fee        :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Voucher Sales       :", 0, $charPerLine));
+    // $print->text(self::separator("-", $charPerLine));
+    // $print->setEmphasis(true);
+    // $print->setEmphasis(false);
+
+    // $print->text(self::separator("-", $charPerLine));
+    // $print->text(self::kirikakan("Number Of Pax       :", $sales_recap[10]["amount"], $charPerLine));
+    // $print->text(self::kirikakan("Avg NetSales /Pax   :", number_format($sales_recap[11]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Avg GrossSales /Pax :", number_format($sales_recap[12]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Number Of Bills     :", $sales_recap[13]["amount"], $charPerLine));
+    // $print->text(self::kirikakan("Avg NetSales /Bill  :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::kirikakan("Avg GrossSales /Bill:", number_format($sales_recap[15]["amount"], 0, ',', '.'), $charPerLine));
+    // $print->text(self::separator("-", $charPerLine));
+    // $print->feed(1);
+    $print->setJustification(Printer::JUSTIFY_CENTER);
+    // $print->setEmphasis();
+    $print->feed(1);
+    $print->text("PAYMENT METHOD SUMMARY\n");
+    // $print->setEmphasis(false);
+    $print->setJustification(Printer::JUSTIFY_LEFT);
+    $totalpayment = 0;
+    foreach ($datareport['payment_recapitulation'] as $item) {
+      $totalpayment += $item->payment_amount;
+      $print->text(self::kirikakan($item->payment_method_name, number_format($item->payment_amount, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan(" - Qty", $item->qty, $charPerLine));
+      $print->text(self::kirikakan(" - Total", number_format($item->payment_amount, 0, ',', '.'), $charPerLine));
+    }
+    $print->text(self::separator("-", $charPerLine));
+    $print->setEmphasis(true);
+    $print->text(self::kirikakan("Total Payment", number_format($totalpayment, 0, ',', '.'), $charPerLine));
+    $print->setEmphasis(false);
+    $print->text(self::separator("-", $charPerLine));
+
+    // ///////////////////////////////////////////////
+    $print->feed(1);
+    // $print->setJustification(Printer::JUSTIFY_CENTER);
+    // // $print->setEmphasis();
+
+    // $print->text("NET SALES BY MENU\n");
+    // $print->setJustification(Printer::JUSTIFY_LEFT);
+    // foreach ($datareport['sales_by_menu'] as $item) {
+    //   $print->text(self::threeline($item->qty, $item->menu_name, number_format($item->sub_total, 0, ',', '.'), $charPerLine));
+    // }
+    // $print->text(self::separator("-", $charPerLine));
+
+    // // ////////////////////////////////////////////////////
+    // $print->feed(1);
+    // $print->setJustification(Printer::JUSTIFY_CENTER);
+    // $print->text("NET SALES BY CATEGORY\n");
+    // $print->setJustification(Printer::JUSTIFY_LEFT);
+    // foreach ($datareport['sales_by_category'] as $item) {
+    //   $print->text(self::threeline($item->qty, $item->category_name, number_format($item->sub_total, 0, ',', '.'), $charPerLine));
+    // }
+    // $print->text(self::separator("-", $charPerLine));
+
+    // // ////////////////////////////////////////////////////
+    // $print->feed(1);
+    // $print->setJustification(Printer::JUSTIFY_CENTER);
+    // // $print->setEmphasis();
+    // $print->text("NET SALES BY TABLE\n");
+    // $print->setJustification(Printer::JUSTIFY_LEFT);
+    // foreach ($datareport['sales_by_table'] as $item) {
+    //   $print->text(self::threeline($item->total_order, $item->table_name, number_format($item->total_amount, 0, ',', '.'), $charPerLine));
+    // }
+
+    // $print->text(self::separator("-", $charPerLine));
+
+
+    $print->feed(1);
+    // $print->text(self::separator("*", $charPerLine));
+    $print->setJustification(Printer::JUSTIFY_CENTER);
+    $print->setEmphasis();
+    // $print->text("END\n");
+
+
+    $print->feed(2);
+    $print->cut();
+    $print->close();
+  }
+
+  // static function PrintPerShiftv2ase($dayshift_detail_ulid)
+  // {
+  //   $datareport = null;
+
+  //   try {
+  //     $datareport = DayShiftServices::GetReportPerShift($dayshift_detail_ulid);
+  //   } catch (\Throwable $e) {
+  //     throw $e;
+  //   }
+
+  //   // Log::info($datareport["sales_recapitulation"][2]);
+  //   // return;
+
+
+  //   $branch = BranchModel::first();
+  //   $setting = SettingModel::first();
+  //   $data_station = StationModel::where('id', $setting->default_station)->first();
+  //   if (!$data_station) {
+  //     return;
+  //   }
+  //   // Log::info($datareport);
+
+  //   $konektor = new WindowsPrintConnector($data_station->printer_name);
+  //   $print = new Printer($konektor);
+  //   $charPerLine = $data_station->line_character;
+
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   $print->setEmphasis();
+  //   $print->text("START\n");
+  //   $print->setEmphasis(false);
+  //   $print->text(self::separator("*", $charPerLine));
+  //   $print->setEmphasis();
+  //   $print->text("DAYSHIFT REPORT\n");
+  //   $print->setEmphasis(false);
+  //   $print->setJustification(Printer::JUSTIFY_LEFT);
+  //   $print->text(self::separator("=", $charPerLine));
+
+
+  //   $print->feed(1);
+  //   $print->text("Branch Name      : " . $branch->branch_name . "\n");
+  //   $print->text("Chasier          : " . "JUSE" . "\n");
+  //   $print->text("Print Time       : " . now() . "\n");
+
+  //   if ($datareport['dayshift']->start_time && $datareport['dayshift']->end_time) {
+  //     $print->text("\nShift Number     : " .  $datareport['dayshift']->shift_queue . "\n");
+  //     $print->text("Shift Start      : " . $datareport['dayshift']->start_time . "\n");
+  //     $print->text("Shift End        : " . $datareport['dayshift']->end_time . "\n");
+  //   } else {
+  //     $print->text("\nShift Number     : END DAY\n");
+  //     $print->text("Day Start        : " . $datareport['dayshift']->dayin_time . "\n");
+  //     $print->text("Day End          : " . (($datareport['dayshift']->dayout_time != null) ? $datareport['dayshift']->dayout_time : 'RUNNING') . "\n");
+  //   }
+
+
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->feed(1);
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   // $print->setEmphasis();
+  //   $print->text("SUMMARY REPORT\n");
+  //   // $print->feed(1);
+  //   // $print->setEmphasis(false);
+  //   $print->setJustification(Printer::JUSTIFY_LEFT);
+  //   $sales_recap = $datareport['sales_recapitulation'];
+
+  //   $print->text(self::kirikakan("Pending Total       :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+  //   // $print->text(self::kirikakan("Sales Total         :", number_format($sales_total, 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("Discount Total      :", 0, $charPerLine));
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->setEmphasis(true);
+  //   $print->text(self::kirikakan("Net Sales Total     :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->setEmphasis(false);
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->text(self::kirikakan("Delivery Cost Total :", number_format($sales_recap[3]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("OrderFee Total      :", number_format($sales_recap[4]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("SC Total            :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("PB1 Total           :", number_format($sales_recap[6]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("VAT Total           :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("Platform Fee        :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("Voucher Sales       :", 0, $charPerLine));
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->setEmphasis(true);
+  //   $print->text(self::kirikakan("Gross Sales         :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->setEmphasis(false);
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->text(self::kirikakan("Number Of Pax       :", $sales_recap[10]["amount"], $charPerLine));
+  //   $print->text(self::kirikakan("Avg NetSales /Pax   :", number_format($sales_recap[11]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("Avg GrossSales /Pax :", number_format($sales_recap[12]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("Number Of Bills     :", $sales_recap[13]["amount"], $charPerLine));
+  //   $print->text(self::kirikakan("Avg NetSales /Bill  :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::kirikakan("Avg GrossSales /Bill:", number_format($sales_recap[15]["amount"], 0, ',', '.'), $charPerLine));
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->feed(1);
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   // $print->setEmphasis();
+  //   $print->text("PAYMENT METHOD REPORT\n");
+  //   // $print->feed(1);
+  //   // $print->setEmphasis(false);
+  //   $print->setJustification(Printer::JUSTIFY_LEFT);
+  //   $totalpayment = 0;
+  //   foreach ($datareport['payment_recapitulation'] as $item) {
+  //     $totalpayment += $item->payment_amount;
+  //     $print->text(self::kirikakan($item->payment_method_name, number_format($item->payment_amount, 0, ',', '.'), $charPerLine));
+  //   }
+  //   $print->text(self::separator("-", $charPerLine));
+  //   $print->setEmphasis(true);
+  //   $print->text(self::kirikakan("Total Payment", number_format($totalpayment, 0, ',', '.'), $charPerLine));
+  //   $print->setEmphasis(false);
+  //   $print->text(self::separator("-", $charPerLine));
+
+  //   // ///////////////////////////////////////////////
+  //   $print->feed(1);
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   // $print->setEmphasis();
+  //   $print->text("NET SALES BY MENU\n");
+  //   // $print->feed(1);
+  //   // $print->setEmphasis(false);
+  //   $print->setJustification(Printer::JUSTIFY_LEFT);
+  //   foreach ($datareport['sales_by_menu'] as $item) {
+  //     $print->text(self::threeline($item->qty, $item->menu_name, number_format($item->sub_total, 0, ',', '.'), $charPerLine));
+  //   }
+  //   $print->text(self::separator("-", $charPerLine));
+
+  //   // ////////////////////////////////////////////////////
+  //   $print->feed(1);
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   // $print->setEmphasis();
+  //   $print->text("NET SALES BY CATEGORY\n");
+  //   // $print->feed(1);
+  //   // $print->setEmphasis(false);
+  //   $print->setJustification(Printer::JUSTIFY_LEFT);
+  //   foreach ($datareport['sales_by_category'] as $item) {
+  //     $print->text(self::threeline($item->qty, $item->category_name, number_format($item->sub_total, 0, ',', '.'), $charPerLine));
+  //   }
+  //   $print->text(self::separator("-", $charPerLine));
+
+  //   // ////////////////////////////////////////////////////
+  //   $print->feed(1);
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   // $print->setEmphasis();
+  //   $print->text("NET SALES BY TABLE\n");
+  //   // $print->feed(1);
+  //   // $print->setEmphasis(false);
+  //   $print->setJustification(Printer::JUSTIFY_LEFT);
+  //   foreach ($datareport['sales_by_table'] as $item) {
+  //     $print->text(self::threeline($item->total_order, $item->table_name, number_format($item->total_amount, 0, ',', '.'), $charPerLine));
+  //   }
+  //   $print->text(self::separator("-", $charPerLine));
+
+
+  //   $print->feed(1);
+  //   $print->text(self::separator("*", $charPerLine));
+  //   $print->setJustification(Printer::JUSTIFY_CENTER);
+  //   $print->setEmphasis();
+  //   $print->text("END\n");
+
+
+  //   $print->feed(2);
+  //   $print->cut();
+  //   $print->close();
+  // }
 }

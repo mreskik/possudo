@@ -123,7 +123,7 @@ class DayShiftController extends Controller
     {
         try {
 
-            $data = DayShiftServices::GetReport($request->dayshift_ulid);
+            $data = DayShiftServices::GetReportCurrentShiftforTampilan($request->dayshift_ulid);
 
             return response()->json([
                 "code" => 0,
@@ -158,7 +158,7 @@ class DayShiftController extends Controller
     {
         try {
             $dayshift_ulid = $request->dayshift_ulid;
-            PrintServices::PrintReport($dayshift_ulid);
+            // PrintServices::PrintReport($dayshift_ulid);
             return response()->json([
                 "code" => 0,
                 "message" => "ashiappp"
@@ -174,11 +174,45 @@ class DayShiftController extends Controller
     function printReportByShift(Request $request)
     {
         try {
-            $dayshift_detail_id = $request->dayshift_detail_id;
-            PrintServices::PrintReport($dayshift_detail_id, true);
+            $dayshift_detail_ulid = $request->dayshift_detail_ulid;
+            PrintServices::PrintPerShiftv2($dayshift_detail_ulid);
             return response()->json([
                 "code" => 0,
                 "message" => "ashiappp"
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 100,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
+
+    function printCurrentShiftReport(Request $request)
+    {
+        try {
+            $dayshift_ulid = $request->dayshift_ulid;
+            PrintServices::PrintCurrentShift($dayshift_ulid);
+            return response()->json([
+                "code" => 0,
+                "message" => "success print current shift report"
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 100,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
+
+    function printEndayReport(Request $request)
+    {
+        try {
+            $dayshift_ulid = $request->dayshift_ulid;
+            PrintServices::PrintEndDay($dayshift_ulid);
+            return response()->json([
+                "code" => 0,
+                "message" => "success print endday report"
             ]);
         } catch (\Throwable $e) {
             return response()->json([
