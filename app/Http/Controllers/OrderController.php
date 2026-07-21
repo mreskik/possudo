@@ -170,6 +170,28 @@ class OrderController extends Controller
         }
     }
 
+    public function CancelOrderDetail(Request $request)
+    {
+        try {
+
+            $ulid = $request->input("ulid");
+            $notes = $request->input("notes");
+
+            $message = OrderServices::CancelOrderDetail($ulid, $notes);
+
+            return response()->json([
+                'code' => 0,
+                'message' => $message
+            ]);
+        } catch (\Throwable $e) {
+            Log::info($e->getMessage());
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
     public function SaveMoveItem(Request $request)
     {
         try {

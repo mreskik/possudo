@@ -46,6 +46,11 @@ class OrderServices
     }
   }
 
+  /**
+   * Naming note: `$item['menuId']` (frontend cart field) and the `tr_order_detail.menu_id` /
+   * `tr_order_detail_package.menu_id` columns it gets saved into are actually `mr_item_conv.id`,
+   * not `mr_item.id` — see MenuServices::GetMasterMenuList() for where that id originates.
+   */
   public static function SaveOrder($datajson)
   {
     $batch = 0;
@@ -74,7 +79,7 @@ class OrderServices
         $dayshift = DaySiftModel::where("dayout_time", null)->first();
         $order = [
           "dayshift_ulid" => $dayshift->ulid,
-          "terminal_id" => 1,
+          "terminal_id" => $datajson->terminalId,
           "order_name" => ($datajson->orderName == '') ? '' : $datajson->orderName,
           "branch_id" => $branch->id,
           "customer_phone_number" =>  $datajson->customerPhoneNumber,
@@ -156,6 +161,7 @@ class OrderServices
               'tax_value' => $item['taxValue'],
 
               'promo_id' => $item['promoId'],
+              'is_free_item_promo' => $item['isFreeItemPromo'] ?? false,
               'discount_rate' => $item['discountRate'],
               'discount_value' => $item['discountValue'],
 
@@ -198,7 +204,7 @@ class OrderServices
 
 
         foreach ($datagrouping_ as $inded => $qtye) {
-          $menueee = DB::select("SELECT
+          $itemStockRow = DB::select("SELECT
                       mi.*
                       FROM mr_pricelist_detail mpd 
                       join mr_item_conv mic on mic.id = mpd.item_conv_detail_id
@@ -206,15 +212,15 @@ class OrderServices
 
                       WHERE mpd.id = ?", [$inded]);
 
-          if ($menueee[0]->stok_qty > 0 && $menueee[0]->flag_soldout != true) {
+          if ($itemStockRow[0]->stok_qty > 0 && $itemStockRow[0]->flag_soldout != true) {
 
-            if ($qtye > $menueee[0]->stok_qty) {
-              throw new \Exception("Stok yang tersedia untuk " . $menueee[0]->name . " hanya " . $menueee[0]->stok_qty);
+            if ($qtye > $itemStockRow[0]->stok_qty) {
+              throw new \Exception("Stok yang tersedia untuk " . $itemStockRow[0]->name . " hanya " . $itemStockRow[0]->stok_qty);
             }
 
-            MasterItemModel::where('id', $menueee[0]->id)->update([
-              'stok_qty' => ($menueee[0]->stok_qty - $qtye),
-              'flag_soldout' => (($menueee[0]->stok_qty - $qtye) === 0)
+            MasterItemModel::where('id', $itemStockRow[0]->id)->update([
+              'stok_qty' => ($itemStockRow[0]->stok_qty - $qtye),
+              'flag_soldout' => (($itemStockRow[0]->stok_qty - $qtye) === 0)
 
             ]);
           }
@@ -256,6 +262,7 @@ class OrderServices
           "sub_total" => $datajson->subTotal,
           "total_tax" => $datajson->totalTax,
           "total_billing" => $datajson->totalBilling,
+          "member_id" => $datajson->memberId,
         ];
 
         $order_detail = [];
@@ -267,9 +274,20 @@ class OrderServices
 
 
           // Log::info($item);
-          //oder detail yang tidak punya ulid
-          if (!isset($item['ulid'])) {
-
+          if (isset($item['ulid'])) {
+            // item sudah tersimpan sebelumnya — update qty juga karena split promo bisa mengubahnya
+            DB::table('tr_order_detail')
+              ->where('ulid', $item['ulid'])
+              ->whereNull('cancel_at')
+              ->update([
+                'qty'                 => $item['qty'],
+                'promo_id'            => $item['promoId'],
+                'is_free_item_promo'  => $item['isFreeItemPromo'] ?? false,
+                'discount_rate'       => $item['discountRate'],
+                'discount_value'      => $item['discountValue'],
+              ]);
+          } else {
+            // item baru (belum punya ulid)
             $ida = $item['menuPricelistId'];
             $datagrouping_[$ida] = ($datagrouping_[$ida] ?? 0) + $item['qty'];
 
@@ -290,6 +308,7 @@ class OrderServices
               'tax_value' => $item['taxValue'],
 
               'promo_id' => $item['promoId'],
+              'is_free_item_promo' => $item['isFreeItemPromo'] ?? false,
               'discount_rate' => $item['discountRate'],
               'discount_value' => $item['discountValue'],
 
@@ -332,7 +351,7 @@ class OrderServices
         DB::beginTransaction();
 
         foreach ($datagrouping_ as $inded => $qtye) {
-          $menueee = DB::select("SELECT
+          $itemStockRow = DB::select("SELECT
                       mi.*
                       FROM mr_pricelist_detail mpd 
                       join mr_item_conv mic on mic.id = mpd.item_conv_detail_id
@@ -340,15 +359,15 @@ class OrderServices
 
                       WHERE mpd.id = ?", [$inded]);
 
-          if ($menueee[0]->stok_qty > 0 && $menueee[0]->flag_soldout != true) {
+          if ($itemStockRow[0]->stok_qty > 0 && $itemStockRow[0]->flag_soldout != true) {
 
-            if ($qtye > $menueee[0]->stok_qty) {
-              throw new \Exception("Stok yang tersedia untuk " . $menueee[0]->name . " hanya " . $menueee[0]->stok_qty);
+            if ($qtye > $itemStockRow[0]->stok_qty) {
+              throw new \Exception("Stok yang tersedia untuk " . $itemStockRow[0]->name . " hanya " . $itemStockRow[0]->stok_qty);
             }
 
-            MasterItemModel::where('id', $menueee[0]->id)->update([
-              'stok_qty' => ($menueee[0]->stok_qty - $qtye),
-              'flag_soldout' => (($menueee[0]->stok_qty - $qtye) === 0)
+            MasterItemModel::where('id', $itemStockRow[0]->id)->update([
+              'stok_qty' => ($itemStockRow[0]->stok_qty - $qtye),
+              'flag_soldout' => (($itemStockRow[0]->stok_qty - $qtye) === 0)
             ]);
           }
         }
@@ -386,6 +405,11 @@ class OrderServices
 
 
 
+  /**
+   * Naming note: `menuId` in the returned listOrder rows is `tr_order_detail.menu_id`, which is
+   * actually `mr_item_conv.id` (see join below) — `menuName`/`menuShortName` are resolved through
+   * `mr_item` since `mr_item_conv` itself carries no name.
+   */
   public static function ViewOrder(string $order_number)
   {
     try {
@@ -404,13 +428,20 @@ class OrderServices
       tro.total_tax as totalTax,
       tro.total_billing as totalBilling,
       tro.table_section_id as tableSectionId,
+      mts.name as tableSectionName,
       tro.table_id as tableId,
       mt.name as tableName,
-      tro.status as status
+      tro.order_date as orderDate,
+      tro.order_in as orderIn,
+      tro.status as status,
+      tro.member_id as memberId,
+      mm.name as memberName
 
       FROM tr_order tro
       JOIN mr_visit_purpose mvp on mvp.id = tro.visit_purpose_id
+      LEFT JOIN mr_table_section mts on mts.id = tro.table_section_id
       LEFT JOIN mr_table mt on mt.id = tro.table_id
+      LEFT JOIN mr_member mm on mm.id = tro.member_id
       WHERE tro.order_number = ? ", [$order_number]);
       // WHERE tro.order_number = ? and tro.status  IN ('pending', 'hold')", [$order_number]);
 
@@ -432,13 +463,21 @@ class OrderServices
       trod.tax_rate as taxRate,
       trod.tax_value as taxValue,
       trod.promo_id as promoId,
+      mp.name as promoName,
+      trod.is_free_item_promo as isFreeItemPromo,
       trod.discount_rate as discountRate,
       trod.discount_value as discountValue,
-      trod.total
+      trod.total,
+      trod.cancel_at as cancelAt,
+      trod.cancel_notes as cancelNotes,
+      mri.id as itemIdReal,
+      mri.category_id as categoryId,
+      mri.subcategory_id as subCategoryId
 
       FROM tr_order_detail trod
       JOIN mr_item_conv mric on mric.id = trod.menu_id
       JOIN mr_item mri on mri.id = mric.item_id
+      LEFT JOIN mr_promo mp on mp.id = trod.promo_id
 
       WHERE trod.order_number = ?
       ", [$order_number]);
@@ -648,6 +687,80 @@ class OrderServices
     }
   }
 
+  /**
+   * Recompute tr_order.sub_total/total_tax/total_billing/total_item from its current
+   * tr_order_detail + tr_order_detail_package rows (mirrors orderPage.vue's hitungTotalFromItemQty()).
+   * Needed after SaveMoveItem moves rows between orders, since moving rows doesn't itself
+   * keep either order's stored totals in sync.
+   */
+  private static function RecalculateOrderTotals(string $order_number)
+  {
+    $order_detail = DB::select("
+      SELECT qty, base_price, menu_price, tax_value, flag_inclusive_tax
+      FROM tr_order_detail
+      WHERE order_number = ? AND cancel_at IS NULL
+    ", [$order_number]);
+
+    $order_detail_package = DB::select("
+      SELECT trodp.qty, trodp.base_price, trodp.menu_price, trodp.tax_value, trodp.flag_inclusive_tax, trod.qty as parent_qty
+      FROM tr_order_detail_package trodp
+      JOIN tr_order_detail trod ON trod.ulid = trodp.tr_order_detail_ulid
+      WHERE trod.order_number = ? AND trod.cancel_at IS NULL
+    ", [$order_number]);
+
+    $total_item = 0;
+    $sub_total = 0;
+    $total_tax = 0;
+    $total_billing = 0;
+
+    foreach ($order_detail as $row) {
+      $total_item += $row->qty;
+      $sub_total += $row->qty * $row->menu_price;
+      $row_tax = $row->qty * $row->tax_value;
+      $total_tax += $row_tax;
+      $row_total = $row->qty * $row->base_price;
+      $total_billing += $row->flag_inclusive_tax ? $row_total : ($row_total + $row_tax);
+    }
+
+    foreach ($order_detail_package as $row) {
+      $qty = $row->parent_qty * $row->qty;
+      $sub_total += $qty * $row->menu_price;
+      $row_tax = $qty * $row->tax_value;
+      $total_tax += $row_tax;
+      $row_total = $qty * $row->base_price;
+      $total_billing += $row->flag_inclusive_tax ? $row_total : ($row_total + $row_tax);
+    }
+
+    TrOrderModel::where('order_number', $order_number)->update([
+      'sub_total' => $sub_total,
+      'total_tax' => $total_tax,
+      'total_billing' => $total_billing,
+      'total_item' => $total_item,
+    ]);
+  }
+
+  public static function CancelOrderDetail(string $ulid, string $notes = '')
+  {
+    try {
+      $orderdetail = TrOrderDetailModel::where('ulid', $ulid)->whereNull('cancel_at')->first();
+
+      if (!$orderdetail) {
+        throw new \Exception('item tidak ditemukan / sudah dicancel!');
+      }
+
+      TrOrderDetailModel::where('ulid', $ulid)->update([
+        "cancel_at" => now(),
+        "cancel_notes" => $notes,
+      ]);
+
+      self::RecalculateOrderTotals($orderdetail->order_number);
+
+      return "cancel item success!";
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
   public static function SaveMoveItem(string $order_number_before, int $visit_purpose_id, int $to_tablesection_id, int $to_table_id, array $list_item)
   {
     try {
@@ -749,6 +862,8 @@ class OrderServices
           // }
 
           // jika order list telah di pindah ke yang baru yang lama orderanya di tutup
+          self::RecalculateOrderTotals($order_number_new);
+
           $datalistitemorder_lama = TrOrderDetailModel::where('order_number', $order_number_before)->get();
           Log::info($datalistitemorder_lama);
 
@@ -760,6 +875,8 @@ class OrderServices
               'moved_by' => null
             ]);
             Log::info('success');
+          } else {
+            self::RecalculateOrderTotals($order_number_before);
           }
 
           DB::commit();
@@ -814,6 +931,8 @@ class OrderServices
           }
 
           // jika order list telah di pindah ke yang baru yang lama orderanya di tutup
+          self::RecalculateOrderTotals($table_detail->order_number);
+
           $datalistitemorder_lama = TrOrderDetailModel::where('order_number', $order_number_before)->get();
           if (count($datalistitemorder_lama) == 0) {
             TrOrderModel::where('order_number', $order_number_before)->update([
@@ -821,6 +940,8 @@ class OrderServices
               'moved_at' => now(),
               'moved_by' => null
             ]);
+          } else {
+            self::RecalculateOrderTotals($order_number_before);
           }
 
           // if (count($list_item_after_filter) == 0) {
@@ -904,6 +1025,8 @@ class OrderServices
         }
 
         // jika order list telah di pindah ke yang baru yang lama orderanya di tutup
+        self::RecalculateOrderTotals($order_number_new);
+
         $datalistitemorder_lama = TrOrderDetailModel::where('order_number', $order_number_before)->get();
         if (count($datalistitemorder_lama) == 0) {
           TrOrderModel::where('order_number', $order_number_before)->update([
@@ -911,6 +1034,8 @@ class OrderServices
             'moved_at' => now(),
             'moved_by' => null
           ]);
+        } else {
+          self::RecalculateOrderTotals($order_number_before);
         }
 
         // if (count($list_item_after_filter) == 0) {

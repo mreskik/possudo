@@ -17,6 +17,7 @@ class SettingServices
       $customer_display_name = $request->input('customerDisplay.name');
       $customer_display_left = $request->input('customerDisplay.left');
       $customer_display_top = $request->input('customerDisplay.top');
+      $use_virtual_keyboard = $request->input('useVirtualKeyboard');
 
       SettingModel::where('id', 1)->update([
         'default_station' => $default_station,
@@ -24,6 +25,7 @@ class SettingServices
         'customer_display_name' => $customer_display_name,
         'customer_display_left' => $customer_display_left,
         'customer_display_top' => $customer_display_top,
+        'use_virtual_keyboard' => $use_virtual_keyboard,
       ]);
 
       return "Success";

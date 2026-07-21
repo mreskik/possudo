@@ -2,13 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\BranchModel;
 use App\Services\ConfigService;
 use App\Services\SetupServices;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Override;
 
 class SetupController extends Controller
 {
@@ -41,7 +39,7 @@ class SetupController extends Controller
     $password = $request->input('password', '');
 
     try {
-      $response = $this->setupservices->getDataBranch($username, $password, $branch_id);
+      $response = $this->setupservices->getDatabranch($username, $password, $branch_id);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -49,11 +47,7 @@ class SetupController extends Controller
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -63,7 +57,6 @@ class SetupController extends Controller
     $password = $request->input('password', '');
 
     try {
-
       $response = $this->setupservices->getStationList($username, $password, $branch_id);
 
       return response()->json([
@@ -72,11 +65,7 @@ class SetupController extends Controller
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -86,7 +75,6 @@ class SetupController extends Controller
     $password = $request->input('password', '');
 
     try {
-
       $response = $this->setupservices->getCategoryList($username, $password, $branch_id);
 
       return response()->json([
@@ -95,11 +83,7 @@ class SetupController extends Controller
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -110,17 +94,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getSubCategoryList($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -130,21 +111,17 @@ class SetupController extends Controller
     $password = $request->input('password', '');
 
     try {
-
-      $response2 = $this->setupservices->getTableSectionPrintCategorySetting($username, $password, $branch_id);
+      $this->setupservices->getTableSectionPrintCategorySetting($username, $password, $branch_id);
 
       $response = $this->setupservices->getTableSectionList($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -155,17 +132,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getTable($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -176,16 +150,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getTax($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -196,42 +168,36 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getTerminal($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
   ////
 
-  public function GetMasterItem(int $branch_id, Request $request)
+  public function getMasterItem(int $branch_id, Request $request)
   {
     $username = $request->input('username', '');
     $password = $request->input('password', '');
 
     try {
+      $response = $this->setupservices->getMasterItem($username, $password, $branch_id);
 
-      $response = $this->setupservices->GetMasterItem($username, $password, $branch_id);
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
-
 
   public function getMasterItemConv(int $branch_id, Request $request)
   {
@@ -240,16 +206,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterItemConv($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -260,19 +224,16 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterItemPackage($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
-
 
   public function getMasterItemPackageGroup(int $branch_id, Request $request)
   {
@@ -281,16 +242,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterItemPackageGroup($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -301,16 +260,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterItemPackageDetail($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -321,16 +278,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterPricelist($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -341,16 +296,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterPricelistDetail($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -361,16 +314,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterPaymentMethod($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -381,16 +332,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterPaymentMethodGroup($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -401,16 +350,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterPaymentMethodType($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -421,16 +368,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterPaymentMethodVisitPurpose($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -441,16 +386,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterBranchVisitPurpose($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -461,16 +404,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterVisitPurpose($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -481,16 +422,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterUser($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -501,16 +440,14 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMasterRoleAccess($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
-      return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
-      ]);
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -521,16 +458,216 @@ class SetupController extends Controller
 
     try {
       $response = $this->setupservices->getMenuApp($username, $password, $branch_id);
+
       return response()->json([
         'code' => $response->json('code'),
         'message' => $response->json('message')
       ]);
     } catch (\Throwable $e) {
       Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  /////
+
+  public function getPromoList(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getPromoList($username, $password, $branch_id);
+
       return response()->json([
-        'code' => 100,
-        'message' => $e->getMessage()
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
       ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getPromoBranch(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getPromoBranch($username, $password, $branch_id);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getPromoVisitPurpose(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getPromoVisitPurpose($username, $password, $branch_id);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getPromoTypeMember(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getPromoTypeMember($username, $password, $branch_id);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getPromoCategory(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getPromoCategory($username, $password, $branch_id);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getPromoSubCategory(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getPromoSubCategory($username, $password, $branch_id);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getPromoItem(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getPromoItem($username, $password, $branch_id);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getPromoDay(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getPromoDay($username, $password, $branch_id);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getPromoTime(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getPromoTime($username, $password, $branch_id);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  /////
+
+  public function getMemberTypeList(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getMemberTypeList($username, $password, $branch_id);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getMemberList(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getMemberList($username, $password, $branch_id);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
 
@@ -538,6 +675,7 @@ class SetupController extends Controller
   {
     try {
       ConfigService::ChangeStatusInstall($status);
+
       return response()->json([
         'code' => 0,
         'message' => 'success'
@@ -549,8 +687,4 @@ class SetupController extends Controller
       ]);
     }
   }
-
-
-
-  // public function get
 }

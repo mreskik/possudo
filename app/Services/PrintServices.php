@@ -20,16 +20,14 @@ use \Mike42\Escpos\EscposImage;
 
 class PrintServices
 {
-  public static function resizeGambar($source = "", $newWidth = 150)
+  public static function resizeGambar($source = "", $newWidth = 150, $outputPath = "logo_resize.png")
   {
-    //tes
     if ($source == "" || !file_exists($source)) {
       return "Gambar tidak ditemukan";
     }
 
     list($width, $height, $type) = getimagesize($source);
 
-    // load sesuai format
     switch ($type) {
       case IMAGETYPE_PNG:
         $img = imagecreatefrompng($source);
@@ -41,15 +39,12 @@ class PrintServices
         return "Format tidak didukung";
     }
 
-    // hitung height proporsional
     $newHeight = ($height / $width) * $newWidth;
 
-    // buat canvas baru (background putih)
     $resized = imagecreatetruecolor($newWidth, $newHeight);
     $white = imagecolorallocate($resized, 255, 255, 255);
     imagefill($resized, 0, 0, $white);
 
-    // resize + copy
     imagecopyresampled(
       $resized,
       $img,
@@ -63,10 +58,8 @@ class PrintServices
       $height
     );
 
-    // generate nama file baru (biar fleksibel)
-    imagepng($resized, "logo_resize.png");
+    imagepng($resized, $outputPath);
 
-    // bersihin memory
     imagedestroy($img);
     imagedestroy($resized);
   }
@@ -171,10 +164,6 @@ class PrintServices
 
       $konektor = new WindowsPrintConnector($data_station->printer_name);
       $print = new Printer($konektor);
-      /////////////////////
-      // self::resizeGambar(public_path("img/logo1.png"), 165);
-
-      $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
       $order_number = $data_order->order_number;
       $charPerLine = $data_station->line_character;
       $table_section_name = $table_section->name;
@@ -313,10 +302,6 @@ class PrintServices
 
       $konektor = new WindowsPrintConnector($data_station->printer_name);
       $print = new Printer($konektor);
-      /////////////////////
-      // self::resizeGambar(public_path("img/logo1.png"), 165);
-
-      $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
 
       $order_number = $data_order->order_number;
       // $charPerLine = 48;
@@ -706,7 +691,6 @@ class PrintServices
       $data_visitpurpose = MasterVisitPurposeModel::where('id', $data_order->visit_purpose_id)->first();
       $konektor = new WindowsPrintConnector($data_station->printer_name);
       $print = new Printer($konektor);
-      $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
       $branch = BranchModel::first();
 
       $textHeader =  $branch->printing_header;
@@ -724,8 +708,16 @@ class PrintServices
 
       $print->setJustification(Printer::JUSTIFY_CENTER);
 
-      $print->bitImage($imageLogo);
-      $print->text("\n");
+      // logo header: pakai logo_header_src jika ada, fallback ke logo_resize.png
+      $logoSrc = !empty($branch->logo_header_src)
+        ? public_path(ltrim($branch->logo_header_src, '/'))
+        : public_path('logo_resize.png');
+      if (file_exists($logoSrc)) {
+        self::resizeGambar($logoSrc, 150, public_path('logo_resize.png'));
+        $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
+        $print->bitImage($imageLogo);
+        $print->text("\n");
+      }
 
       $print->setEmphasis(true);
       $print->text("$textHeader\n");
@@ -835,6 +827,17 @@ class PrintServices
       $print->text(self::separator("-", $charPerLine));
       $print->setJustification(Printer::JUSTIFY_CENTER);
       $print->text($textFooter);
+
+      // footer image jika ada
+      if (!empty($branch->image_footer_src)) {
+        $footerSrc = public_path(ltrim($branch->image_footer_src, '/'));
+        if (file_exists($footerSrc)) {
+          self::resizeGambar($footerSrc, 150, public_path('footer_resize.png'));
+          $imageFooter = EscposImage::load(public_path('footer_resize.png'), false);
+          $print->text("\n");
+          $print->bitImage($imageFooter);
+        }
+      }
 
       $print->feed(2);
       $print->cut();

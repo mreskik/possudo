@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BranchModel;
+use App\Models\MasterMemberModel;
 use App\Models\TrOrderDetailModel;
 use App\Models\TrOrderModel;
 use App\Models\TrOrderPaymentModel;
@@ -57,7 +58,8 @@ class PaymentServices
         'status' => 'paid',
         'order_out' => now(),
         'payment_at' => now(),
-        'sync_at' => null
+        'sync_at' => null,
+        'member_id' => $datajson->member_id
       ]);
 
 
@@ -156,6 +158,7 @@ class PaymentServices
       }
 
       $datapaymentdetail = TrOrderPaymentModel::where("payment_number", $dataorder->payment_number)->get();
+      $member = $dataorder->member_id ? MasterMemberModel::find($dataorder->member_id) : null;
       $data_payment = [
         "order_number" => $dataorder->order_number,
         "payment_number" => $dataorder->payment_number,
@@ -164,6 +167,8 @@ class PaymentServices
         "total_amount_voucher" => 0,
         "total_change" => 0,
         "payment_detail" => $datapaymentdetail,
+        "member_id" => $dataorder->member_id,
+        "member_name" => $member->name ?? null,
       ];
 
       return $data_payment;

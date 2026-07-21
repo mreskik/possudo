@@ -9,6 +9,13 @@ use Illuminate\Support\Facades\Log;
 
 class MenuServices
 {
+  /**
+   * Naming note: there is no `mr_menu` table. Everything called "menu"/"item" here is actually
+   * keyed by `mr_item_conv.id` (aliased `itemId`/`menuId` throughout this codebase, including the
+   * `tr_order_detail.menu_id` column) — `mr_item_conv` itself has no name, so display fields
+   * (menuName, menuCode, menuColor, ...) are always pulled from the parent `mr_item` row instead.
+   * `itemid_real` below is the actual `mr_item.id`, used only internally to look up `mr_item_package`.
+   */
   public static function GetMasterMenuList()
   {
     $branch_visit_purpose =  DB::select("SELECT
@@ -80,7 +87,7 @@ class MenuServices
 
 
 
-    foreach ($branch_visit_purpose as $ibvp) {
+    foreach ($branch_visit_purpose as $visitPurposeRow) {
 
       $category = DB::select("
       SELECT DISTINCT 
@@ -93,7 +100,7 @@ class MenuServices
       JOIN mr_item mi on mi.id = mic.item_id
       JOIN mr_category mc on mc.id = mi.category_id
       WHERE mpd.pricelist_id = ?
-      ", [$ibvp->menuPriceListId]);
+      ", [$visitPurposeRow->menuPriceListId]);
 
       $subcategory = DB::select("
       SELECT DISTINCT 
@@ -107,8 +114,9 @@ class MenuServices
       JOIN mr_item mi on mi.id = mic.item_id
       JOIN mr_subcategory msc on msc.id = mi.subcategory_id
 
-      WHERE mpd.pricelist_id = ?", [$ibvp->menuPriceListId]);
+      WHERE mpd.pricelist_id = ?", [$visitPurposeRow->menuPriceListId]);
 
+      // itemId here is mr_item_conv.id (pricing is set per item_conv, not per item) — itemid_real is the actual mr_item.id
       $listmenu = DB::select("
         SELECT
         mpd.id as menuPricelistId,
@@ -132,22 +140,22 @@ class MenuServices
         JOIN mr_item mi on mi.id = mic.item_id
 
         WHERE mpd.pricelist_id = ? and mpd.pos = true
-      ", [$ibvp->menuPriceListId]);
+      ", [$visitPurposeRow->menuPriceListId]);
 
 
       // tarik item package
-      foreach ($listmenu as $itemmenu) {
-        $itemmenu->packageList = [];
-        $package = DB::select("SELECT id, item_id, separate_print_package as separatePrintPackage FROM mr_item_package WHERE item_id = ?", [$itemmenu->itemid_real]);
+      foreach ($listmenu as $itemConvRow) {
+        $itemConvRow->packageList = [];
+        $package = DB::select("SELECT id, item_id, separate_print_package as separatePrintPackage FROM mr_item_package WHERE item_id = ?", [$itemConvRow->itemid_real]);
         foreach ($package as $pa) {
-          if ($pa->item_id == $itemmenu->itemid_real) {
-            $itemmenu->packageid_real = $pa->id;
-            $itemmenu->separatePrintPackage = $pa->separatePrintPackage;
+          if ($pa->item_id == $itemConvRow->itemid_real) {
+            $itemConvRow->packageid_real = $pa->id;
+            $itemConvRow->separatePrintPackage = $pa->separatePrintPackage;
           }
         }
 
         foreach ($menuPackageGroup as $mpg) {
-          if ($mpg->item_package_id == $itemmenu->packageid_real) {
+          if ($mpg->item_package_id == $itemConvRow->packageid_real) {
 
 
             $cloning_mpg = unserialize(serialize($mpg));
@@ -158,16 +166,16 @@ class MenuServices
             //tax for submenu
             foreach ($cloning_mpg->menuPackageList as $mpl) {
               if ($mpl->taxType == 'vat') {
-                if ($ibvp->vat == 0 || $ibvp->vat === null) {
+                if ($visitPurposeRow->vat == 0 || $visitPurposeRow->vat === null) {
                   $mpl->taxId = null;
                 } else {
-                  $mpl->taxId = $ibvp->vat;
+                  $mpl->taxId = $visitPurposeRow->vat;
                 }
               } else if ($mpl->taxType == 'pb1') {
-                if ($ibvp->pb1 == 0 || $ibvp->pb1 === null) {
+                if ($visitPurposeRow->pb1 == 0 || $visitPurposeRow->pb1 === null) {
                   $mpl->taxId = null;
                 } else {
-                  $mpl->taxId = $ibvp->pb1;
+                  $mpl->taxId = $visitPurposeRow->pb1;
                 }
               } else {
                 $mpl->taxId = null;
@@ -186,7 +194,7 @@ class MenuServices
               }
             }
 
-            $itemmenu->packageList[] = $cloning_mpg;
+            $itemConvRow->packageList[] = $cloning_mpg;
           }
         }
 
@@ -201,41 +209,41 @@ class MenuServices
       //gabungkan menu ke subcategory
       foreach ($subcategory as $itemsub) {
         $itemsub->menuList = [];
-        foreach ($listmenu as $itemmenu) {
-          if ($itemmenu->subCategoryId == $itemsub->subCategoryId && $itemmenu->categoryId == $itemsub->categoryId) {
+        foreach ($listmenu as $itemConvRow) {
+          if ($itemConvRow->subCategoryId == $itemsub->subCategoryId && $itemConvRow->categoryId == $itemsub->categoryId) {
 
-            if ($itemmenu->taxType == 'vat') {
-              if ($ibvp->vat == 0) {
-                $itemmenu->taxId = null;
+            if ($itemConvRow->taxType == 'vat') {
+              if ($visitPurposeRow->vat == 0) {
+                $itemConvRow->taxId = null;
               } else {
-                $itemmenu->taxId = $ibvp->vat;
+                $itemConvRow->taxId = $visitPurposeRow->vat;
               }
             } else
-            if ($itemmenu->taxType == 'pb1') {
-              if ($ibvp->pb1 == 0) {
-                $itemmenu->taxId = null;
+            if ($itemConvRow->taxType == 'pb1') {
+              if ($visitPurposeRow->pb1 == 0) {
+                $itemConvRow->taxId = null;
               } else {
-                $itemmenu->taxId = $ibvp->pb1;
+                $itemConvRow->taxId = $visitPurposeRow->pb1;
               }
             } else {
-              $itemmenu->taxId = null;
+              $itemConvRow->taxId = null;
             }
 
-            if ($itemmenu->taxId != 0 and $itemmenu->taxId !== null) {
-              $itemmenu->taxRate = $tax[$itemmenu->taxId][0]->rate;
+            if ($itemConvRow->taxId != 0 and $itemConvRow->taxId !== null) {
+              $itemConvRow->taxRate = $tax[$itemConvRow->taxId][0]->rate;
             } else {
-              $itemmenu->taxRate = null;
+              $itemConvRow->taxRate = null;
             }
 
             //ngubah null di bom id
-            if ($itemmenu->bomId == 0) {
-              $itemmenu->bomId = null;
+            if ($itemConvRow->bomId == 0) {
+              $itemConvRow->bomId = null;
             }
 
 
-            $clonemenu = unserialize(serialize($itemmenu));
-            unset($clonemenu->categoryId);
-            unset($clonemenu->subCategoryId);
+            $clonemenu = unserialize(serialize($itemConvRow));
+            // categoryId/subCategoryId/itemid_real dipertahankan (tidak di-unset) supaya
+            // frontend bisa match item ke target promo (mr_promo_categories/sub_categories/items)
             $itemsub->menuList[] = $clonemenu;
           }
         }
@@ -254,7 +262,7 @@ class MenuServices
       }
 
       //masukkan semua haha
-      $ibvp->menuPriceList = $category;
+      $visitPurposeRow->menuPriceList = $category;
     }
 
     return $branch_visit_purpose;

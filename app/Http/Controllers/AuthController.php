@@ -16,8 +16,7 @@ class AuthController extends Controller
     {
         try {
 
-            $sandi = md5($request->input('pin'));
-            $user = MasterUserModel::where('sandi', $sandi)->first();
+            $user = MasterUserModel::where('sandi', $request->input('pin'))->first();
             $session_id = Str::uuid()->toString();
 
             if (!$user) {

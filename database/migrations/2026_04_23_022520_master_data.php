@@ -24,6 +24,7 @@ return new class extends Migration
             $table->text("printing_header")->nullable();
             $table->text("printing_footer")->nullable();
             $table->integer("company_id");
+            $table->string("token");
             $table->timestamps();
             // $table->string("company_code", 225)->nullable();
         });
@@ -443,6 +444,123 @@ return new class extends Migration
             $table->uuid("session_id");
             $table->string("data");
         });
+
+        ////////////////////////////////////////////////////////////
+        // MEMBER
+        ////////////////////////////////////////////////////////////
+
+        Schema::create("mr_member_type", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->string("name");
+            $table->boolean("is_active")->default(true);
+            $table->timestamp("created_at")->nullable();
+            $table->unsignedBigInteger("created_by")->nullable();
+        });
+
+        Schema::create("mr_member", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->unsignedBigInteger("member_type_id")->nullable();
+            $table->string("code")->nullable();
+            $table->string("name");
+            $table->string("contact_name")->nullable();
+            $table->string("email")->nullable();
+            $table->string("phone_number")->nullable();
+            $table->boolean("is_active")->default(true);
+            $table->timestamp("created_at")->nullable();
+            $table->unsignedBigInteger("created_by")->nullable();
+            $table->timestamp("updated_at")->nullable();
+            $table->unsignedBigInteger("updated_by")->nullable();
+        });
+
+        ////////////////////////////////////////////////////////////
+        // PROMO
+        ////////////////////////////////////////////////////////////
+
+        Schema::create("mr_promo", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->string("name");
+            $table->string("code");
+            $table->string("type"); // rupiah, percent, freeitem
+
+            $table->decimal("type_rupiah_amount", 20, 2)->nullable();
+            $table->boolean("type_percent_use_limit")->default(false);
+            $table->decimal("type_percent_rate", 10, 2)->nullable();
+            $table->decimal("type_percent_limit_amount", 20, 2)->nullable();
+            $table->unsignedBigInteger("type_freeitem_item_id")->nullable(); // ITEM ID, bukan CONV ID
+
+            $table->decimal("min_buy_amount", 20, 2)->nullable();
+            $table->integer("min_point_amount")->default(0);
+
+            $table->boolean("flag_include_package")->default(false);
+            $table->string("promo_for")->nullable(); // category, sub_category, item
+            $table->integer("apply_limit_per_day")->default(0);
+
+            $table->date("period_start")->nullable();
+            $table->date("period_end")->nullable();
+
+            $table->boolean("flag_all_branches")->default(false);
+            $table->boolean("flag_all_visit_purposes")->default(false);
+            $table->boolean("flag_all_type_members")->default(false);
+
+            $table->boolean("flag_all_days")->default(false);
+            $table->boolean("flag_all_times")->default(false);
+
+            $table->boolean("is_active")->default(true);
+
+            $table->timestamp("created_at")->nullable();
+            $table->unsignedBigInteger("created_by")->nullable();
+            $table->timestamp("updated_at")->nullable();
+            $table->unsignedBigInteger("updated_by")->nullable();
+        });
+
+        Schema::create("mr_promo_branches", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->unsignedBigInteger("promo_id");
+            $table->unsignedBigInteger("branch_id");
+        });
+
+        Schema::create("mr_promo_visit_purposes", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->unsignedBigInteger("promo_id");
+            $table->unsignedBigInteger("visit_purpose_id");
+        });
+
+        Schema::create("mr_promo_type_members", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->unsignedBigInteger("promo_id");
+            $table->unsignedBigInteger("type_member_id");
+        });
+
+        Schema::create("mr_promo_categories", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->unsignedBigInteger("promo_id");
+            $table->unsignedBigInteger("category_id");
+        });
+
+        Schema::create("mr_promo_sub_categories", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->unsignedBigInteger("promo_id");
+            $table->unsignedBigInteger("sub_category_id");
+        });
+
+        Schema::create("mr_promo_items", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->unsignedBigInteger("promo_id");
+            $table->unsignedBigInteger("item_id");
+        });
+
+        Schema::create("mr_promo_days", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->unsignedBigInteger("promo_id");
+            $table->string("day"); // senin, selasa, rabu, kamis, jumat, sabtu, minggu
+        });
+
+        Schema::create("mr_promo_times", function (Blueprint $table) {
+            $table->unsignedBigInteger("id")->primary();
+            $table->unsignedBigInteger("promo_id");
+            $table->time("time_start");
+            $table->time("time_end");
+        });
     }
 
     /**
@@ -483,5 +601,18 @@ return new class extends Migration
         Schema::dropIfExists("mr_role_access");
         Schema::dropIfExists("mr_menu_app");
         Schema::dropIfExists("mr_session");
+
+        Schema::dropIfExists("mr_member_type");
+        Schema::dropIfExists("mr_member");
+
+        Schema::dropIfExists("mr_promo_branches");
+        Schema::dropIfExists("mr_promo_visit_purposes");
+        Schema::dropIfExists("mr_promo_type_members");
+        Schema::dropIfExists("mr_promo_categories");
+        Schema::dropIfExists("mr_promo_sub_categories");
+        Schema::dropIfExists("mr_promo_items");
+        Schema::dropIfExists("mr_promo_days");
+        Schema::dropIfExists("mr_promo_times");
+        Schema::dropIfExists("mr_promo");
     }
 };

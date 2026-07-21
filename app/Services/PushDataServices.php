@@ -122,6 +122,7 @@ class PushDataServices
 
         $item->flag_inclusive_tax = (bool)$item->flag_inclusive_tax;
         $item->done_print = (bool)$item->done_print;
+        $item->is_free_item_promo = (bool)$item->is_free_item_promo;
 
 
         if ($item->cancel_at != null) {
