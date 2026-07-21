@@ -118,6 +118,8 @@ Route::prefix('setting')->group(function () {
   Route::post('save', [SettingController::class, 'save']);
   Route::get('load', [SettingController::class, 'load']);
   Route::get('customer_display', [SettingController::class, 'customer_display']);
+  Route::get('test-print-all', [SettingController::class, 'testPrintAll']);
+  Route::get('test-print/{station_id}', [SettingController::class, 'testPrint']);
 });
 
 Route::prefix('dayshift')->group(function () {

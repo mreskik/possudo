@@ -1845,4 +1845,42 @@ class PrintServices
   //   $print->cut();
   //   $print->close();
   // }
+
+  public static function PrintTest(int $station_id): string
+  {
+    $data_station = StationModel::where('id', $station_id)->first();
+    if (!$data_station) {
+      return 'Station tidak ditemukan';
+    }
+
+    try {
+      $konektor = new WindowsPrintConnector($data_station->printer_name);
+      $print = new Printer($konektor);
+      $charPerLine = $data_station->line_character ?: 40;
+
+      $print->setJustification(Printer::JUSTIFY_CENTER);
+      $print->setEmphasis(true);
+      $print->setTextSize(1, 2);
+      $print->text("TEST PRINT\n");
+      $print->setTextSize(1, 1);
+      $print->setEmphasis(false);
+      $print->text(self::separator("=", $charPerLine));
+      $print->setJustification(Printer::JUSTIFY_LEFT);
+      $print->text("Station   : " . $data_station->name . "\n");
+      $print->text("Printer   : " . $data_station->printer_name . "\n");
+      $print->text("Char/Line : " . $charPerLine . "\n");
+      $print->text("Time      : " . now() . "\n");
+      $print->text(self::separator("=", $charPerLine));
+      $print->setJustification(Printer::JUSTIFY_CENTER);
+      $print->text("Printer OK\n");
+      $print->feed(2);
+      $print->cut();
+      $print->close();
+
+      return 'OK';
+    } catch (\Throwable $e) {
+      Log::warning('PrintTest error: ' . $e->getMessage());
+      return $e->getMessage();
+    }
+  }
 }

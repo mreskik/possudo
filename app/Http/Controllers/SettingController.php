@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\SettingModel;
+use App\Models\StationModel;
+use App\Services\PrintServices;
 use App\Services\SettingServices;
 use Illuminate\Http\Request;
 
@@ -41,6 +43,37 @@ class SettingController extends Controller
                 'code' => 100,
                 "message" => $e->getMessage()
             ]);
+        }
+    }
+
+    public function testPrintAll()
+    {
+        try {
+            $stations = StationModel::all();
+            $results = [];
+            foreach ($stations as $station) {
+                $msg = PrintServices::PrintTest($station->id);
+                $results[] = [
+                    'station_id'   => $station->id,
+                    'station_name' => $station->name,
+                    'printer_name' => $station->printer_name,
+                    'result'       => $msg,
+                ];
+            }
+            return response()->json(['code' => 0, 'data' => $results]);
+        } catch (\Throwable $e) {
+            return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+        }
+    }
+
+    public function testPrint(int $station_id)
+    {
+        try {
+            $result = PrintServices::PrintTest($station_id);
+            $code = $result === 'OK' ? 0 : 100;
+            return response()->json(['code' => $code, 'message' => $result]);
+        } catch (\Throwable $e) {
+            return response()->json(['code' => 100, 'message' => $e->getMessage()]);
         }
     }
 
