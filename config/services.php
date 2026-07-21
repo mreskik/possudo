@@ -14,6 +14,8 @@ return [
     |
     */
 
+    'server_endpoint' => env('SERVER_ENDPOINT', ''),
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],

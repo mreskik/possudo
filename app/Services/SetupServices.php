@@ -48,7 +48,7 @@ class SetupServices
 
   public function __construct()
   {
-    $this->endpoint = env('SERVER_ENDPOINT');
+    $this->endpoint = config('services.server_endpoint', '');
   }
 
   private function syncRequest(string $username, string $password, ?string $token, string $url): \Illuminate\Http\Client\Response
@@ -124,8 +124,12 @@ class SetupServices
   public function getStationList(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_station_list/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_station_list/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         StationModel::truncate();
@@ -159,8 +163,12 @@ class SetupServices
   public function getCategoryList(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_category_list/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_category_list/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         CategoryModel::truncate();
@@ -176,8 +184,12 @@ class SetupServices
   public function getSubCategoryList(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_subcategory_list/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_subcategory_list/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         SubCategoryModel::truncate();
@@ -193,8 +205,12 @@ class SetupServices
   public function getTableSectionList(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_tablesection_list/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_tablesection_list/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         TableSectionModel::truncate();
@@ -210,8 +226,12 @@ class SetupServices
   public function getTable(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_table/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_table/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         TableModel::truncate();
@@ -227,8 +247,12 @@ class SetupServices
   public function getTax(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_tax/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_tax/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterTaxModel::truncate();
@@ -244,8 +268,12 @@ class SetupServices
   public function getTerminal(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_terminal/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_terminal/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         TerminalModel::truncate();
@@ -263,8 +291,12 @@ class SetupServices
   public function getMasterItem(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_item/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_item/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterItemModel::truncate();
@@ -280,8 +312,12 @@ class SetupServices
   public function getMasterItemConv(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_item_conv/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_item_conv/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterItemConvModel::truncate();
@@ -297,8 +333,12 @@ class SetupServices
   public function getMasterItemPackage(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_item_package/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_item_package/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterItemPackageModel::truncate();
@@ -314,8 +354,12 @@ class SetupServices
   public function getMasterItemPackageGroup(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_item_package_group/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_item_package_group/' . $branch_id
+      );
 
       Log::info($response);
 
@@ -333,8 +377,12 @@ class SetupServices
   public function getMasterItemPackageDetail(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_item_package_detail/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_item_package_detail/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterItemPackageDetailModel::truncate();
@@ -350,8 +398,12 @@ class SetupServices
   public function getMasterPricelist(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_pricelist/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_pricelist/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPricelistModel::truncate();
@@ -367,8 +419,12 @@ class SetupServices
   public function getMasterPricelistDetail(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_pricelist_detail/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_pricelist_detail/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPricelistDetailModel::truncate();
@@ -386,8 +442,12 @@ class SetupServices
   public function getMasterPaymentMethod(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_payment_method/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_payment_method/' . $branch_id
+      );
 
       Log::info($response->json("data"));
 
@@ -405,8 +465,12 @@ class SetupServices
   public function getMasterPaymentMethodGroup(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_payment_method_group/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_payment_method_group/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPaymentMethodGroupModel::truncate();
@@ -422,8 +486,12 @@ class SetupServices
   public function getMasterPaymentMethodType(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_payment_method_type/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_payment_method_type/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPaymentMethodTypeModel::truncate();
@@ -439,8 +507,12 @@ class SetupServices
   public function getMasterPaymentMethodVisitPurpose(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_payment_method_visit_purpose/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_payment_method_visit_purpose/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPaymentMethodVisitPurposeModel::truncate();
@@ -456,8 +528,12 @@ class SetupServices
   public function getMasterBranchVisitPurpose(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_branch_visit_purpose/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_branch_visit_purpose/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterBranchVisitPurposeModel::truncate();
@@ -473,8 +549,12 @@ class SetupServices
   public function getMasterVisitPurpose(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_visit_purpose/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_visit_purpose/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterVisitPurposeModel::truncate();
@@ -490,8 +570,12 @@ class SetupServices
   public function getMasterUser(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_master_user/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_master_user/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterUserModel::truncate();
@@ -507,8 +591,12 @@ class SetupServices
   public function getMasterRoleAccess(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_master_role_access/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_master_role_access/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         RoleAccessModel::truncate();
@@ -524,8 +612,12 @@ class SetupServices
   public function getMenuApp(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_menu_app/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_menu_app/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterMenuAppModel::truncate();
@@ -541,8 +633,12 @@ class SetupServices
   public function getTableSectionPrintCategorySetting(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_table_section_print_category_setting/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_table_section_print_category_setting/' . $branch_id
+      );
 
       Log::info("==========================");
       Log::info($response);
@@ -582,8 +678,12 @@ class SetupServices
   public function getPromoList(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_promo_list/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_promo_list/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPromoModel::truncate();
@@ -599,8 +699,12 @@ class SetupServices
   public function getPromoBranch(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_promo_branch/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_promo_branch/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPromoBranchesModel::truncate();
@@ -616,8 +720,12 @@ class SetupServices
   public function getPromoVisitPurpose(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_promo_visit_purpose/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_promo_visit_purpose/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPromoVisitPurposesModel::truncate();
@@ -633,8 +741,12 @@ class SetupServices
   public function getPromoTypeMember(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_promo_type_member/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_promo_type_member/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPromoTypeMembersModel::truncate();
@@ -650,8 +762,12 @@ class SetupServices
   public function getPromoCategory(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_promo_category/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_promo_category/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPromoCategoriesModel::truncate();
@@ -667,8 +783,12 @@ class SetupServices
   public function getPromoSubCategory(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_promo_sub_category/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_promo_sub_category/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPromoSubCategoriesModel::truncate();
@@ -684,8 +804,12 @@ class SetupServices
   public function getPromoItem(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_promo_item/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_promo_item/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPromoItemsModel::truncate();
@@ -701,8 +825,12 @@ class SetupServices
   public function getPromoDay(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_promo_day/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_promo_day/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPromoDaysModel::truncate();
@@ -718,8 +846,12 @@ class SetupServices
   public function getPromoTime(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_promo_time/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_promo_time/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterPromoTimesModel::truncate();
@@ -737,8 +869,12 @@ class SetupServices
   public function getMemberTypeList(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_member_type_list/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_member_type_list/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterMemberTypeModel::truncate();
@@ -754,8 +890,12 @@ class SetupServices
   public function getMemberList(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
-      $response = $this->syncRequest($username, $password, $token,
-        $this->endpoint . '/pos/sync/get_member_list/' . $branch_id);
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_member_list/' . $branch_id
+      );
 
       if ($response->json('code') == 0) {
         MasterMemberModel::truncate();
