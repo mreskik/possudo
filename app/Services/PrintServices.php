@@ -321,11 +321,11 @@ class PrintServices
       $print->setEmphasis(true);
       $print->setTextSize(2, 2);
       $print->text("MAIN CHECKER\n");
+      $print->setEmphasis(FALSE);
+      $print->setTextSize(1, 1);
       $print->text(self::separator("-", $charPerLine));
 
 
-      $print->setEmphasis(FALSE);
-      $print->setTextSize(1, 1);
       $print->text("Date        : " . $data_order->order_date . "\n");
       $print->text("Time In     : " . $order_in . "\n");
       $print->text("Info        : " . $info . "\n");
@@ -365,7 +365,7 @@ class PrintServices
       // $print->text("MAIN CHECKER" . "\n");
       // $print->setTextSize(1, 1);
       // $print->setEmphasis(false);
-      // $print->text(self::separator("=", $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
       $print->setJustification(Printer::JUSTIFY_LEFT);
       $print->setTextSize(2, 2);
       foreach ($data_order_detail as $itemmenu) {
@@ -388,11 +388,11 @@ class PrintServices
 
         foreach ($listpackagedetail as $itempackage) {
           if (count($listpackagedetail) > 0) {
-            $print->text("    " .  $itempackage->qty . " " . $itempackage->menu_name . "\n");
+            $print->text("   " .  $itempackage->qty . " " . $itempackage->menu_name . "\n");
             if ($itempackage->notes && $itempackage->notes != '') {
               $print->setEmphasis(true);
               $print->setTextSize(1, 1);
-              $print->text("    * " . $itempackage->notes . "\n");
+              $print->text("   * " . $itempackage->notes . "\n");
               $print->setTextSize(1, 2);
               $print->setEmphasis(false);
             }
