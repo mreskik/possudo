@@ -7,6 +7,7 @@ use App\Models\DayShiftDetailModel;
 use App\Models\DaySiftModel;
 use App\Models\MasterItemModel;
 use App\Models\MasterPricelistDetailModel;
+use App\Models\SessionModel;
 use App\Models\TableSectionModel;
 use App\Models\TerminalModel;
 use App\Models\TrOrderDetailModel;
@@ -100,6 +101,7 @@ class OrderServices
 
           "waiter_name" => 'JUSE',
           "sender_name" => 'JUSE',
+          "chasier_name" => self::getChasierName($datajson),
           // "pricelist_id" => $datajson->priceListId,
 
           "total_item" => $datajson->totalItem,
@@ -1049,6 +1051,20 @@ class OrderServices
       DB::rollBack();
       Log::info($e);
       throw $e;
+    }
+  }
+
+  private static function getChasierName($request): ?string
+  {
+    try {
+      $token = $request->bearerToken();
+      if (!$token) return null;
+      $session = SessionModel::where('session_id', $token)->first();
+      if (!$session) return null;
+      $user = json_decode($session->data);
+      return $user->fullname ?? $user->username ?? null;
+    } catch (\Throwable $e) {
+      return null;
     }
   }
 }

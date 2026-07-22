@@ -313,41 +313,61 @@ class PrintServices
       $order_in  = $data_order->order_in;
       $order_queue = $data_order->order_queue;
       $info  = $data_order->order_name;
-      $cashier  = "JUSE";
+      $cashier  = $data_order->chasier_name;
 
       //////////////////// end inisialisasi
 
-      $print->feed(1);
-      $print->setJustification(Printer::JUSTIFY_LEFT);
+
       $print->setEmphasis(true);
       $print->setTextSize(2, 2);
-      $print->text($order_number . "\n");
-      $print->text($order_in . "\n");
-      $print->text("QUEUE : " . $order_queue . "\n");
-      $print->text($table_section_name . "\n");
-      $print->feed(1);
-      $print->text($visitpurpose_name . "\n");
-      $print->feed(1);
-      $print->setEmphasis(false);
-      $print->setTextSize(1, 1);
+      $print->text("MAIN CHECKER\n");
+      $print->text(self::separator("-", $charPerLine));
 
-      $print->setJustification(Printer::JUSTIFY_LEFT);
+
+      $print->setEmphasis(FALSE);
+      $print->setTextSize(1, 1);
+      $print->text("Date        : " . $data_order->order_date . "\n");
+      $print->text("Time In     : " . $order_in . "\n");
       $print->text("Info        : " . $info . "\n");
-      $print->text("Waiter      : " . $cashier . "\n");
-      $print->text("Sender      : " . $cashier . "\n");
-      $print->text("Batch       : " . $last_batch . "\n");
+      $print->text("Table       : " . $table_section->name . "\n");
+      $print->text("Purpose     : " . $visitpurpose_name . "\n");
+      $print->text("Queue       : " . $order_queue . "\n");
       $print->text("Pax         : " . $pax . "\n");
+      $print->text("Batch       : " . $last_batch . "\n");
+      $print->text("Chasier     : " . $cashier . "\n");
 
-      $print->text(self::separator("=", $charPerLine));
-      $print->setJustification(Printer::JUSTIFY_CENTER);
-      $print->setEmphasis(true);
-      $print->setTextSize(1, 2);
-      $print->text("MAIN CHECKER" . "\n");
-      $print->setTextSize(1, 1);
-      $print->setEmphasis(false);
-      $print->text(self::separator("=", $charPerLine));
+
+      // $print->feed(1);
+      // $print->setJustification(Printer::JUSTIFY_LEFT);
+      // $print->setEmphasis(true);
+      // $print->setTextSize(2, 2);
+      // $print->text($order_number . "\n");
+      // $print->text($order_in . "\n");
+      // $print->text("QUEUE : " . $order_queue . "\n");
+      // $print->text($table_section_name . "\n");
+      // $print->feed(1);
+      // $print->text($visitpurpose_name . "\n");
+      // $print->feed(1);
+      // $print->setEmphasis(false);
+      // $print->setTextSize(1, 1);
+
+      // $print->setJustification(Printer::JUSTIFY_LEFT);
+      // $print->text("Info        : " . $info . "\n");
+      // $print->text("Waiter      : " . $cashier . "\n");
+      // $print->text("Sender      : " . $cashier . "\n");
+      // $print->text("Batch       : " . $last_batch . "\n");
+      // $print->text("Pax         : " . $pax . "\n");
+
+      // $print->text(self::separator("=", $charPerLine));
+      // $print->setJustification(Printer::JUSTIFY_CENTER);
+      // $print->setEmphasis(true);
+      // $print->setTextSize(1, 2);
+      // $print->text("MAIN CHECKER" . "\n");
+      // $print->setTextSize(1, 1);
+      // $print->setEmphasis(false);
+      // $print->text(self::separator("=", $charPerLine));
       $print->setJustification(Printer::JUSTIFY_LEFT);
-      $print->setTextSize(1, 2);
+      $print->setTextSize(2, 2);
       foreach ($data_order_detail as $itemmenu) {
 
         if ($itemmenu->done_print && !$test) {
@@ -704,7 +724,7 @@ class PrintServices
       $order_in  = $data_order->order_in;
       $order_queue = $data_order->order_queue;
       $info  = $data_order->order_name;
-      $cashier  = "JUSE";
+      $cashier  = $data_order->chasier_name ?? 'JUSE';
 
       $print->setJustification(Printer::JUSTIFY_CENTER);
 
@@ -761,11 +781,11 @@ class PrintServices
 
       $print->text("No          : " . $data_order->payment_number . "\n");
       $print->text("Sales No    : " . $data_order->order_number . "\n");
-      $print->text("Date        : " . $data_order->order_date . "\n");
-      $print->text("Time In     : " . $data_order->order_in . "\n");
+      // $print->text("Date        : " . $data_order->order_date . "\n");
+      $print->text("Date        : " . $data_order->order_in . "\n");
       $print->text("Info        : " . $info . "\n");
-      $print->text("Table       : " . $table_section_name . "\n");
-      $print->text("Purpose     : " . $visitpurpose_name . "\n");
+      // $print->text("Table       : " . $table_section_name . "\n");
+      // $print->text("Purpose     : " . $visitpurpose_name . "\n");
       $print->text("Pax         : " . $pax . "\n");
       $print->text("Chasier     : " . $cashier . "\n");
       $print->text("Status      : ");
@@ -801,8 +821,11 @@ class PrintServices
       $print->text(self::separator("-", $charPerLine));
       $print->text($data_order->total_item . " Items" . "\n");
       $print->setJustification(Printer::JUSTIFY_RIGHT);
-      $print->text(self::threeline2("", "Delivery Cost :", "0", $charPerLine)); // disiini
-      $print->text(self::threeline2("", "Order Fee :", "0", $charPerLine));
+
+      // $print->text(self::threeline2("", "Delivery Cost :", "0", $charPerLine)); // disiini
+      // $print->text(self::threeline2("", "Order Fee :", "0", $charPerLine));
+
+
       $print->text("\n");
       $print->setEmphasis(true);
       $print->setTextSize(1, 2); // gedene
