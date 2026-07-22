@@ -374,7 +374,7 @@ class PrintServices
           continue;
         }
 
-        $print->text("  " . $itemmenu->qty . " " . $itemmenu->menu_name . "\n");
+        $print->text(" " . $itemmenu->qty . " " . $itemmenu->menu_name . "\n");
 
         $listpackagedetail = DB::select("
         SELECT
@@ -388,12 +388,12 @@ class PrintServices
 
         foreach ($listpackagedetail as $itempackage) {
           if (count($listpackagedetail) > 0) {
-            $print->text("   " .  $itempackage->qty . " " . $itempackage->menu_name . "\n");
+            $print->text("  " .  $itempackage->qty . " " . $itempackage->menu_name . "\n");
             if ($itempackage->notes && $itempackage->notes != '') {
               $print->setEmphasis(true);
               $print->setTextSize(1, 1);
-              $print->text("   * " . $itempackage->notes . "\n");
-              $print->setTextSize(1, 2);
+              $print->text("  * " . $itempackage->notes . "\n");
+              $print->setTextSize(2, 2);
               $print->setEmphasis(false);
             }
           }
@@ -401,12 +401,12 @@ class PrintServices
         if ($itemmenu->notes && $itemmenu->notes != '') {
           $print->setEmphasis(true);
           $print->setTextSize(1, 1);
-          $print->text("  notes : " . $itemmenu->notes . "\n");
-          $print->setTextSize(1, 2);
+          $print->text(" notes : " . $itemmenu->notes . "\n");
+          $print->setTextSize(2, 2);
           $print->setEmphasis(false);
         }
       }
-      $print->setTextSize(1, 2);
+      $print->setTextSize(1, 1);
       $print->text(self::separator("-"));
       $print->text(self::separator("-"));
       $print->feed(1);
