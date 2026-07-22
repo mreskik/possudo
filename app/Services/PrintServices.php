@@ -326,8 +326,8 @@ class PrintServices
       $print->text(self::separator("-", $charPerLine));
 
 
-      $print->text("Date        : " . $data_order->order_date . "\n");
-      $print->text("Time In     : " . $order_in . "\n");
+      // $print->text("Date        : " . $data_order->order_date . "\n");
+      $print->text("Date        : " . $order_in . "\n");
       $print->text("Info        : " . $info . "\n");
       $print->text("Table       : " . $table_section->name . "\n");
       $print->text("Purpose     : " . $visitpurpose_name . "\n");
@@ -724,7 +724,7 @@ class PrintServices
       $order_in  = $data_order->order_in;
       $order_queue = $data_order->order_queue;
       $info  = $data_order->order_name;
-      $cashier  = $data_order->chasier_name ?? 'JUSE';
+      $cashier  = $data_order->chasier_name ?? '';
 
       $print->setJustification(Printer::JUSTIFY_CENTER);
 
@@ -733,7 +733,7 @@ class PrintServices
         ? public_path(ltrim($branch->logo_header_src, '/'))
         : public_path('logo_resize.png');
       if (file_exists($logoSrc)) {
-        self::resizeGambar($logoSrc, 150, public_path('logo_resize.png'));
+        self::resizeGambar($logoSrc, 180, public_path('logo_resize.png'));
         $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
         $print->bitImage($imageLogo);
         $print->text("\n");
@@ -915,7 +915,7 @@ class PrintServices
       $order_in  = $data_order->order_in;
       $order_queue = $data_order->order_queue;
       $info  = $data_order->order_name;
-      $cashier  = "JUSE";
+      $cashier  = $data_order->chasier_name;
 
       if ($data_order->status == 'cancel') {
         $print->setEmphasis(true);
