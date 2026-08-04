@@ -18,14 +18,14 @@ class PaymentServices
 {
 
 
-  public static function GenerateOrderNumber()
+  public static function GenerateOrderNumber($terminal_id)
   {
     // ORDER NUMBER KOMPOSISI
-    // <MODUL><BRANCH CODE><TIMESTAMP>
+    // <MODUL><TERMINAL ID><BRANCH CODE><time order in >
     $branch_data = BranchModel::first();
     // MODULE TAKING ORDER = TO
-    $kode_modul = "PP";
-    $komposisi = $kode_modul . $branch_data->branch_code . $branch_data->payment_number . time();
+    $kode_modul = "PS";
+    $komposisi = $kode_modul .$terminal_id. $branch_data->branch_code . time();
     return $komposisi;
   }
 
@@ -37,11 +37,9 @@ class PaymentServices
     $response->success = false;
     Log::info($datajson);
 
-    $payment_number = self::GenerateOrderNumber();
     try {
-      $dataorder_current = TrOrderModel::where('order_number', $datajson->order_number)
-        ->first();
-      // return $response;
+      $dataorder_current = TrOrderModel::where('order_number', $datajson->order_number)->first();
+      
       if ($dataorder_current) {
         if ($dataorder_current->payment_number != null) {
           $response->message = "order " . $datajson->order_number . " has paid!";
@@ -51,6 +49,9 @@ class PaymentServices
         $response->message = "order " . $datajson->order_number . " not found!";
         return $response;
       }
+
+      $payment_number = self::GenerateOrderNumber($dataorder_current->terminal_id);
+
       DB::beginTransaction();
 
       TrOrderModel::where('order_number', $datajson->order_number)->update([

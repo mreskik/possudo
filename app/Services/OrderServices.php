@@ -23,7 +23,7 @@ class OrderServices
 {
 
 
-  public static function GenerateOrderNumber()
+  public static function GenerateOrderNumber($terminal_id)
   {
     // ORDER NUMBER KOMPOSISI
     // <MODUL><TERMINAL ID><BRANCH CODE><time order in >
@@ -38,9 +38,10 @@ class OrderServices
 
       // MODULE TAKING ORDER = TO
       $kode_modul = "NO";
-      $formatnumber = now()->format("YmdHis");
+      // $formatnumber = now()->format("YmdHis");
 
-      $komposisi = $kode_modul . $branch_data->branch_code . $branch_data->company_id . $formatnumber;
+      //lama $komposisi = $kode_modul . $branch_data->branch_code . $branch_data->company_id . $formatnumber;
+      $komposisi = $kode_modul .$terminal_id. $branch_data->branch_code . time();
       return $komposisi;
     } catch (\Throwable $e) {
       throw $e;
@@ -62,7 +63,7 @@ class OrderServices
         $date_now = now()->toDateString();
 
         $datetime_now = now();
-        $order_number = self::GenerateOrderNumber();
+        $order_number = self::GenerateOrderNumber($datajson->terminalId);
         $branch = BranchModel::first();
         $last_order =  TrOrderModel::where('order_date', $date_now)->orderBy('order_queue', 'desc')->first();
 
@@ -634,8 +635,10 @@ class OrderServices
         throw new \Exception('order tidak ditemukan! ');
       }
 
-      $perubahan = ["table_section_id" => $tablesection->id];
-      $perubahan = ["sync_at" => null];
+      $perubahan = [
+        "table_section_id" => $tablesection->id,
+        "sync_at" => null
+      ];
       if ($tablesection->type == 'dinein') {
         if ($table_id == null) {
           throw new \Exception('table harus dipilih! ');

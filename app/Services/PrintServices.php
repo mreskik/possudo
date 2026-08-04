@@ -8,6 +8,7 @@ use App\Models\MasterTableSectionPrintCategorySettingModel;
 use App\Models\MasterVisitPurposeModel;
 use App\Models\SettingModel;
 use App\Models\StationModel;
+use App\Models\TableModel;
 use App\Models\TableSectionModel;
 use App\Models\TrOrderDetailPackageModel;
 use App\Models\TrOrderModel;
@@ -173,40 +174,62 @@ class PrintServices
       $order_in  = $data_order->order_in;
       $order_queue = $data_order->order_queue;
       $info  = $data_order->order_name;
-      $cashier  = "JUSE";
+      $cashier  = $data_order->chasier_name;
 
-      $print->feed(1);
-      $print->setJustification(Printer::JUSTIFY_CENTER);
       $print->setEmphasis(true);
-      $print->setTextSize(1, 2);
-      $print->text("Table Checker\n");
+      $print->setTextSize(2, 2);
+      $print->text("TABLE CHECKER\n");
+      $print->setEmphasis(FALSE);
       $print->setTextSize(1, 1);
-      $print->setEmphasis(false);
-      $print->text(self::separator("=", $charPerLine));
-      $print->setEmphasis(true);
-      $print->setTextSize(1, 2);
-      $print->text("Queue : " . $order_queue . "\n");
-      $print->setTextSize(1, 1);
-      $print->setEmphasis(false);
-      $print->text(self::separator("=", $charPerLine));
-      $print->setEmphasis(true);
-      $print->setTextSize(1, 2);
-      $print->text("Table : " . $table_section_name . "\n");
-      $print->setTextSize(1, 1);
-      $print->setEmphasis(false);
-      $print->text(self::separator("=", $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
 
-      $print->setJustification(Printer::JUSTIFY_LEFT);
-      $print->text("Order       : " . $order_number . "\n");
+      $meja = TableModel::where('id', $data_order->table_id)->first();
+
+
+
+      // $print->text("Date        : " . $data_order->order_date . "\n");
       $print->text("Date        : " . $order_in . "\n");
+      $print->text("Info        : " . $info . "\n");
+      $print->text("Table       : " . $table_section->name . ($meja ? " / " . $meja->name : "") . "\n");
       $print->text("Purpose     : " . $visitpurpose_name . "\n");
-      $print->text("Waiter      : " . $cashier . "\n");
-      $print->text("Sender      : " . $cashier . "\n");
-      // $print->text("Info        : " . $info . "\n");
+      $print->text("Queue       : " . $order_queue . "\n");
+      $print->text("Pax         : " . $pax . "\n");
       $print->text("Batch       : " . $last_batch . "\n");
-      $print->text("Customer    : " . $info . "\n");
+      $print->text("Chasier     : " . $cashier . "\n");
 
-      $print->text(self::separator("=", $charPerLine));
+
+      // $print->feed(1);
+      // $print->setJustification(Printer::JUSTIFY_CENTER);
+      // $print->setEmphasis(true);
+      // $print->setTextSize(1, 2);
+      // $print->text("Table Checker\n");
+      // $print->setTextSize(1, 1);
+      // $print->setEmphasis(false);
+      // $print->text(self::separator("=", $charPerLine));
+      // $print->setEmphasis(true);
+      // $print->setTextSize(1, 2);
+      // $print->text("Queue : " . $order_queue . "\n");
+      // $print->setTextSize(1, 1);
+      // $print->setEmphasis(false);
+      // $print->text(self::separator("=", $charPerLine));
+      // $print->setEmphasis(true);
+      // $print->setTextSize(1, 2);
+      // $print->text("Table : " . $table_section_name . "\n");
+      // $print->setTextSize(1, 1);
+      // $print->setEmphasis(false);
+      // $print->text(self::separator("=", $charPerLine));
+
+      // $print->setJustification(Printer::JUSTIFY_LEFT);
+      // $print->text("Order       : " . $order_number . "\n");
+      // $print->text("Date        : " . $order_in . "\n");
+      // $print->text("Purpose     : " . $visitpurpose_name . "\n");
+      // $print->text("Waiter      : " . $cashier . "\n");
+      // $print->text("Sender      : " . $cashier . "\n");
+      // // $print->text("Info        : " . $info . "\n");
+      // $print->text("Batch       : " . $last_batch . "\n");
+      // $print->text("Customer    : " . $info . "\n");
+
+      $print->text(self::separator("-", $charPerLine));
       $print->setTextSize(1, 2);
 
       foreach ($data_order_detail as $itemmenu) {
@@ -326,10 +349,14 @@ class PrintServices
       $print->text(self::separator("-", $charPerLine));
 
 
+      $meja = TableModel::where('id', $data_order->table_id)->first();
+
+
       // $print->text("Date        : " . $data_order->order_date . "\n");
       $print->text("Date        : " . $order_in . "\n");
       $print->text("Info        : " . $info . "\n");
-      $print->text("Table       : " . $table_section->name . "\n");
+      // $print->text("Table       : " . $table_section->name . "\n");
+      $print->text("Table       : " . $table_section->name . ($meja ? " / " . $meja->name : "") . "\n");
       $print->text("Purpose     : " . $visitpurpose_name . "\n");
       $print->text("Queue       : " . $order_queue . "\n");
       $print->text("Pax         : " . $pax . "\n");
@@ -367,7 +394,7 @@ class PrintServices
       // $print->setEmphasis(false);
       $print->text(self::separator("-", $charPerLine));
       $print->setJustification(Printer::JUSTIFY_LEFT);
-      $print->setTextSize(2, 2);
+      $print->setTextSize(1, 2);
       foreach ($data_order_detail as $itemmenu) {
 
         if ($itemmenu->done_print && !$test) {
@@ -402,7 +429,7 @@ class PrintServices
           $print->setEmphasis(true);
           $print->setTextSize(1, 1);
           $print->text(" notes : " . $itemmenu->notes . "\n");
-          $print->setTextSize(2, 2);
+          $print->setTextSize(1, 2);
           $print->setEmphasis(false);
         }
       }
@@ -553,6 +580,7 @@ class PrintServices
       foreach ($daftar_menu_mau_print as $itemmauprint) {
         $data_station = StationModel::where('id', $itemmauprint['station_id'])->first();
         $ngeprintasek = new GeneralLabel;
+        $ngeprintasek->setMargin(0, 2);
         $ngeprintasek->setNamePrinter($data_station->printer_name);
         $ngeprintasek->setText($data_order->order_in);
         $ngeprintasek->setText($data_order->order_queue . " | " . $data_order->order_name . " | $itungan_item/$total_item");
@@ -937,7 +965,7 @@ class PrintServices
 
       // $print->text("No          : ".$orderNumber."\n");
       // $print->text("Sales No    : ".$salesNo."\n");
-      $print->text("Date        : " . $data_order->order_date . "\n");
+      // $print->text("Date        : " . $data_order->order_date . "\n");
       $print->text("Time In     : " . $order_in . "\n");
       $print->text("Info        : " . $info . "\n");
       $print->text("Table       : " . $table_section->name . "\n");
@@ -950,7 +978,7 @@ class PrintServices
       if ($data_order->status == 'pending') {
         $print->text("NOT PAID" . "\n");
       } else if ($data_order->status == 'cancel') {
-        $print->text("CANCELED" . "\n");
+        $print->text("CANCELED" . " / " . $data_order->cancel_notes . "\n");
       }
       $print->setEmphasis(false);
 
@@ -1877,29 +1905,40 @@ class PrintServices
     }
 
     try {
-      $konektor = new WindowsPrintConnector($data_station->printer_name);
-      $print = new Printer($konektor);
-      $charPerLine = $data_station->line_character ?: 40;
 
-      $print->setJustification(Printer::JUSTIFY_CENTER);
-      $print->setEmphasis(true);
-      $print->setTextSize(1, 2);
-      $print->text("TEST PRINT\n");
-      $print->setTextSize(1, 1);
-      $print->setEmphasis(false);
-      $print->text(self::separator("=", $charPerLine));
-      $print->setJustification(Printer::JUSTIFY_LEFT);
-      $print->text("Station   : " . $data_station->name . "\n");
-      $print->text("Printer   : " . $data_station->printer_name . "\n");
-      $print->text("Char/Line : " . $charPerLine . "\n");
-      $print->text("Time      : " . now() . "\n");
-      $print->text(self::separator("=", $charPerLine));
-      $print->setJustification(Printer::JUSTIFY_CENTER);
-      $print->text("Printer OK\n");
-      $print->feed(2);
-      $print->cut();
-      $print->close();
+      if ($data_station->printer_type == 1) {
+        $konektor = new WindowsPrintConnector($data_station->printer_name);
+        $print = new Printer($konektor);
+        $charPerLine = $data_station->line_character ?: 40;
 
+        $print->setJustification(Printer::JUSTIFY_CENTER);
+        $print->setEmphasis(true);
+        $print->setTextSize(1, 2);
+        $print->text("TEST PRINT\n");
+        $print->setTextSize(1, 1);
+        $print->setEmphasis(false);
+        $print->text(self::separator("=", $charPerLine));
+        $print->setJustification(Printer::JUSTIFY_LEFT);
+        $print->text("Station   : " . $data_station->name . "\n");
+        $print->text("Printer   : " . $data_station->printer_name . "\n");
+        $print->text("Char/Line : " . $charPerLine . "\n");
+        $print->text("Time      : " . now() . "\n");
+        $print->text(self::separator("=", $charPerLine));
+        $print->setJustification(Printer::JUSTIFY_CENTER);
+        $print->text("Printer OK\n");
+        $print->feed(2);
+        $print->cut();
+        $print->close();
+      } else if ($data_station->printer_type == 2) {
+
+        $ngeprintasek = new GeneralLabel;
+        $ngeprintasek->setMargin(0, 2);
+        $ngeprintasek->setNamePrinter($data_station->printer_name);
+        $ngeprintasek->setText("Print OK!");
+        $ngeprintasek->sikat();
+      } else {
+        return 'ERR';
+      }
       return 'OK';
     } catch (\Throwable $e) {
       Log::warning('PrintTest error: ' . $e->getMessage());
