@@ -38,10 +38,10 @@ class OrderServices
 
       // MODULE TAKING ORDER = TO
       $kode_modul = "NO";
-      // $formatnumber = now()->format("YmdHis");
+      $daydetail = now()->format("YmdHis");
 
       //lama $komposisi = $kode_modul . $branch_data->branch_code . $branch_data->company_id . $formatnumber;
-      $komposisi = $kode_modul .$terminal_id. $branch_data->branch_code . time();
+      $komposisi = $kode_modul .$terminal_id. $branch_data->branch_code . $daydetail;
       return $komposisi;
     } catch (\Throwable $e) {
       throw $e;
@@ -109,6 +109,7 @@ class OrderServices
           "sub_total" => $datajson->subTotal,
           "total_tax" => $datajson->totalTax,
           "total_billing" => $datajson->totalBilling,
+          "total_discount" => $datajson->totalDiscount ?? 0,
         ];
 
 
@@ -265,6 +266,7 @@ class OrderServices
           "sub_total" => $datajson->subTotal,
           "total_tax" => $datajson->totalTax,
           "total_billing" => $datajson->totalBilling,
+          "total_discount" => $datajson->totalDiscount ?? 0,
           "member_id" => $datajson->memberId,
         ];
 
@@ -430,6 +432,7 @@ class OrderServices
       tro.sub_total as subTotal,
       tro.total_tax as totalTax,
       tro.total_billing as totalBilling,
+      tro.total_discount as totalDiscount,
       tro.table_section_id as tableSectionId,
       mts.name as tableSectionName,
       tro.table_id as tableId,
@@ -542,7 +545,8 @@ class OrderServices
       tro.total_item as totalItem,
       tro.sub_total as subTotal,
       tro.total_tax as totalTax,
-      tro.total_billing as totalBilling
+      tro.total_billing as totalBilling,
+      tro.total_discount as totalDiscount
 
       FROM tr_order tro
       JOIN mr_visit_purpose mvp on mvp.id = tro.visit_purpose_id
@@ -701,13 +705,13 @@ class OrderServices
   private static function RecalculateOrderTotals(string $order_number)
   {
     $order_detail = DB::select("
-      SELECT qty, base_price, menu_price, tax_value, flag_inclusive_tax
+      SELECT qty, base_price, menu_price, tax_value, flag_inclusive_tax, discount_value
       FROM tr_order_detail
       WHERE order_number = ? AND cancel_at IS NULL
     ", [$order_number]);
 
     $order_detail_package = DB::select("
-      SELECT trodp.qty, trodp.base_price, trodp.menu_price, trodp.tax_value, trodp.flag_inclusive_tax, trod.qty as parent_qty
+      SELECT trodp.qty, trodp.base_price, trodp.menu_price, trodp.tax_value, trodp.flag_inclusive_tax, trodp.discount_value, trod.qty as parent_qty
       FROM tr_order_detail_package trodp
       JOIN tr_order_detail trod ON trod.ulid = trodp.tr_order_detail_ulid
       WHERE trod.order_number = ? AND trod.cancel_at IS NULL
@@ -717,6 +721,7 @@ class OrderServices
     $sub_total = 0;
     $total_tax = 0;
     $total_billing = 0;
+    $total_discount = 0;
 
     foreach ($order_detail as $row) {
       $total_item += $row->qty;
@@ -725,6 +730,7 @@ class OrderServices
       $total_tax += $row_tax;
       $row_total = $row->qty * $row->base_price;
       $total_billing += $row->flag_inclusive_tax ? $row_total : ($row_total + $row_tax);
+      $total_discount += $row->discount_value;
     }
 
     foreach ($order_detail_package as $row) {
@@ -734,6 +740,7 @@ class OrderServices
       $total_tax += $row_tax;
       $row_total = $qty * $row->base_price;
       $total_billing += $row->flag_inclusive_tax ? $row_total : ($row_total + $row_tax);
+      $total_discount += $row->discount_value;
     }
 
     TrOrderModel::where('order_number', $order_number)->update([
@@ -741,6 +748,7 @@ class OrderServices
       'total_tax' => $total_tax,
       'total_billing' => $total_billing,
       'total_item' => $total_item,
+      'total_discount' => $total_discount,
     ]);
   }
 

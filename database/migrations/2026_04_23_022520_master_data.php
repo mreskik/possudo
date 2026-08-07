@@ -167,6 +167,7 @@ return new class extends Migration
             $table->unsignedBigInteger("tablechecker_station_id")->nullable();
             // $table->foreign("tablechecker_station_id")->references("id")->on("mr_station");
             $table->unsignedBigInteger("mainchecker_station_id")->nullable();
+            $table->unsignedBigInteger("print_category_setting_link")->nullable();
             // $table->foreign("mainchecker_station_id")->references("id")->on("mr_station");
             $table->unsignedBigInteger("layout_height")->default(0);
             $table->unsignedBigInteger("layout_width")->default(0);
@@ -224,6 +225,11 @@ return new class extends Migration
                 'id' => 2,
                 'name' => 'POS Desktop',
                 'device_type' => 'mobile'
+            ],
+            [
+                'id' => 3,
+                'name' => 'Kiosk',
+                'device_type' => 'kiosk'
             ],
         ]);
 

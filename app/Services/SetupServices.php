@@ -644,8 +644,17 @@ class SetupServices
       Log::info($response);
 
       if ($response->json('code') == 0) {
+        // 'id' dari APIANDORDER gak dipakai — table section yang di-link ke table section
+        // lain (print_category_setting_link) bisa balikin id sumber yang sama untuk lebih
+        // dari 1 table_section_id, bentrok kalau ikut di-insert (PK mr_table_section_print_category_setting
+        // cuma kolom id tunggal). Biarkan MySQL auto-increment yang generate id lokal.
+        $data = collect($response->json('data'))->map(function ($row) {
+          unset($row['id']);
+          return $row;
+        })->all();
+
         MasterTableSectionPrintCategorySettingModel::truncate();
-        MasterTableSectionPrintCategorySettingModel::insert($response->json('data'));
+        MasterTableSectionPrintCategorySettingModel::insert($data);
       }
 
       return $response;

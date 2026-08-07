@@ -9,6 +9,7 @@ use App\Models\MasterVisitPurposeModel;
 use App\Models\SettingModel;
 use App\Models\StationModel;
 use App\Models\TableModel;
+use App\Models\DaySiftModel;
 use App\Models\TableSectionModel;
 use App\Models\TrOrderDetailPackageModel;
 use App\Models\TrOrderModel;
@@ -129,7 +130,9 @@ class PrintServices
         return;
       }
 
-      $data_order = TrOrderModel::where('order_number', $order_number)->first();
+      $data_order = TrOrderModel::leftJoin('mr_member', 'tr_order.member_id', '=', 'mr_member.id')
+      ->select('tr_order.*', 'mr_member.name as member_name')
+      ->where('tr_order.order_number', $order_number)->first();
       if (!$data_order) {
         Log::info('data order ' . $order_number . ' tidak ditemukan!');
         return;
@@ -174,6 +177,9 @@ class PrintServices
       $order_in  = $data_order->order_in;
       $order_queue = $data_order->order_queue;
       $info  = $data_order->order_name;
+      if (!empty($data_order->member_name)) {
+        $info = $data_order->member_name . " / " . $info;
+      }
       $cashier  = $data_order->chasier_name;
 
       $print->setEmphasis(true);
@@ -195,7 +201,7 @@ class PrintServices
       $print->text("Queue       : " . $order_queue . "\n");
       $print->text("Pax         : " . $pax . "\n");
       $print->text("Batch       : " . $last_batch . "\n");
-      $print->text("Chasier     : " . $cashier . "\n");
+      $print->text("Cashier     : " . $cashier . "\n");
 
 
       // $print->feed(1);
@@ -304,7 +310,9 @@ class PrintServices
       }
 
 
-      $data_order = TrOrderModel::where('order_number', $order_number)->first();
+      $data_order = TrOrderModel::leftJoin('mr_member', 'tr_order.member_id', '=', 'mr_member.id')
+      ->select('tr_order.*', 'mr_member.name as member_name')
+      ->where('tr_order.order_number', $order_number)->first();
 
       $data_order_detail = DB::select("
       SELECT
@@ -336,6 +344,9 @@ class PrintServices
       $order_in  = $data_order->order_in;
       $order_queue = $data_order->order_queue;
       $info  = $data_order->order_name;
+      if (!empty($data_order->member_name)) {
+        $info = $data_order->member_name . " / " . $info;
+      }
       $cashier  = $data_order->chasier_name;
 
       //////////////////// end inisialisasi
@@ -361,7 +372,7 @@ class PrintServices
       $print->text("Queue       : " . $order_queue . "\n");
       $print->text("Pax         : " . $pax . "\n");
       $print->text("Batch       : " . $last_batch . "\n");
-      $print->text("Chasier     : " . $cashier . "\n");
+      $print->text("Cashier     : " . $cashier . "\n");
 
 
       // $print->feed(1);
@@ -462,7 +473,9 @@ class PrintServices
       // $data_station = StationModel::where('id', $table_section->tablechecker_station_id)->first();
 
 
-      $data_order = TrOrderModel::where('order_number', $order_number)->first();
+      $data_order = TrOrderModel::leftJoin('mr_member', 'tr_order.member_id', '=', 'mr_member.id')
+      ->select('tr_order.*', 'mr_member.name as member_name')
+      ->where('tr_order.order_number', $order_number)->first();
       $data_visitpurpose = MasterVisitPurposeModel::where('id', $data_order->visit_purpose_id)->first();
 
       $doneprint = ' and trod.done_print = false ';
@@ -702,7 +715,9 @@ class PrintServices
   {
     try {
 
-      $data_order = TrOrderModel::where('order_number', $order_number)->first();
+      $data_order = TrOrderModel::leftJoin('mr_member', 'tr_order.member_id', '=', 'mr_member.id')
+      ->select('tr_order.*', 'mr_member.name as member_name')
+      ->where('tr_order.order_number', $order_number)->first();
 
       $table_section =  TableSectionModel::where('id', $data_order->table_section_id)->first();
       if (!$table_section) {
@@ -728,10 +743,12 @@ class PrintServices
       $data_order_detail = DB::select("
       SELECT
       trod.*,
-      mi.name as menu_name
+      mi.name as menu_name,
+      mp.name as promo_name
       FROM tr_order_detail trod
       JOIN mr_item_conv mic on mic.id = trod.menu_id
       JOIN mr_item mi on mi.id = mic.item_id
+      LEFT JOIN mr_promo mp on mp.id = trod.promo_id
       WHERE trod.order_number = ? 
       ", [$order_number]);
 
@@ -752,6 +769,9 @@ class PrintServices
       $order_in  = $data_order->order_in;
       $order_queue = $data_order->order_queue;
       $info  = $data_order->order_name;
+      if (!empty($data_order->member_name)) {
+        $info = $data_order->member_name . " / " . $info;
+      }
       $cashier  = $data_order->chasier_name ?? '';
 
       $print->setJustification(Printer::JUSTIFY_CENTER);
@@ -815,32 +835,44 @@ class PrintServices
       // $print->text("Table       : " . $table_section_name . "\n");
       // $print->text("Purpose     : " . $visitpurpose_name . "\n");
       $print->text("Pax         : " . $pax . "\n");
-      $print->text("Chasier     : " . $cashier . "\n");
+      $print->text("Cashier     : " . $cashier . "\n");
       $print->text("Status      : ");
       $print->setEmphasis(true);
       $print->text(strtoupper($data_order->status) . "\n");
       $print->setEmphasis(false);
       $print->text(self::separator("-", $charPerLine));
+      $displaySubtotal = 0;
       foreach ($data_order_detail as $itemmenu) {
-
+        $displaySubtotal += $itemmenu->total;
         $print->text(self::threeline($itemmenu->qty, $itemmenu->menu_name, number_format($itemmenu->total, 0, ',', '.'), $charPerLine));
+        $totalItemDiscount = $itemmenu->discount_value;
+
         $listpackagedetail = DB::select("
         SELECT
           trod.*,
-          mi.name as menu_name
+          mi.name as menu_name,
+          mp.name as promo_name
         FROM tr_order_detail_package trod
         JOIN mr_item_conv mic on mic.id = trod.menu_id
         JOIN mr_item mi on mi.id = mic.item_id
-
+        LEFT JOIN mr_promo mp on mp.id = trod.promo_id
         WHERE tr_order_detail_ulid = ?", [$itemmenu->ulid]);
 
         foreach ($listpackagedetail as $itempackage) {
           if (count($listpackagedetail) > 0) {
+            $displaySubtotal += $itempackage->total;
             $print->text(self::threeline("", " " . $itempackage->qty . " " . $itempackage->menu_name, number_format($itempackage->total, 0, ',', '.'), $charPerLine));
+            $totalItemDiscount += $itempackage->discount_value;
+            
             if ($itempackage->notes != null || $itempackage->notes != '') {
               $print->text(self::threeline("", " *" . $itempackage->notes, '', $charPerLine));
             }
           }
+        }
+
+        if ($totalItemDiscount > 0) {
+          $promoNameLabel = $itemmenu->promo_name ? " % " . $itemmenu->promo_name : " % Promo";
+          $print->text(self::threeline("", $promoNameLabel, "-" . number_format($totalItemDiscount, 0, ',', '.'), $charPerLine));
         }
         if ($itemmenu->notes != null || $itemmenu->notes != '') {
           $print->text(self::line('notes :' . $itemmenu->notes, "",  0));
@@ -855,6 +887,13 @@ class PrintServices
 
 
       $print->text("\n");
+      
+      if ($data_order->total_discount > 0) {
+        $print->text(self::threeline2("", "Subtotal :", number_format($displaySubtotal, 0, ',', '.'), $charPerLine));
+        $print->text(self::threeline2("", "Discount :", "-" . number_format($data_order->total_discount, 0, ',', '.'), $charPerLine));
+        $print->text(self::separator("-", $charPerLine));
+      }
+
       $print->setEmphasis(true);
       $print->setTextSize(1, 2); // gedene
       $print->text(self::threeline2("", "Grand Total :", number_format($data_order->total_billing, 0, ',', '.'), $charPerLine));
@@ -901,7 +940,9 @@ class PrintServices
   public static function PrintBill(string $order_number)
   {
     try {
-      $data_order = TrOrderModel::where('order_number', $order_number)->first();
+      $data_order = TrOrderModel::leftJoin('mr_member', 'tr_order.member_id', '=', 'mr_member.id')
+      ->select('tr_order.*', 'mr_member.name as member_name')
+      ->where('tr_order.order_number', $order_number)->first();
 
       $table_section =  TableSectionModel::where('id', $data_order->table_section_id)->first();
       if (!$table_section) {
@@ -919,10 +960,12 @@ class PrintServices
       $data_order_detail = DB::select("
       SELECT
       trod.*,
-      mi.name as menu_name
+      mi.name as menu_name,
+      mp.name as promo_name
       FROM tr_order_detail trod
       JOIN mr_item_conv mic on mic.id = trod.menu_id
       JOIN mr_item mi on mi.id = mic.item_id
+      LEFT JOIN mr_promo mp on mp.id = trod.promo_id
       WHERE trod.order_number = ? 
       ", [$order_number]);
       $data_visitpurpose = MasterVisitPurposeModel::where('id', $data_order->visit_purpose_id)->first();
@@ -943,6 +986,9 @@ class PrintServices
       $order_in  = $data_order->order_in;
       $order_queue = $data_order->order_queue;
       $info  = $data_order->order_name;
+      if (!empty($data_order->member_name)) {
+        $info = $data_order->member_name . " / " . $info;
+      }
       $cashier  = $data_order->chasier_name;
 
       if ($data_order->status == 'cancel') {
@@ -971,7 +1017,7 @@ class PrintServices
       $print->text("Table       : " . $table_section->name . "\n");
       $print->text("Purpose     : " . $visitpurpose_name . "\n");
       $print->text("Pax         : " . $pax . "\n");
-      $print->text("Chasier     : " . $cashier . "\n");
+      $print->text("Cashier     : " . $cashier . "\n");
 
       $print->text("Status      : ");
       $print->setEmphasis(true);
@@ -983,26 +1029,40 @@ class PrintServices
       $print->setEmphasis(false);
 
       $print->text(self::separator("-", $charPerLine));
+      $displaySubtotal = 0;
       foreach ($data_order_detail as $itemmenu) {
+        $displaySubtotal += $itemmenu->total;
         $print->text(self::threeline($itemmenu->qty, $itemmenu->menu_name, number_format($itemmenu->total, 0, ',', '.'), $charPerLine));
+        $totalItemDiscount = $itemmenu->discount_value;
         $listpackagedetail = DB::select("
         SELECT
           trod.*,
-          mi.name as menu_name
+          mi.name as menu_name,
+          mp.name as promo_name
         FROM tr_order_detail_package trod
         JOIN mr_item_conv mic on mic.id = trod.menu_id
         JOIN mr_item mi on mi.id = mic.item_id
+        LEFT JOIN mr_promo mp on mp.id = trod.promo_id
 
         WHERE tr_order_detail_ulid = ?", [$itemmenu->ulid]);
 
         foreach ($listpackagedetail as $itempackage) {
           if (count($listpackagedetail) > 0) {
+            $displaySubtotal += $itempackage->total;
             $print->text(self::threeline("", " " . $itempackage->qty . " " . $itempackage->menu_name, number_format($itempackage->total, 0, ',', '.'), $charPerLine));
+            $totalItemDiscount += $itempackage->discount_value;
+            
             if ($itempackage->notes != null || $itempackage->notes != '') {
               $print->text(self::threeline("", " *" . $itempackage->notes, '', $charPerLine));
             }
           }
         }
+        
+        if ($totalItemDiscount > 0) {
+          $promoNameLabel = $itemmenu->promo_name ? " % " . $itemmenu->promo_name : " % Promo";
+          $print->text(self::threeline("", $promoNameLabel, "-" . number_format($totalItemDiscount, 0, ',', '.'), $charPerLine));
+        }
+
         if ($itemmenu->notes != null || $itemmenu->notes != '') {
           $print->text(self::line('notes :' . $itemmenu->notes, "",  0));
         }
@@ -1011,6 +1071,14 @@ class PrintServices
       $print->text(self::separator("-", $charPerLine));
       $print->text($data_order->total_item . " Items" . "\n");
       $print->setJustification(Printer::JUSTIFY_RIGHT);
+      
+      $print->text("\n");
+      if ($data_order->total_discount > 0) {
+        $print->text(self::threeline2("", "Subtotal :", number_format($displaySubtotal, 0, ',', '.'), $charPerLine));
+        $print->text(self::threeline2("", "Discount :", "-" . number_format($data_order->total_discount, 0, ',', '.'), $charPerLine));
+        $print->text(self::separator("-", $charPerLine));
+      }
+
       $print->setEmphasis(true);
       $print->setTextSize(1, 2); // gedene
       $print->text(self::threeline2("", "Grand Total :", number_format($data_order->total_billing, 0, ',', '.'), $charPerLine));
@@ -1073,7 +1141,7 @@ class PrintServices
 
   //   $print->feed(1);
   //   $print->text("Branch Name      : " . $branch->branch_name . "\n");
-  //   $print->text("Chasier          : " . "JUSE" . "\n");
+  //   $print->text("Cashier          : " . "JUSE" . "\n");
   //   $print->text("Print Time       : " . now() . "\n");
 
   //   if ($datareport['dayshift']->start_time && $datareport['dayshift']->end_time) {
@@ -1203,6 +1271,19 @@ class PrintServices
       throw $e;
     }
 
+    $dayin_user_fullname = '';
+    try{
+      $dayshift = DB::table('tr_dayshift')
+      ->join('mr_user', 'tr_dayshift.dayout_user_id', '=', 'mr_user.id')
+      ->select('mr_user.fullname')->where('tr_dayshift.ulid', $dayshift_ulid)->first();
+
+      $dayin_user_fullname = $dayshift->fullname ?? '';
+    }catch(\Throwable $e){
+      throw $e;
+    }
+   
+    
+
     // Log::info($datareport["sales_recapitulation"]);
     // return;
 
@@ -1233,7 +1314,7 @@ class PrintServices
 
     $print->feed(1);
     $print->text("Branch Name      : " . $branch->branch_name . "\n");
-    $print->text("Chasier          : " . "JUSE" . "\n");
+    $print->text("Cashier          : " .$dayin_user_fullname. "\n");
     $print->text("Print Time       : " . now() . "\n");
 
     // $jumlahsparate = count($datareport['dayshift_detail']);
@@ -1372,7 +1453,6 @@ class PrintServices
   static function PrintCurrentShift($dayshift_ulid)
   {
     $datareport = null;
-
     try {
       $datareport = DayShiftServices::GetReportCurrentShift($dayshift_ulid);
     } catch (\Throwable $e) {
@@ -1406,10 +1486,20 @@ class PrintServices
     $print->setJustification(Printer::JUSTIFY_LEFT);
     // $print->text(self::separator("=", $charPerLine));
 
+    $user_fullname = '';
+    try{
+      $dayshift = DB::table('tr_dayshift_detail')
+      ->join('mr_user', 'tr_dayshift_detail.shift_user_id', '=', 'mr_user.id')
+      ->select('mr_user.fullname')->where('tr_dayshift_detail.dayshift_ulid', $dayshift_ulid)->latest('tr_dayshift_detail.shift_time')->first();
+
+      $user_fullname = $dayshift->fullname ?? '';
+    }catch(\Throwable $e){
+      throw $e;
+    }
 
     $print->feed(1);
     $print->text("Branch Name      : " . $branch->branch_name . "\n");
-    $print->text("Chasier          : " . "JUSE" . "\n");
+    $print->text("Cashier          : " . $user_fullname . "\n");
     $print->text("Print Time       : " . now() . "\n");
 
     $jumlahsparate = count($datareport['dayshift_detail']);
@@ -1580,10 +1670,20 @@ class PrintServices
     $print->setJustification(Printer::JUSTIFY_LEFT);
     // $print->text(self::separator("=", $charPerLine));
 
+    $user_fullname = '';
+    try{
+      $dayshift = DB::table('tr_dayshift_detail')
+      ->join('mr_user', 'tr_dayshift_detail.shift_user_id', '=', 'mr_user.id')
+      ->select('mr_user.fullname')->where('tr_dayshift_detail.ulid', $dayshift_detail_ulid)->first();
+
+      $user_fullname = $dayshift->fullname ?? '';
+    }catch(\Throwable $e){
+      throw $e;
+    }
 
     $print->feed(1);
     $print->text("Branch Name      : " . $branch->branch_name . "\n");
-    $print->text("Chasier          : " . "JUSE" . "\n");
+    $print->text("Cashier          : " . $user_fullname. "\n");
     $print->text("Print Time       : " . now() . "\n");
 
     // $jumlahsparate = count($datareport['dayshift_detail']);
@@ -1776,7 +1876,7 @@ class PrintServices
 
   //   $print->feed(1);
   //   $print->text("Branch Name      : " . $branch->branch_name . "\n");
-  //   $print->text("Chasier          : " . "JUSE" . "\n");
+  //   $print->text("Cashier          : " . "JUSE" . "\n");
   //   $print->text("Print Time       : " . now() . "\n");
 
   //   if ($datareport['dayshift']->start_time && $datareport['dayshift']->end_time) {

@@ -26,7 +26,7 @@ return new class extends Migration
             $table->unsignedBigInteger("terminal_id");
             $table->string("order_name");
             $table->string("customer_phone_number")->nullable();
-            $table->string('order_source'); // pos , qr
+            $table->string('order_source'); // pos, qr, kiosk
             $table->string("order_type"); //dinein / takeaway
             $table->unsignedBigInteger('table_section_id')->nullable();
             $table->unsignedBigInteger('table_id')->nullable();
@@ -39,7 +39,7 @@ return new class extends Migration
             $table->unsignedBigInteger("member_id")->nullable();
             $table->unsignedBigInteger("visit_purpose_id");
             $table->unsignedBigInteger("pax")->default(1);
-            $table->string("status"); // pending, hold, cancel, paid, void, moved
+            $table->string("status"); // pending, hold, cancel, paid, void, moved, not_paid
 
             $table->string("waiter_name")->nullable();
             $table->string("sender_name")->nullable();

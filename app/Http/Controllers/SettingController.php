@@ -11,15 +11,32 @@ use Illuminate\Http\Request;
 class SettingController extends Controller
 {
     //
+    // save adalah endpoint tunggal untuk semua tab di halaman Setting — body dipisah per
+    // section (general_setting, kiosk, dst nanti), tiap section opsional, cuma yang
+    // dikirim aja yang diproses.
     public function save(Request $request)
     {
         try {
+            $messages = [];
 
-            $message = SettingServices::Save($request);
+            if ($request->has('general_setting')) {
+                $messages[] = SettingServices::Save($request->input('general_setting'));
+            }
+
+            if ($request->has('kiosk.terminal')) {
+                $messages[] = SettingServices::SaveKioskTerminal($request->input('kiosk.terminal'));
+            }
+
+            if (count($messages) === 0) {
+                return response()->json([
+                    'code' => 100,
+                    'message' => 'Tidak ada section yang dikirim (general_setting/kiosk).',
+                ]);
+            }
 
             return response()->json([
                 'code' => 0,
-                "message" => $message
+                "message" => "Success"
             ]);
         } catch (\Throwable $e) {
             return response()->json([

@@ -25,7 +25,8 @@ class PaymentServices
     $branch_data = BranchModel::first();
     // MODULE TAKING ORDER = TO
     $kode_modul = "PS";
-    $komposisi = $kode_modul .$terminal_id. $branch_data->branch_code . time();
+    $daydetail = now()->format("YmdHis");
+    $komposisi = $kode_modul .$terminal_id. $branch_data->branch_code . $daydetail;
     return $komposisi;
   }
 
