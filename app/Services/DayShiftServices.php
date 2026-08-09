@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BranchModel;
 use App\Models\DayShiftDetailModel;
 use App\Models\DaySiftModel;
+use App\Models\SessionModel;
 use App\Models\TrOrderDetailModel;
 use App\Models\TrOrderDetailPackageModel;
 use App\Models\TrOrderModel;
@@ -19,6 +20,57 @@ use Illuminate\Support\Str;
 class DayShiftServices
 {
 
+  // getLoggedInUserId ambil id user yang sedang login dari bearer token request -- pola sama
+  // seperti OrderServices::getChasierName(), app ini gak pakai Auth::user() Laravel, login
+  // state-nya di tabel mr_session (session_id = token, data = json_encode(user) penuh dari login).
+  private static function getLoggedInUserId($request): ?int
+  {
+    try {
+      $token = $request?->bearerToken();
+      if (!$token) return null;
+      $session = SessionModel::where('session_id', $token)->first();
+      if (!$session) return null;
+      $user = json_decode($session->data);
+      return $user->id ?? null;
+    } catch (\Throwable $e) {
+      return null;
+    }
+  }
+
+  // NettSalesJoinSql: LEFT JOIN nempel ke tr_order buat kolom nett_sales_real per order
+  // ("sub_total dikurangi diskon, YANG BENER"). Beda dari (sub_total - total_discount) lama
+  // -- itu nyampur basis: sub_total udah net-of-tax (dibagi (1+rate) buat inclusive), sedangkan
+  // total_discount masih basis gross (dipotong dari base_price mentah sebelum pajak dilepas,
+  // lihat recomputeDppTax() di orderPage.vue). Nyampur 2 basis itu bikin netsales understated
+  // buat baris inclusive-tax yang kena diskon (diskon "kepotong penuh" padahal cuma porsi
+  // net-nya yang seharusnya kepotong, sisanya porsi pajak).
+  // Di sini dihitung ulang dari base_price/discount_value/tax_rate/flag_inclusive_tax langsung
+  // (bukan dari kolom after_discount/dpp yang tersimpan) supaya konsisten juga buat order lama
+  // yang kolom itu masih NULL.
+  private static function NettSalesJoinSql(): string
+  {
+    return "
+      LEFT JOIN (
+        SELECT order_number, SUM(nett) AS nett_sales_real FROM (
+          SELECT trod.order_number,
+            trod.qty * (CASE WHEN trod.flag_inclusive_tax = 1
+              THEN (trod.base_price - trod.discount_value) / (1 + trod.tax_rate / 100)
+              ELSE (trod.base_price - trod.discount_value) END) AS nett
+          FROM tr_order_detail trod
+          WHERE trod.cancel_at IS NULL
+          UNION ALL
+          SELECT trod.order_number,
+            (trod.qty * trodp.qty) * (CASE WHEN trodp.flag_inclusive_tax = 1
+              THEN (trodp.base_price - trodp.discount_value) / (1 + trodp.tax_rate / 100)
+              ELSE (trodp.base_price - trodp.discount_value) END) AS nett
+          FROM tr_order_detail_package trodp
+          JOIN tr_order_detail trod ON trod.ulid = trodp.tr_order_detail_ulid
+          WHERE trod.cancel_at IS NULL
+        ) combined
+        GROUP BY order_number
+      ) nett_join ON nett_join.order_number = tro.order_number
+    ";
+  }
 
   public static function GetDayShift()
   {
@@ -61,10 +113,10 @@ class DayShiftServices
     }
   }
 
-  public static function EndShift(string $ulid_dayshift)
+  public static function EndShift(string $ulid_dayshift, $request = null)
   {
     try {
-      // cek current dayshift 
+      // cek current dayshift
       $current_dayshift = DaySiftModel::where("ulid", $ulid_dayshift)->first();
       if ($current_dayshift) {
         if ($current_dayshift->dayout_time != null) {
@@ -78,7 +130,7 @@ class DayShiftServices
         "ulid" => (string)Str::ulid(),
         "dayshift_ulid" => $current_dayshift->ulid,
         "shift_time" => now(),
-        "shift_user_id" => 1,
+        "shift_user_id" => self::getLoggedInUserId($request) ?? 1,
       ]);
       return 'success';
     } catch (\Throwable $e) {
@@ -106,7 +158,8 @@ class DayShiftServices
       DaySiftModel::where("ulid", $dayshift_ulid)->update([
         "dayout_time" => now(),
         "dayout_total" => $aktual_ending_cash,
-        "dayout_notes" => $notes
+        "dayout_notes" => $notes,
+        "dayout_user_id" => self::getLoggedInUserId($request) ?? 1,
       ]);
       PrintServices::PrintEndDay($dayshift_ulid);
 
@@ -136,10 +189,12 @@ class DayShiftServices
 
       $data_order_list = DB::select("
       SELECT
-      tro.* 
+      tro.*,
+      COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
       FROM
       tr_order tro
-      JOIN ( SELECT * FROM tr_dayshift tr WHERE tr.dayout_time IS NULL LIMIT 1 ) trd ON TRUE 
+      JOIN ( SELECT * FROM tr_dayshift tr WHERE tr.dayout_time IS NULL LIMIT 1 ) trd ON TRUE " .
+        self::NettSalesJoinSql() . "
       WHERE
       tro.order_in >= trd.dayin_time
       ");
@@ -183,20 +238,20 @@ class DayShiftServices
           //masukkan ke list order number pending
           $list_ordernumber->pending[] = $orderitem->order_number;
         }
-        //sementara pakai subtotal dulu nanti kalau udah implementasi discount baru di cek lagi
-        //itungan net sales
+        //itungan net sales -- pakai nett_sales_real (SUM qty*dpp per order, lihat NettSalesJoinSql()),
+        //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
-          $netsales += $orderitem->sub_total;
+          $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
           $netsales_sc_total += $orderitem->service_charge;
           $netsales_pf_total += $orderitem->platform_fee;
           $pax_total += $orderitem->pax;
 
-          $avg_netsales_per_pax += ($orderitem->sub_total);
+          $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_pax += ($orderitem->total_billing);
-          $avg_netsales_per_bill += $orderitem->sub_total;
+          $avg_netsales_per_bill += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_bill += $orderitem->total_billing;
 
           //kita masukkan ke list order number paid
@@ -277,7 +332,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -294,7 +349,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -326,7 +381,7 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -344,7 +399,7 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -466,9 +521,11 @@ class DayShiftServices
       if ($data_dayshift_detail) {
         $data_order_list = DB::select("
         SELECT
-        tro.* 
+        tro.*,
+        COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
         FROM
-        tr_order tro
+        tr_order tro " .
+          self::NettSalesJoinSql() . "
         WHERE
         tro.order_in >= ? and
         tro.order_out <= ?
@@ -534,20 +591,20 @@ class DayShiftServices
       $list_payment_number = [];
       foreach ($data_order_list as $orderitem) {
 
-        //sementara pakai subtotal dulu nanti kalau udah implementasi discount baru di cek lagi
-        //itungan net sales
+        //itungan net sales -- pakai nett_sales_real (SUM qty*dpp per order, lihat NettSalesJoinSql()),
+        //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
-          $netsales += $orderitem->sub_total;
+          $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
           $netsales_sc_total += $orderitem->service_charge;
           $netsales_pf_total += $orderitem->platform_fee;
           $pax_total += $orderitem->pax;
 
-          $avg_netsales_per_pax += ($orderitem->sub_total);
+          $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_pax += ($orderitem->total_billing);
-          $avg_netsales_per_bill += $orderitem->sub_total;
+          $avg_netsales_per_bill += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_bill += $orderitem->total_billing;
 
           //kita masukkan ke list order number paid
@@ -643,7 +700,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -660,7 +717,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -692,7 +749,7 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -710,7 +767,7 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -806,9 +863,11 @@ class DayShiftServices
       if ($data_dayshift->dayout_time != null) {
         $data_order_list = DB::select("
         SELECT
-        tro.* 
+        tro.*,
+        COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
         FROM
-        tr_order tro
+        tr_order tro " .
+          self::NettSalesJoinSql() . "
         WHERE
         tro.order_in >= ? and
         tro.order_out <= ?
@@ -816,12 +875,13 @@ class DayShiftServices
       } else {
         $data_order_list = DB::select("
         SELECT
-        tro.* 
+        tro.*,
+        COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
         FROM
-        tr_order tro
-        
+        tr_order tro " .
+          self::NettSalesJoinSql() . "
         WHERE
-        tro.order_in >= ? 
+        tro.order_in >= ?
         ", [$data_dayshift->dayin_time]);
       }
 
@@ -881,20 +941,20 @@ class DayShiftServices
       // itungan data fix (paid, cancel, void)
       foreach ($data_order_list as $orderitem) {
 
-        //sementara pakai subtotal dulu nanti kalau udah implementasi discount baru di cek lagi
-        //itungan net sales
+        //itungan net sales -- pakai nett_sales_real (SUM qty*dpp per order, lihat NettSalesJoinSql()),
+        //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
-          $netsales += $orderitem->sub_total;
+          $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
           $netsales_sc_total += $orderitem->service_charge;
           $netsales_pf_total += $orderitem->platform_fee;
           $pax_total += $orderitem->pax;
 
-          $avg_netsales_per_pax += ($orderitem->sub_total);
+          $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_pax += ($orderitem->total_billing);
-          $avg_netsales_per_bill += $orderitem->sub_total;
+          $avg_netsales_per_bill += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_bill += $orderitem->total_billing;
 
           //kita masukkan ke list order number paid
@@ -991,7 +1051,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -1008,7 +1068,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -1040,7 +1100,7 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -1058,7 +1118,7 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -1160,12 +1220,14 @@ class DayShiftServices
 
       $data_order_list = DB::select("
         SELECT
-        tro.* 
+        tro.*,
+        COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
         FROM
-        tr_order tro
+        tr_order tro " .
+          self::NettSalesJoinSql() . "
         WHERE
         tro.order_in >= ?
-       
+
         ", [$starttime]);
 
       // if (count($data_order_list) == 0) {
@@ -1228,20 +1290,20 @@ class DayShiftServices
       $list_payment_number = [];
       foreach ($data_order_list as $orderitem) {
 
-        //sementara pakai subtotal dulu nanti kalau udah implementasi discount baru di cek lagi
-        //itungan net sales
+        //itungan net sales -- pakai nett_sales_real (SUM qty*dpp per order, lihat NettSalesJoinSql()),
+        //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
-          $netsales += $orderitem->sub_total;
+          $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
           $netsales_sc_total += $orderitem->service_charge;
           $netsales_pf_total += $orderitem->platform_fee;
           $pax_total += $orderitem->pax;
 
-          $avg_netsales_per_pax += ($orderitem->sub_total);
+          $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_pax += ($orderitem->total_billing);
-          $avg_netsales_per_bill += $orderitem->sub_total;
+          $avg_netsales_per_bill += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_bill += $orderitem->total_billing;
 
           //kita masukkan ke list order number paid
@@ -1337,7 +1399,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -1354,7 +1416,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -1386,7 +1448,7 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -1404,7 +1466,7 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -1514,13 +1576,15 @@ class DayShiftServices
 
       $data_order_list = DB::select("
         SELECT
-        tro.* 
+        tro.*,
+        COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
         FROM
-        tr_order tro
+        tr_order tro " .
+          self::NettSalesJoinSql() . "
         WHERE
         tro.order_in >= ? AND
         tro.order_out <= ?
-       
+
         ", [$starttime, $endtime]);
 
       // if (count($data_order_list) == 0) {
@@ -1583,20 +1647,20 @@ class DayShiftServices
       $list_payment_number = [];
       foreach ($data_order_list as $orderitem) {
 
-        //sementara pakai subtotal dulu nanti kalau udah implementasi discount baru di cek lagi
-        //itungan net sales
+        //itungan net sales -- pakai nett_sales_real (SUM qty*dpp per order, lihat NettSalesJoinSql()),
+        //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
-          $netsales += $orderitem->sub_total;
+          $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
           $netsales_sc_total += $orderitem->service_charge;
           $netsales_pf_total += $orderitem->platform_fee;
           $pax_total += $orderitem->pax;
 
-          $avg_netsales_per_pax += ($orderitem->sub_total);
+          $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_pax += ($orderitem->total_billing);
-          $avg_netsales_per_bill += $orderitem->sub_total;
+          $avg_netsales_per_bill += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_bill += $orderitem->total_billing;
 
           //kita masukkan ke list order number paid
@@ -1692,7 +1756,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -1709,7 +1773,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -1741,7 +1805,7 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -1759,7 +1823,7 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -1864,12 +1928,14 @@ class DayShiftServices
 
       $data_order_list = DB::select("
         SELECT
-        tro.* 
+        tro.*,
+        COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
         FROM
-        tr_order tro
+        tr_order tro " .
+          self::NettSalesJoinSql() . "
         WHERE
         tro.order_in >= ?
-       
+
         ", [$starttime]);
 
       // if (count($data_order_list) == 0) {
@@ -1932,20 +1998,20 @@ class DayShiftServices
       $list_payment_number = [];
       foreach ($data_order_list as $orderitem) {
 
-        //sementara pakai subtotal dulu nanti kalau udah implementasi discount baru di cek lagi
-        //itungan net sales
+        //itungan net sales -- pakai nett_sales_real (SUM qty*dpp per order, lihat NettSalesJoinSql()),
+        //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
-          $netsales += $orderitem->sub_total;
+          $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
           $netsales_sc_total += $orderitem->service_charge;
           $netsales_pf_total += $orderitem->platform_fee;
           $pax_total += $orderitem->pax;
 
-          $avg_netsales_per_pax += ($orderitem->sub_total);
+          $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_pax += ($orderitem->total_billing);
-          $avg_netsales_per_bill += $orderitem->sub_total;
+          $avg_netsales_per_bill += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_bill += $orderitem->total_billing;
 
           //kita masukkan ke list order number paid
@@ -2041,7 +2107,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -2058,7 +2124,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -2090,7 +2156,7 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -2108,7 +2174,7 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -2229,13 +2295,15 @@ class DayShiftServices
 
       $data_order_list = DB::select("
         SELECT
-        tro.* 
+        tro.*,
+        COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
         FROM
-        tr_order tro
+        tr_order tro " .
+          self::NettSalesJoinSql() . "
         WHERE
         tro.order_in >= ? AND
         tro.order_out <= ?
-       
+
         ", [$starttime, $endtime]);
 
       // if (count($data_order_list) == 0) {
@@ -2298,20 +2366,20 @@ class DayShiftServices
       $list_payment_number = [];
       foreach ($data_order_list as $orderitem) {
 
-        //sementara pakai subtotal dulu nanti kalau udah implementasi discount baru di cek lagi
-        //itungan net sales
+        //itungan net sales -- pakai nett_sales_real (SUM qty*dpp per order, lihat NettSalesJoinSql()),
+        //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
-          $netsales += $orderitem->sub_total;
+          $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
           $netsales_sc_total += $orderitem->service_charge;
           $netsales_pf_total += $orderitem->platform_fee;
           $pax_total += $orderitem->pax;
 
-          $avg_netsales_per_pax += ($orderitem->sub_total);
+          $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_pax += ($orderitem->total_billing);
-          $avg_netsales_per_bill += $orderitem->sub_total;
+          $avg_netsales_per_bill += ($orderitem->nett_sales_real ?? 0);
           $avg_grosssales_per_bill += $orderitem->total_billing;
 
           //kita masukkan ke list order number paid
@@ -2407,7 +2475,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -2424,7 +2492,7 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -2456,7 +2524,7 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
@@ -2474,7 +2542,7 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( tod.menu_price * tod.qty ) AS sub_total,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
           ( tod.discount_value * tod.qty ) AS discount_value,
         IF
           ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,

@@ -31,11 +31,15 @@ class PushDataServices
 
   protected function formatedDateToTimeTime(string $datetime_or_timestamp)
   {
-    $date = Carbon::createFromFormat('Y-m-d H:i:s', $datetime_or_timestamp . " 00:00:00", config("app.timezone"));
+    // order_date murni tanggal kalender (bukan instant waktu), jadi jangan
+    // diinterpretasikan pakai timezone lokal (Asia/Jakarta) sebelum dikonversi
+    // ke UTC -- itu bikin tanggalnya mundur 1 hari (00:00 WIB = 17:00 UTC hari
+    // sebelumnya). Interpretasikan sebagai UTC supaya tanggalnya tidak bergeser.
+    $date = Carbon::createFromFormat('Y-m-d H:i:s', $datetime_or_timestamp . " 00:00:00", 'UTC');
     $formatted = $date->toISOString(true);
     return $formatted;
 
-    // 2026-06-19T02:03:35.000000Z
+    // 2026-06-19T00:00:00.000000Z
   }
 
   function pushDataOrder()

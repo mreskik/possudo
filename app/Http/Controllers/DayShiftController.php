@@ -54,7 +54,7 @@ class DayShiftController extends Controller
 
             $dayshift_ulid = $request->dayshift_ulid;
             //belum filter
-            $data = DayShiftServices::EndShift($dayshift_ulid);
+            $data = DayShiftServices::EndShift($dayshift_ulid, $request);
             return response()->json([
                 "code" => 0,
                 "message" => $data
@@ -192,7 +192,7 @@ class DayShiftController extends Controller
     {
         try {
             $dayshift_ulid = $request->dayshift_ulid;
-            PrintServices::PrintCurrentShift($dayshift_ulid);
+            PrintServices::PrintCurrentShift($dayshift_ulid, $request);
             return response()->json([
                 "code" => 0,
                 "message" => "success print current shift report"
@@ -213,6 +213,23 @@ class DayShiftController extends Controller
             return response()->json([
                 "code" => 0,
                 "message" => "success print endday report"
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 100,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
+
+    function printReportDaysift(Request $request)
+    {
+        try {
+            $dayshift_ulid = $request->dayshift_ulid;
+            PrintServices::PrintReportDaysift($dayshift_ulid, $request);
+            return response()->json([
+                "code" => 0,
+                "message" => "success print report dayshift"
             ]);
         } catch (\Throwable $e) {
             return response()->json([

@@ -136,7 +136,8 @@ class SalesServices
         "void_notes" => $notes,
         "void_at" => now(),
         "void_print_ke" => 0,
-        "sync_at" => null
+        "sync_at" => null,
+        "order_out" => now()
       ]);
       DB::commit();
 
