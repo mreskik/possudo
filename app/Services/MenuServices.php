@@ -132,7 +132,8 @@ class MenuServices
         mp.is_inclusive as flagInclusiveTax,
         mi.tax_type as taxType,
         mi.stok_qty as stokQty,
-        mi.flag_soldout as flagSoldOut
+        mi.flag_soldout as flagSoldOut,
+        mi.image as imageSrc
 
         FROM mr_pricelist_detail mpd
         JOIN mr_pricelist mp on mp.id = mpd.pricelist_id

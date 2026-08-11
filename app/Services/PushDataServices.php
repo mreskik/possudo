@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\DaySiftModel;
+use App\Models\DayShiftDetailModel;
 use App\Models\TrOrderDetailModel;
 use App\Models\TrOrderDetailPackageModel;
 use App\Models\TrOrderModel;
@@ -259,6 +261,86 @@ class PushDataServices
           ]);
         }
 
+        DB::commit();
+        return 'success';
+      } else {
+        throw new \Exception($response->json('message'));
+      }
+    } catch (\Throwable $e) {
+      if (DB::transactionLevel() > 0) {
+        DB::rollBack();
+      }
+      throw $e;
+    }
+  }
+
+  function pushDataDayShift()
+  {
+    $datetime = now()->toISOString(true);
+    try {
+      $list_data_dayshift = DaySiftModel::where('sync_at', null)->get();
+
+      foreach ($list_data_dayshift as $item) {
+        if ($item->dayin_time != null) {
+          $item->dayin_time = $this->formatedDateTimeToTimeTime($item->dayin_time);
+        }
+
+        if ($item->dayout_time != null) {
+          $item->dayout_time = $this->formatedDateTimeToTimeTime($item->dayout_time);
+        }
+
+        $item->sync_at = $datetime;
+      }
+
+      $response = Http::asJson()->post($this->endpoint . "/pos/push/data_dayshift", [
+        "list_dayshift" => $list_data_dayshift
+      ]);
+
+      if ($response->json('code') == 0) {
+        DB::beginTransaction();
+        foreach ($list_data_dayshift as $item) {
+          DaySiftModel::where("ulid", $item->ulid)->update([
+            "sync_at" => $datetime
+          ]);
+        }
+        DB::commit();
+        return 'success';
+      } else {
+        throw new \Exception($response->json('message'));
+      }
+    } catch (\Throwable $e) {
+      if (DB::transactionLevel() > 0) {
+        DB::rollBack();
+      }
+      throw $e;
+    }
+  }
+
+  function pushDataDayShiftDetail()
+  {
+    $datetime = now()->toISOString(true);
+    try {
+      $list_data_dayshift_detail = DayShiftDetailModel::where('sync_at', null)->get();
+
+      foreach ($list_data_dayshift_detail as $item) {
+        if ($item->shift_time != null) {
+          $item->shift_time = $this->formatedDateTimeToTimeTime($item->shift_time);
+        }
+
+        $item->sync_at = $datetime;
+      }
+
+      $response = Http::asJson()->post($this->endpoint . "/pos/push/data_dayshift_detail", [
+        "list_dayshift_detail" => $list_data_dayshift_detail
+      ]);
+
+      if ($response->json('code') == 0) {
+        DB::beginTransaction();
+        foreach ($list_data_dayshift_detail as $item) {
+          DayShiftDetailModel::where("ulid", $item->ulid)->update([
+            "sync_at" => $datetime
+          ]);
+        }
         DB::commit();
         return 'success';
       } else {

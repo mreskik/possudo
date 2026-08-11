@@ -91,4 +91,42 @@ class PushDataController extends Controller
             ]);
         }
     }
+
+    function PushDataDayShift(Request $request)
+    {
+        try {
+            $services = new PushDataServices;
+
+            $result = $services->pushDataDayShift();
+
+            return response()->json([
+                "code" => 0,
+                "data" => $result
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 100,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
+
+    function PushDataDayShiftDetail(Request $request)
+    {
+        try {
+            $services = new PushDataServices;
+
+            $result = $services->pushDataDayShiftDetail();
+
+            return response()->json([
+                "code" => 0,
+                "data" => $result
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 100,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
 }

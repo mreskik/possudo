@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class MasterPricelistModel extends Model
 {
     //
+    public $timestamps = false;
     protected $table = 'mr_pricelist';
     protected $guarded = [];
 }

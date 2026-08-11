@@ -1,0 +1,65 @@
+# Sync Pull (Server ERP → Lokal)
+
+Semua di bawah ini logic-nya satu sumber: `App\Services\SetupServices`. Kolom **Route sync (aktif)** adalah yang beneran dipakai sehari-hari (`SyncController`, prefix `/api/sync_pull/*`). Kolom **Route setup (awal install)** adalah `SetupController` (prefix `/api/setup/*`) — sebagian besar **dead code, gak ke-routing** (lihat catatan di [PANDUAN SYNC.md](./PANDUAN%20SYNC.md)), cuma ditandai buat referensi method kembarnya.
+
+Kolom **Navbar** = apa fungsi ini kepanggil otomatis pas user klik tombol Sync ulang (`syncQueue` di `Navbar.vue`, dipakai setelah install selesai). Kolom **Install** = apa fungsi ini bagian dari `syncQueue` pas instalasi awal (`SetupPage.vue`).
+
+**Update**: sejak refactor "no branch_id param", semua route `/api/sync_pull/*` **gak lagi menerima `branch_id` di URL**. `SyncController::currentBranch()` ambil langsung dari `mr_branch` lokal (`DB::table('mr_branch')->first()` — tabel ini emang cuma pernah 1 baris). Kalau belum ada branch tersimpan, semua endpoint balikin `{"code":100,"message":"branch belum dipilih/disimpan, lakukan setup dulu"}`.
+
+| Data | Service function | Route sync (aktif) | Route setup (ke-routing?) | Model / Tabel lokal | Navbar | Install |
+| --- | --- | --- | --- | --- | --- | --- |
+| Data branch (profil, logo, footer, token) | `getDatabranch` | `GET /api/sync_pull/get_data_branch` | `POST /api/setup/get_data_branch/{branch_id}` ✅ (masih pakai `branch_id` — ini yang justru nentuin/nyimpen branch-nya) | `BranchModel` → `mr_branch` | ✅ | Step 1 di `install()`, sebelum `syncQueue` (bukan bagian queue-nya, tapi tetap 1 tombol yang sama) |
+| Station | `getStationList` | `GET /api/sync_pull/get_station_list` | ❌ tidak ke-routing | `StationModel` → `mr_station` | ✅ | ✅ |
+| Category | `getCategoryList` | `GET /api/sync_pull/get_category_list` | ❌ tidak ke-routing | `CategoryModel` → `mr_category` | ✅ | ✅ |
+| Subcategory | `getSubCategoryList` | `GET /api/sync_pull/get_subcategory_list` | ❌ tidak ke-routing | `SubCategoryModel` → `mr_subcategory` | ✅ | ✅ |
+| Table section (+ print category setting, bareng dalam 1 call) | `getTableSectionList` (+ `getTableSectionPrintCategorySetting`) | `GET /api/sync_pull/get_tablesection_list` | ❌ tidak ke-routing | `TableSectionModel` + `MasterTableSectionPrintCategorySettingModel` | ✅ | ✅ |
+| Table | `getTable` | `GET /api/sync_pull/get_table` | ❌ tidak ke-routing | `TableModel` → `mr_table` | ✅ | ✅ |
+| Tax | `getTax` | `GET /api/sync_pull/get_tax` | ❌ tidak ke-routing | `MasterTaxModel` → `mr_tax` | ✅ | ✅ |
+| Terminal | `getTerminal` | `GET /api/sync_pull/get_terminal` | ❌ tidak ke-routing | `TerminalModel` → `mr_terminal` | ✅ | ✅ |
+| Item (menu) | `getMasterItem` | `GET /api/sync_pull/get_item` | ❌ tidak ke-routing | `MasterItemModel` → `mr_item` | ✅ | ✅ |
+| Item conv | `getMasterItemConv` | `GET /api/sync_pull/get_item_conv` | ❌ tidak ke-routing | `MasterItemConvModel` → `mr_item_conv` | ✅ | ✅ |
+| Item package | `getMasterItemPackage` | `GET /api/sync_pull/get_item_package` | ❌ tidak ke-routing | `MasterItemPackageModel` → `mr_item_package` | ✅ | ✅ |
+| Item package group | `getMasterItemPackageGroup` | `GET /api/sync_pull/get_item_package_group` | ❌ tidak ke-routing | `MasterItemPackageGroupModel` → `mr_item_package_group` | ✅ | ✅ |
+| Item package detail | `getMasterItemPackageDetail` | `GET /api/sync_pull/get_item_package_detail` | ❌ tidak ke-routing | `MasterItemPackageDetailModel` → `mr_item_package_detail` | ✅ | ✅ |
+| Pricelist | `getMasterPricelist` | `GET /api/sync_pull/get_pricelist` | ❌ tidak ke-routing | `MasterPricelistModel` → `mr_pricelist` | ✅ | ✅ |
+| Pricelist detail | `getMasterPricelistDetail` | `GET /api/sync_pull/get_pricelist_detail` | ❌ tidak ke-routing | `MasterPricelistDetailModel` → `mr_pricelist_detail` | ✅ | ✅ |
+| Payment method | `getMasterPaymentMethod` | `GET /api/sync_pull/get_payment_method` | ❌ tidak ke-routing | `MasterPaymentMethodModel` → `mr_payment_method` | ✅ | ✅ |
+| Payment method group | `getMasterPaymentMethodGroup` | `GET /api/sync_pull/get_payment_method_group` | ❌ tidak ke-routing | `MasterPaymentMethodGroupModel` → `mr_payment_method_group` | ✅ | ✅ |
+| Payment method type | `getMasterPaymentMethodType` | `GET /api/sync_pull/get_payment_method_type` | ❌ tidak ke-routing | `MasterPaymentMethodTypeModel` → `mr_payment_method_type` | ✅ | ✅ |
+| Payment method x visit purpose | `getMasterPaymentMethodVisitPurpose` | `GET /api/sync_pull/get_payment_method_visit_purpose` | ❌ tidak ke-routing | `MasterPaymentMethodVisitPurposeModel` → `mr_payment_method_visit_purpose` | ✅ | ✅ |
+| Branch visit purpose | `getMasterBranchVisitPurpose` | `GET /api/sync_pull/get_branch_visit_purpose` | ❌ tidak ke-routing | `MasterBranchVisitPurposeModel` → `mr_branch_visit_purpose` | ✅ | ✅ |
+| Visit purpose | `getMasterVisitPurpose` | `GET /api/sync_pull/get_visit_purpose` | ❌ tidak ke-routing | `MasterVisitPurposeModel` → `mr_visit_purpose` | ✅ | ✅ |
+| Master user | `getMasterUser` | `GET /api/sync_pull/get_master_user` | ❌ tidak ke-routing | `MasterUserModel` → `mr_user` | ⚠️ **tidak** ada di `syncQueue` Navbar | ✅ |
+| Role access | `getMasterRoleAccess` | `GET /api/sync_pull/get_master_role_access` | ❌ tidak ke-routing | `RoleAccessModel` → `mr_role_access` | ⚠️ **tidak** ada di `syncQueue` Navbar | ✅ |
+| Menu app | `getMenuApp` | `GET /api/sync_pull/get_menu_app` | ❌ tidak ke-routing | `MasterMenuAppModel` → `mr_menu_app` | ⚠️ **tidak** ada di `syncQueue` Navbar | ✅ |
+| Promo list | `getPromoList` | `GET /api/sync_pull/get_promo_list` | ❌ tidak ke-routing | `MasterPromoModel` → `mr_promo` | ✅ | ✅ |
+| Promo branch | `getPromoBranch` | `GET /api/sync_pull/get_promo_branch` | ❌ tidak ke-routing | `MasterPromoBranchesModel` → `mr_promo_branches` | ✅ | ✅ |
+| Promo visit purpose | `getPromoVisitPurpose` | `GET /api/sync_pull/get_promo_visit_purpose` | ❌ tidak ke-routing | `MasterPromoVisitPurposesModel` → `mr_promo_visit_purposes` | ✅ | ✅ |
+| Promo type member | `getPromoTypeMember` | `GET /api/sync_pull/get_promo_type_member` | ❌ tidak ke-routing | `MasterPromoTypeMembersModel` → `mr_promo_type_members` | ✅ | ✅ |
+| Promo category | `getPromoCategory` | `GET /api/sync_pull/get_promo_category` | ❌ tidak ke-routing | `MasterPromoCategoriesModel` → `mr_promo_categories` | ✅ | ✅ |
+| Promo subcategory | `getPromoSubCategory` | `GET /api/sync_pull/get_promo_sub_category` | ❌ tidak ke-routing | `MasterPromoSubCategoriesModel` → `mr_promo_sub_categories` | ✅ | ✅ |
+| Promo item | `getPromoItem` | `GET /api/sync_pull/get_promo_item` | ❌ tidak ke-routing | `MasterPromoItemsModel` → `mr_promo_items` | ✅ | ✅ |
+| Promo day | `getPromoDay` | `GET /api/sync_pull/get_promo_day` | ❌ tidak ke-routing | `MasterPromoDaysModel` → `mr_promo_days` | ✅ | ✅ |
+| Promo time | `getPromoTime` | `GET /api/sync_pull/get_promo_time` | ❌ tidak ke-routing | `MasterPromoTimesModel` → `mr_promo_times` | ✅ | ✅ |
+| Member type | `getMemberTypeList` | `GET /api/sync_pull/get_member_type_list` | ❌ tidak ke-routing | `MasterMemberTypeModel` → `mr_member_type` | ✅ | ✅ |
+| Member | `getMemberList` | `GET /api/sync_pull/get_member_list` | ❌ tidak ke-routing | `MasterMemberModel` → `mr_member` | ✅ | ✅ |
+
+## Catatan
+
+- `SetupServices` sendiri **gak berubah** kontraknya — tiap fungsi masih terima `$username, $password, $branch_id, $token` seperti sebelumnya. Yang berubah cuma `SyncController`: dulu `$branch_id` datang dari route param, sekarang dari `currentBranch()` (query `mr_branch` lokal). Jadi kontrak service tetap sama, cuma sumber `$branch_id`/`$token`-nya pindah.
+- 3 baris yang tadinya ditandai ⚠️ (`getMasterUser`, `getMasterRoleAccess`, `getMenuApp`) **udah ditambahin** ke `syncQueue` Navbar — sekarang konsisten sama `syncQueue` install.
+
+## Update: upsert (bukan lagi truncate+insert)
+
+**Sebagian besar** fungsi pull sekarang pakai `Model::upsert($rows, ['id'])` (lewat helper `SetupServices::upsertRows()`), bukan `truncate()+insert()` lagi — baris yang `id`-nya udah ada di lokal di-update, yang baru di-insert.
+
+**Pengecualian yang TETAP `truncate()+insert()` (replace penuh)**:
+- **`getMasterUser`** — sengaja, ini data akses login. Baris yang dihapus/dinonaktifkan di server harus ikut hilang di lokal, gak boleh nyangkut (soal keamanan, bukan cuma data basi).
+- **`getTableSectionPrintCategorySetting`** — alasan teknis, bukan soal user: `id` dari APIANDORDER dibuang sebelum insert (bisa kembar antar baris), jadi gak ada kolom unik yang aman buat upsert-by-id.
+- **`getDatabranch`** — gak masuk hitungan pola ini dari awal (pakai `->create()` dengan field eksplisit, tabel `mr_branch` cuma pernah 1 baris).
+
+**Konsekuensi penting yang disadari & diterima** (bukan bug): upsert **gak menghapus** baris lokal yang udah gak ada lagi di response server. Kalau item/promo/payment method dkk dihapus atau dinonaktifkan di server, baris itu bakal **tetap nyangkut** di lokal sampai ditangani terpisah (mark & sweep — belum digarap, lihat Status di [PANDUAN SYNC.md](./PANDUAN%20SYNC.md)).
+
+**Bug yang ketemu & dibenerin pas implementasi**: `Model::upsert()` beda dari `Model::insert()` — dia otomatis nyuntik kolom `created_at`/`updated_at` kalau `$model->timestamps` gak di-set `false`, dan kebanyakan tabel `mr_*` di sini **gak punya** kolom itu sama sekali (beda dari default Eloquent). Sempet bikin `SQLSTATE[42S22]: Column not found: 1054` di `mr_category`/`mr_menu_app` pas testing. Fix: tambahin `public $timestamps = false;` ke 31 model yang belum declare (2 model lain, `TerminalModel`/`MasterItemModel`, udah bener duluan). 4 tabel (`mr_promo`, `mr_promo` punya keduanya; `mr_member_type` cuma `created_at`; `mr_member`, `mr_station` punya keduanya) **memang punya** kolom itu — tapi nilainya dateng dari payload JSON upstream sendiri (audit trail asli dari ERP), bukan mau di-generate Eloquent, jadi tetep harus `$timestamps = false` biar gak ketimpa.
+- Semua fungsi (kecuali `getDatabranch`) sebelumnya gak ada mapping/transform kecuali `getMasterItem` (nambah proses download gambar per item, lihat `SetupServices::downloadImage()`) — ini gak berubah, cuma cara nyimpennya yang beda (upsert vs replace).
+- **Fix (2026-08-11)**: karena sync sekarang upsert (jalan berkali-kali, bukan sekali doang kayak truncate), `downloadImage()` tadinya balikin `null` kalau download gagal (network hiccup/timeout) — efeknya gambar yang sebelumnya udah bener-bener ke-download bisa "ilang" (jadi `null`) cuma gara-gara 1 kegagalan network sesaat pas sync berikutnya. Dibenerin: `downloadImage()` sekarang terima parameter `$fallback` (nilai lokal yang lama), dibalikin kalau download gagal — bukan `null`. Remote path yang emang kosong (item/branch sengaja dihapus gambarnya) tetep jadi `null` sesuai maksud, gak kepengaruh fallback. Dipakai di `getMasterItem()` (fallback per item, query `whereIn` sekali di awal) dan `getDatabranch()` (fallback dari row lama sebelum `truncate()`). Tervalidasi via `tinker` + reflection (bukan lewat server dev yang datanya flaky): skenario gagal-download balikin fallback, skenario remote-kosong tetep `null`.

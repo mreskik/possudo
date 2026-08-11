@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BranchMenuController;
 use App\Http\Controllers\CheckerController;
 use App\Http\Controllers\DayShiftController;
+use App\Http\Controllers\KioskController;
 use App\Http\Controllers\MasterController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderlistController;
@@ -18,52 +19,63 @@ use Illuminate\Support\Facades\Route;
 // Route::apiResource('order', OrderController::class);
 
 
+Route::prefix('kiosk')->group(function () {
+  Route::get('day-status', [KioskController::class, 'GetDayStatus']);
+  Route::get('branch-visit-purpose', [KioskController::class, 'GetBranchVisitPurposeList']);
+  Route::get('branch-visit-purpose/{id}', [KioskController::class, 'GetBranchVisitPurposeDetail']);
+  Route::get('terminal/{id}', [KioskController::class, 'GetTerminalDetail']);
+  Route::post('save-order', [KioskController::class, 'SaveOrder']);
+  Route::get('order/{order_number}', [KioskController::class, 'GetOrderDetail']);
+  Route::get('payment-method', [KioskController::class, 'GetPaymentMethodList']);
+});
+
 Route::prefix('setup')->group(function () {
   Route::post('get_branch_list', [SetupController::class, 'getBranchList']);
   Route::post('get_data_branch/{branch_id}', [SetupController::class, 'getDataBranch']);
   Route::get('install_success/{status}', [SetupController::class, 'ChangeStatusInstall']);
 });
 
-Route::prefix('sync')->group(function () {
-  Route::get('get_data_branch/{branch_id}', [SyncController::class, 'getDataBranch']);
-  Route::get('get_station_list/{branch_id}', [SyncController::class, 'getStationList']);
-  Route::get('get_category_list/{branch_id}', [SyncController::class, 'getCategoryList']);
-  Route::get('get_subcategory_list/{branch_id}', [SyncController::class, 'getSubCategoryList']);
-  Route::get('get_tablesection_list/{branch_id}', [SyncController::class, 'getTableSectionList']);
-  Route::get('get_table/{branch_id}', [SyncController::class, 'getTable']);
-  Route::get('get_tax/{branch_id}', [SyncController::class, 'getTax']);
-  Route::get('get_terminal/{branch_id}', [SyncController::class, 'getTerminal']);
+// branch_id gak dikirim dari client -- mr_branch lokal cuma 1 baris (SyncController::currentBranch()).
+Route::prefix('sync_pull')->group(function () {
+  Route::get('get_data_branch', [SyncController::class, 'getDataBranch']);
+  Route::get('get_station_list', [SyncController::class, 'getStationList']);
+  Route::get('get_category_list', [SyncController::class, 'getCategoryList']);
+  Route::get('get_subcategory_list', [SyncController::class, 'getSubCategoryList']);
+  Route::get('get_tablesection_list', [SyncController::class, 'getTableSectionList']);
+  Route::get('get_table', [SyncController::class, 'getTable']);
+  Route::get('get_tax', [SyncController::class, 'getTax']);
+  Route::get('get_terminal', [SyncController::class, 'getTerminal']);
 
-  Route::get('get_item/{branch_id}', [SyncController::class, 'getMasterItem']);
-  Route::get('get_item_conv/{branch_id}', [SyncController::class, 'getMasterItemConv']);
-  Route::get('get_item_package/{branch_id}', [SyncController::class, 'getMasterItemPackage']);
-  Route::get('get_item_package_group/{branch_id}', [SyncController::class, 'getMasterItemPackageGroup']);
-  Route::get('get_item_package_detail/{branch_id}', [SyncController::class, 'getMasterItemPackageDetail']);
-  Route::get('get_pricelist/{branch_id}', [SyncController::class, 'getMasterPricelist']);
-  Route::get('get_pricelist_detail/{branch_id}', [SyncController::class, 'getMasterPricelistDetail']);
+  Route::get('get_item', [SyncController::class, 'getMasterItem']);
+  Route::get('get_item_conv', [SyncController::class, 'getMasterItemConv']);
+  Route::get('get_item_package', [SyncController::class, 'getMasterItemPackage']);
+  Route::get('get_item_package_group', [SyncController::class, 'getMasterItemPackageGroup']);
+  Route::get('get_item_package_detail', [SyncController::class, 'getMasterItemPackageDetail']);
+  Route::get('get_pricelist', [SyncController::class, 'getMasterPricelist']);
+  Route::get('get_pricelist_detail', [SyncController::class, 'getMasterPricelistDetail']);
 
-  Route::get('get_payment_method/{branch_id}', [SyncController::class, 'getMasterPaymentMethod']);
-  Route::get('get_payment_method_group/{branch_id}', [SyncController::class, 'getMasterPaymentMethodGroup']);
-  Route::get('get_payment_method_type/{branch_id}', [SyncController::class, 'getMasterPaymentMethodType']);
-  Route::get('get_payment_method_visit_purpose/{branch_id}', [SyncController::class, 'getMasterPaymentMethodVisitPurpose']);
-  Route::get('get_branch_visit_purpose/{branch_id}', [SyncController::class, 'getMasterBranchVisitPurpose']);
-  Route::get('get_visit_purpose/{branch_id}', [SyncController::class, 'getMasterVisitPurpose']);
-  Route::get('get_master_user/{branch_id}', [SyncController::class, 'getMasterUser']);
-  Route::get('get_master_role_access/{branch_id}', [SyncController::class, 'getMasterRoleAccess']);
-  Route::get('get_menu_app/{branch_id}', [SyncController::class, 'getMenuApp']);
+  Route::get('get_payment_method', [SyncController::class, 'getMasterPaymentMethod']);
+  Route::get('get_payment_method_group', [SyncController::class, 'getMasterPaymentMethodGroup']);
+  Route::get('get_payment_method_type', [SyncController::class, 'getMasterPaymentMethodType']);
+  Route::get('get_payment_method_visit_purpose', [SyncController::class, 'getMasterPaymentMethodVisitPurpose']);
+  Route::get('get_branch_visit_purpose', [SyncController::class, 'getMasterBranchVisitPurpose']);
+  Route::get('get_visit_purpose', [SyncController::class, 'getMasterVisitPurpose']);
+  Route::get('get_master_user', [SyncController::class, 'getMasterUser']);
+  Route::get('get_master_role_access', [SyncController::class, 'getMasterRoleAccess']);
+  Route::get('get_menu_app', [SyncController::class, 'getMenuApp']);
 
-  Route::get('get_promo_list/{branch_id}', [SyncController::class, 'getPromoList']);
-  Route::get('get_promo_branch/{branch_id}', [SyncController::class, 'getPromoBranch']);
-  Route::get('get_promo_visit_purpose/{branch_id}', [SyncController::class, 'getPromoVisitPurpose']);
-  Route::get('get_promo_type_member/{branch_id}', [SyncController::class, 'getPromoTypeMember']);
-  Route::get('get_promo_category/{branch_id}', [SyncController::class, 'getPromoCategory']);
-  Route::get('get_promo_sub_category/{branch_id}', [SyncController::class, 'getPromoSubCategory']);
-  Route::get('get_promo_item/{branch_id}', [SyncController::class, 'getPromoItem']);
-  Route::get('get_promo_day/{branch_id}', [SyncController::class, 'getPromoDay']);
-  Route::get('get_promo_time/{branch_id}', [SyncController::class, 'getPromoTime']);
+  Route::get('get_promo_list', [SyncController::class, 'getPromoList']);
+  Route::get('get_promo_branch', [SyncController::class, 'getPromoBranch']);
+  Route::get('get_promo_visit_purpose', [SyncController::class, 'getPromoVisitPurpose']);
+  Route::get('get_promo_type_member', [SyncController::class, 'getPromoTypeMember']);
+  Route::get('get_promo_category', [SyncController::class, 'getPromoCategory']);
+  Route::get('get_promo_sub_category', [SyncController::class, 'getPromoSubCategory']);
+  Route::get('get_promo_item', [SyncController::class, 'getPromoItem']);
+  Route::get('get_promo_day', [SyncController::class, 'getPromoDay']);
+  Route::get('get_promo_time', [SyncController::class, 'getPromoTime']);
 
-  Route::get('get_member_type_list/{branch_id}', [SyncController::class, 'getMemberTypeList']);
-  Route::get('get_member_list/{branch_id}', [SyncController::class, 'getMemberList']);
+  Route::get('get_member_type_list', [SyncController::class, 'getMemberTypeList']);
+  Route::get('get_member_list', [SyncController::class, 'getMemberList']);
 });
 
 Route::prefix('master')->group(function () {
@@ -164,4 +176,6 @@ Route::prefix('push')->group(function () {
   Route::get('data-order-detail', [PushDataController::class, 'PushDataOrderDetail']);
   Route::get('data-order-detail-package', [PushDataController::class, 'PushDataOrderDetailPackage']);
   Route::get('data-order-payment', [PushDataController::class, 'PushDataOrderPayment']);
+  Route::get('data-dayshift', [PushDataController::class, 'PushDataDayShift']);
+  Route::get('data-dayshift-detail', [PushDataController::class, 'PushDataDayShiftDetail']);
 });

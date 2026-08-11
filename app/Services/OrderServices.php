@@ -110,6 +110,11 @@ class OrderServices
           "total_tax" => $datajson->totalTax,
           "total_billing" => $datajson->totalBilling,
           "total_discount" => $datajson->totalDiscount ?? 0,
+
+          // invariant per order (mr_pricelist.is_inclusive via visit purpose, semua baris
+          // listOrder pasti sama) -- diambil sekali dari item pertama pas order dibuat,
+          // dipakai PrintServices buat nentuin layout struk (inclusive vs breakdown pajak)
+          "flag_inclusive_tax" => $datajson->listOrder[0]['flagInclusiveTax'] ?? null,
         ];
 
 
@@ -240,13 +245,17 @@ class OrderServices
 
         // $data_order_query = TrOrderModel::where('order_number', $order_number)->first();
 
-        PrintServices::PrintTableChecker2($tablesectionnow->id, $order_number);
-        PrintServices::PrintMainChecker2($tablesectionnow->id, $order_number);
-        PrintServices::PrintPriparationStation($tablesectionnow->id, $order_number);
+        // order dari Kiosk belum tentu jadi dimasak (nunggu bayar dulu) -- print kitchen-nya
+        // ditunda sampai payment sukses (lihat PaymentServices::SavePayment()), bukan di sini.
+        if ($order['order_source'] !== 'kiosk') {
+          PrintServices::PrintTableChecker2($tablesectionnow->id, $order_number);
+          PrintServices::PrintMainChecker2($tablesectionnow->id, $order_number);
+          PrintServices::PrintPriparationStation($tablesectionnow->id, $order_number);
 
-        TrOrderDetailModel::where('order_number', $order_number)->update([
-          "done_print" => true,
-        ]);
+          TrOrderDetailModel::where('order_number', $order_number)->update([
+            "done_print" => true,
+          ]);
+        }
 
 
 
@@ -391,13 +400,16 @@ class OrderServices
           TrOrderDetailModel::insert($order_detail);
           TrOrderDetailPackageModel::insert($order_detail_package);
 
-          PrintServices::PrintTableChecker2($current_table_order->table_section_id, $current_table_order->order_number);
-          PrintServices::PrintMainChecker2($current_table_order->table_section_id, $current_table_order->order_number);
-          PrintServices::PrintPriparationStation($current_table_order->table_section_id, $current_table_order->order_number);
+          // sama kayak order baru -- Kiosk nunda print kitchen sampai payment sukses.
+          if ($current_table_order->order_source !== 'kiosk') {
+            PrintServices::PrintTableChecker2($current_table_order->table_section_id, $current_table_order->order_number);
+            PrintServices::PrintMainChecker2($current_table_order->table_section_id, $current_table_order->order_number);
+            PrintServices::PrintPriparationStation($current_table_order->table_section_id, $current_table_order->order_number);
 
-          TrOrderDetailModel::where('order_number', $current_table_order->order_number)->update([
-            "done_print" => true,
-          ]);
+            TrOrderDetailModel::where('order_number', $current_table_order->order_number)->update([
+              "done_print" => true,
+            ]);
+          }
         }
 
         //sync update

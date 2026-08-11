@@ -15,15 +15,28 @@ class SyncController extends Controller
     $this->setupservices = new SetupServices();
   }
 
-  private function branchToken(int $branch_id): ?string
+  // currentBranch: mr_branch lokal cuma pernah punya 1 baris (truncate+create tiap
+  // getDatabranch()), jadi branch_id gak perlu dikirim dari client lagi -- ambil langsung
+  // dari sini. Null kalau belum pernah pilih branch (belum install).
+  private function currentBranch(): ?object
   {
-    return DB::table('mr_branch')->where('id', $branch_id)->value('token');
+    return DB::table('mr_branch')->first();
   }
 
-  public function getDataBranch(int $branch_id)
+  private function noBranchResponse()
   {
+    return response()->json(['code' => 100, 'message' => 'branch belum dipilih/disimpan, lakukan setup dulu']);
+  }
+
+  public function getDataBranch()
+  {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getDatabranch('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getDatabranch('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -35,10 +48,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getStationList(int $branch_id)
+  public function getStationList()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getStationList('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getStationList('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -50,10 +68,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getCategoryList(int $branch_id)
+  public function getCategoryList()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getCategoryList('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getCategoryList('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -65,10 +88,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getSubCategoryList(int $branch_id)
+  public function getSubCategoryList()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getSubCategoryList('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getSubCategoryList('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -80,13 +108,17 @@ class SyncController extends Controller
     }
   }
 
-  public function getTableSectionList(int $branch_id)
+  public function getTableSectionList()
   {
-    try {
-      $token = $this->branchToken($branch_id);
-      $this->setupservices->getTableSectionPrintCategorySetting('', '', $branch_id, $token);
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
 
-      $response = $this->setupservices->getTableSectionList('', '', $branch_id, $token);
+    try {
+      $this->setupservices->getTableSectionPrintCategorySetting('', '', $branch->id, $branch->token);
+
+      $response = $this->setupservices->getTableSectionList('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -98,10 +130,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getTable(int $branch_id)
+  public function getTable()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getTable('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getTable('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -113,10 +150,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getTax(int $branch_id)
+  public function getTax()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getTax('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getTax('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -128,10 +170,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getTerminal(int $branch_id)
+  public function getTerminal()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getTerminal('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getTerminal('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -143,10 +190,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterItem(int $branch_id)
+  public function getMasterItem()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterItem('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterItem('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -158,10 +210,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterItemConv(int $branch_id)
+  public function getMasterItemConv()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterItemConv('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterItemConv('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -173,10 +230,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterItemPackage(int $branch_id)
+  public function getMasterItemPackage()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterItemPackage('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterItemPackage('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -188,10 +250,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterItemPackageGroup(int $branch_id)
+  public function getMasterItemPackageGroup()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterItemPackageGroup('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterItemPackageGroup('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -203,10 +270,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterItemPackageDetail(int $branch_id)
+  public function getMasterItemPackageDetail()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterItemPackageDetail('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterItemPackageDetail('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -218,10 +290,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterPricelist(int $branch_id)
+  public function getMasterPricelist()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterPricelist('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterPricelist('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -233,10 +310,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterPricelistDetail(int $branch_id)
+  public function getMasterPricelistDetail()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterPricelistDetail('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterPricelistDetail('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -248,10 +330,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterPaymentMethod(int $branch_id)
+  public function getMasterPaymentMethod()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterPaymentMethod('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterPaymentMethod('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -263,10 +350,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterPaymentMethodGroup(int $branch_id)
+  public function getMasterPaymentMethodGroup()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterPaymentMethodGroup('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterPaymentMethodGroup('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -278,10 +370,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterPaymentMethodType(int $branch_id)
+  public function getMasterPaymentMethodType()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterPaymentMethodType('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterPaymentMethodType('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -293,10 +390,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterPaymentMethodVisitPurpose(int $branch_id)
+  public function getMasterPaymentMethodVisitPurpose()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterPaymentMethodVisitPurpose('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterPaymentMethodVisitPurpose('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -308,10 +410,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterBranchVisitPurpose(int $branch_id)
+  public function getMasterBranchVisitPurpose()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterBranchVisitPurpose('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterBranchVisitPurpose('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -323,10 +430,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterVisitPurpose(int $branch_id)
+  public function getMasterVisitPurpose()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterVisitPurpose('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterVisitPurpose('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -338,10 +450,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterUser(int $branch_id)
+  public function getMasterUser()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterUser('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterUser('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -353,10 +470,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterRoleAccess(int $branch_id)
+  public function getMasterRoleAccess()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMasterRoleAccess('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMasterRoleAccess('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -368,10 +490,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMenuApp(int $branch_id)
+  public function getMenuApp()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMenuApp('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMenuApp('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -383,10 +510,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getPromoList(int $branch_id)
+  public function getPromoList()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getPromoList('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getPromoList('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -398,10 +530,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getPromoBranch(int $branch_id)
+  public function getPromoBranch()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getPromoBranch('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getPromoBranch('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -413,10 +550,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getPromoVisitPurpose(int $branch_id)
+  public function getPromoVisitPurpose()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getPromoVisitPurpose('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getPromoVisitPurpose('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -428,10 +570,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getPromoTypeMember(int $branch_id)
+  public function getPromoTypeMember()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getPromoTypeMember('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getPromoTypeMember('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -443,10 +590,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getPromoCategory(int $branch_id)
+  public function getPromoCategory()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getPromoCategory('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getPromoCategory('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -458,10 +610,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getPromoSubCategory(int $branch_id)
+  public function getPromoSubCategory()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getPromoSubCategory('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getPromoSubCategory('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -473,10 +630,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getPromoItem(int $branch_id)
+  public function getPromoItem()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getPromoItem('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getPromoItem('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -488,10 +650,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getPromoDay(int $branch_id)
+  public function getPromoDay()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getPromoDay('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getPromoDay('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -503,10 +670,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getPromoTime(int $branch_id)
+  public function getPromoTime()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getPromoTime('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getPromoTime('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -518,10 +690,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMemberTypeList(int $branch_id)
+  public function getMemberTypeList()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMemberTypeList('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMemberTypeList('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -533,10 +710,15 @@ class SyncController extends Controller
     }
   }
 
-  public function getMemberList(int $branch_id)
+  public function getMemberList()
   {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
     try {
-      $response = $this->setupservices->getMemberList('', '', $branch_id, $this->branchToken($branch_id));
+      $response = $this->setupservices->getMemberList('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),

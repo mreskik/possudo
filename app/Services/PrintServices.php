@@ -23,6 +23,52 @@ use \Mike42\Escpos\EscposImage;
 
 class PrintServices
 {
+  // ResolveFlagInclusiveTax: flag_inclusive_tax di tr_order (invariant per order) baru ada
+  // sejak migration 2026_08_09_000003 -- order yang dibuat SEBELUM itu kolomnya NULL. Buat
+  // reprint order lama, fallback baca dari baris tr_order_detail pertama order itu (bukan
+  // diasumsikan true/false) supaya struk lama tetap akurat.
+  private static function ResolveFlagInclusiveTax($data_order): ?bool
+  {
+    if ($data_order->flag_inclusive_tax !== null) {
+      return (bool) $data_order->flag_inclusive_tax;
+    }
+    $fallback = DB::table('tr_order_detail')
+      ->where('order_number', $data_order->order_number)
+      ->whereNull('cancel_at')
+      ->value('flag_inclusive_tax');
+    return $fallback === null ? null : (bool) $fallback;
+  }
+
+  // GetTaxBreakdownByType: SUM(qty*tax_value) per tax_type (PB1/VAT/dst) buat 1 order_number,
+  // gabungan tr_order_detail + tr_order_detail_package. Beda dari flag_inclusive_tax,
+  // tax_type itu SUMBERNYA per-item (mr_item.tax_type) jadi 1 order bisa campur beberapa
+  // tax_type -- dipakai buat breakdown pajak di struk order exclusive-tax.
+  private static function GetTaxBreakdownByType(string $order_number): array
+  {
+    $rows = DB::select("
+      SELECT tax_type, SUM(tax_amount) AS tax_amount FROM (
+        SELECT trod.tax_type, trod.qty * trod.tax_value AS tax_amount
+        FROM tr_order_detail trod
+        WHERE trod.order_number = ? AND trod.cancel_at IS NULL
+        UNION ALL
+        SELECT trodp.tax_type, (trod.qty * trodp.qty) * trodp.tax_value AS tax_amount
+        FROM tr_order_detail_package trodp
+        JOIN tr_order_detail trod ON trod.ulid = trodp.tr_order_detail_ulid
+        WHERE trod.order_number = ? AND trod.cancel_at IS NULL
+      ) combined
+      WHERE tax_type IS NOT NULL
+      GROUP BY tax_type
+    ", [$order_number, $order_number]);
+
+    $breakdown = [];
+    foreach ($rows as $row) {
+      if ($row->tax_amount > 0) {
+        $breakdown[strtoupper($row->tax_type)] = $row->tax_amount;
+      }
+    }
+    return $breakdown;
+  }
+
   public static function resizeGambar($source = "", $newWidth = 150, $outputPath = "logo_resize.png")
   {
     if ($source == "" || !file_exists($source)) {
@@ -904,12 +950,24 @@ class PrintServices
       // $print->text(self::threeline2("", "Order Fee :", "0", $charPerLine));
 
 
+      $isInclusiveTax = self::ResolveFlagInclusiveTax($data_order);
+      $taxBreakdown = self::GetTaxBreakdownByType($data_order->order_number);
+
       $print->text("\n");
 
       if ($data_order->total_discount > 0) {
         $print->text(self::threeline2("", "Subtotal :", number_format($displaySubtotal, 0, ',', '.'), $charPerLine));
         $print->text(self::threeline2("", "Discount :", "-" . number_format($data_order->total_discount, 0, ',', '.'), $charPerLine));
         $print->text(self::separator("-", $charPerLine));
+      }
+
+      // exclusive: breakdown pajak per tax_type di ATAS Grand Total (bisa lebih dari 1 baris
+      // kalau order-nya campur PB1 & VAT). inclusive (atau gak ketauan/$isInclusiveTax null)
+      // -- gak ada breakdown di sini, cuma catatan "Price Inclusive of ..." di bawah (perilaku lama).
+      if ($isInclusiveTax === false) {
+        foreach ($taxBreakdown as $taxTypeLabel => $taxAmount) {
+          $print->text(self::threeline2("", $taxTypeLabel . " :", number_format($taxAmount, 0, ',', '.'), $charPerLine));
+        }
       }
 
       $print->setEmphasis(true);
@@ -930,7 +988,10 @@ class PrintServices
       // $print->setJustification(Printer::JUSTIFY_LEFT);
       $print->text(self::separator("-", $charPerLine));
       $print->text(self::threeline2("", "Change :", "0", $charPerLine));
-      $print->text(self::threeline2("", "Price Inclusive of PB1 :", number_format($data_order->total_tax, 0, ',', '.'), $charPerLine));
+      if ($isInclusiveTax !== false && !empty($taxBreakdown)) {
+        $taxLabel = implode(' & ', array_keys($taxBreakdown));
+        $print->text(self::threeline2("", "Price Inclusive of " . $taxLabel . " :", number_format($data_order->total_tax, 0, ',', '.'), $charPerLine));
+      }
 
       $print->text(self::separator("-", $charPerLine));
       $print->setJustification(Printer::JUSTIFY_CENTER);
@@ -1090,11 +1151,20 @@ class PrintServices
       $print->text($data_order->total_item . " Items" . "\n");
       $print->setJustification(Printer::JUSTIFY_RIGHT);
 
+      $isInclusiveTax = self::ResolveFlagInclusiveTax($data_order);
+      $taxBreakdown = self::GetTaxBreakdownByType($data_order->order_number);
+
       $print->text("\n");
       if ($data_order->total_discount > 0) {
         $print->text(self::threeline2("", "Subtotal :", number_format($displaySubtotal, 0, ',', '.'), $charPerLine));
         $print->text(self::threeline2("", "Discount :", "-" . number_format($data_order->total_discount, 0, ',', '.'), $charPerLine));
         $print->text(self::separator("-", $charPerLine));
+      }
+
+      if ($isInclusiveTax === false) {
+        foreach ($taxBreakdown as $taxTypeLabel => $taxAmount) {
+          $print->text(self::threeline2("", $taxTypeLabel . " :", number_format($taxAmount, 0, ',', '.'), $charPerLine));
+        }
       }
 
       $print->setEmphasis(true);
@@ -1105,7 +1175,10 @@ class PrintServices
 
       $print->text("\n");
 
-      $print->text(self::threeline2("", "Price Inclusive of PB1 :", number_format($data_order->total_tax, 0, ',', '.'), $charPerLine));
+      if ($isInclusiveTax !== false && !empty($taxBreakdown)) {
+        $taxLabel = implode(' & ', array_keys($taxBreakdown));
+        $print->text(self::threeline2("", "Price Inclusive of " . $taxLabel . " :", number_format($data_order->total_tax, 0, ',', '.'), $charPerLine));
+      }
       $print->text(self::separator("-", $charPerLine));
       $print->setJustification(Printer::JUSTIFY_CENTER);
 
@@ -1370,7 +1443,7 @@ class PrintServices
     $print->text(self::kirikakan("Pending             :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("Sales               :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
     // $print->text(self::kirikakan("Sales               :", number_format($sales_total, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Discount            :", 0, $charPerLine));
+    $print->text(self::kirikakan("Discount            :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("SC                  :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("PB1                 :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("VAT                 :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
@@ -1528,7 +1601,7 @@ class PrintServices
     $print->text(self::kirikakan("On Hold             :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("Pending             :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("Sales               :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Discount            :", 0, $charPerLine));
+    $print->text(self::kirikakan("Discount            :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("SC                  :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("PB1                 :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("VAT                 :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
@@ -1661,7 +1734,7 @@ class PrintServices
     $print->text(self::kirikakan("Pending             :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("Sales               :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
     // $print->text(self::kirikakan("Sales               :", number_format($sales_total, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Discount            :", 0, $charPerLine));
+    $print->text(self::kirikakan("Discount            :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("SC                  :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("PB1                 :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("VAT                 :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
@@ -1865,7 +1938,7 @@ class PrintServices
     $print->text(self::kirikakan("Pending             :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("Sales               :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
     // $print->text(self::kirikakan("Sales               :", number_format($sales_total, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Discount            :", 0, $charPerLine));
+    $print->text(self::kirikakan("Discount            :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("SC                  :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("PB1                 :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
     $print->text(self::kirikakan("VAT                 :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));

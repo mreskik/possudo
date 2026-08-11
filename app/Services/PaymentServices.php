@@ -87,6 +87,17 @@ class PaymentServices
 
       PrintServices::PrintPayment($datajson->order_number);
 
+      // order Kiosk sengaja gak nge-print kitchen pas SaveOrder (nunggu kepastian bayar dulu,
+      // lihat OrderServices::SaveOrder()) -- baru di sini, abis payment sukses.
+      if ($dataorder_current->order_source === 'kiosk') {
+        PrintServices::PrintTableChecker2($dataorder_current->table_section_id, $datajson->order_number);
+        PrintServices::PrintMainChecker2($dataorder_current->table_section_id, $datajson->order_number);
+        PrintServices::PrintPriparationStation($dataorder_current->table_section_id, $datajson->order_number);
+
+        TrOrderDetailModel::where('order_number', $datajson->order_number)->update([
+          "done_print" => true,
+        ]);
+      }
 
       $response->success = true;
       $response->paymentNumber = $payment_number;

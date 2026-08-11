@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class MasterItemPackageDetailModel extends Model
 {
     //
+    public $timestamps = false;
     protected $table = 'mr_item_package_detail';
     protected $guarded = [];
 }

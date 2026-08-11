@@ -86,28 +86,39 @@ class DayShiftServices
   public static function StartDay($start_cash)
   {
     try {
-      $datetimenow = now();
-      $branch = BranchModel::first();
-      $current_dayshift = self::GetDayShift();
-      if ($current_dayshift) {
-        if ($current_dayshift->dayout_time == null) {
-          throw new \Exception('tidak bisa start day karena belum end day!');
+      // lockForUpdate di row branch -- dijadiin "kunci" biar 2 request StartDay yang nembak
+      // barengan buat branch yang sama antre (bukan dua-duanya lolos cek GetDayShift() sebelum
+      // salah satu sempat insert). Tanpa ini ada celah race condition kecil yang bisa bikin
+      // 2 dayshift aktif sekaligus -- MySQL gak dukung partial unique index (WHERE dayout_time
+      // IS NULL) kayak Postgres, jadi diamanin lewat transaction + row lock di sini.
+      return DB::transaction(function () use ($start_cash) {
+        $datetimenow = now();
+        $branch = BranchModel::lockForUpdate()->first();
+        $current_dayshift = self::GetDayShift();
+        if ($current_dayshift) {
+          if ($current_dayshift->dayout_time == null) {
+            throw new \Exception('tidak bisa start day karena belum end day!');
+          }
         }
-      }
 
-      // else {
-      //     throw new \Exception("install dulu aplikasinya !");
-      //   }
+        // DAYSHIFT ULID KOMPOSISI (kolom tetap "ulid", isinya bukan ULID lagi)
+        // <MODUL><BRANCH CODE><waktu start day>
+        // sama pola kayak OrderServices::GenerateOrderNumber(), cuma gak per-terminal
+        // (dayshift itu konsep per-branch, bukan per-terminal)
+        $kode_modul = "POS";
+        $daydetail = $datetimenow->format("YmdHis");
+        $dayshift_ulid = $kode_modul . $branch->branch_code . $daydetail;
 
-      DaySiftModel::create([
-        "ulid" => (string)Str::ulid(),
-        "branch_id" => $branch->id,
-        "dayin_time" => $datetimenow,
-        "dayin_total" => $start_cash,
-        "dayin_user_id" => 1,
-      ]);
+        DaySiftModel::create([
+          "ulid" => $dayshift_ulid,
+          "branch_id" => $branch->id,
+          "dayin_time" => $datetimenow,
+          "dayin_total" => $start_cash,
+          "dayin_user_id" => 1,
+        ]);
 
-      return "success";
+        return "success";
+      });
     } catch (\Throwable $e) {
       throw $e;
     }
@@ -126,10 +137,16 @@ class DayShiftServices
         throw new \Exception("install dulu aplikasinya !");
       }
 
+      // shift_number: urutan shift ke berapa dalam dayshift ini (dipakai buat label "Shift N"
+      // di Navbar.vue: globalstore.shiftlist.length + 1) -- kolomnya NOT NULL tanpa default,
+      // wajib diisi eksplisit, gak bisa diserahkan ke MySQL.
+      $shift_number = DayShiftDetailModel::where('dayshift_ulid', $current_dayshift->ulid)->count() + 1;
+
       DayShiftDetailModel::create([
         "ulid" => (string)Str::ulid(),
         "dayshift_ulid" => $current_dayshift->ulid,
         "shift_time" => now(),
+        "shift_number" => $shift_number,
         "shift_user_id" => self::getLoggedInUserId($request) ?? 1,
       ]);
       return 'success';
@@ -228,6 +245,7 @@ class DayShiftServices
 
       $cancel_total = 0;
       $void_total = 0;
+      $discount_total = 0;
 
       $list_payment_number = [];
       foreach ($data_order_list as $orderitem) {
@@ -242,6 +260,7 @@ class DayShiftServices
         //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
+          $discount_total += $orderitem->total_discount;
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
@@ -461,6 +480,7 @@ class DayShiftServices
           ["pl" => 1, "key" => "Avg Gross Sales Per Bill", "amount" => $avg_grosssales_per_bill],
           ["pl" => 1, "key" => "Cancel Total", "amount" => $cancel_total],
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
+          ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
         ],
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
@@ -568,6 +588,7 @@ class DayShiftServices
 
       $cancel_total = 0;
       $void_total = 0;
+      $discount_total = 0;
 
 
       $orderpendinghold = TrOrderModel::whereIn('status', ['pending', 'hold'])->get();
@@ -595,6 +616,7 @@ class DayShiftServices
         //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
+          $discount_total += $orderitem->total_discount;
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
@@ -831,6 +853,7 @@ class DayShiftServices
           ["pl" => 1, "key" => "Avg Gross Sales Per Bill", "amount" => $avg_grosssales_per_bill],
           ["pl" => 1, "key" => "Cancel Total", "amount" => $cancel_total],
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
+          ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
         ],
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
@@ -915,6 +938,7 @@ class DayShiftServices
 
       $cancel_total = 0;
       $void_total = 0;
+      $discount_total = 0;
 
       $list_payment_number = [];
 
@@ -945,6 +969,7 @@ class DayShiftServices
         //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
+          $discount_total += $orderitem->total_discount;
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
@@ -1181,6 +1206,7 @@ class DayShiftServices
           ["pl" => 1, "key" => "Avg Gross Sales Per Bill", "amount" => $avg_grosssales_per_bill],
           ["pl" => 1, "key" => "Cancel Total", "amount" => $cancel_total],
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
+          ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
         ],
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
@@ -1267,6 +1293,7 @@ class DayShiftServices
 
       $cancel_total = 0;
       $void_total = 0;
+      $discount_total = 0;
 
 
       $orderpendinghold = TrOrderModel::whereIn('status', ['pending', 'hold'])->get();
@@ -1294,6 +1321,7 @@ class DayShiftServices
         //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
+          $discount_total += $orderitem->total_discount;
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
@@ -1531,6 +1559,7 @@ class DayShiftServices
           ["pl" => 1, "key" => "Avg Gross Sales Per Bill", "amount" => $avg_grosssales_per_bill],
           ["pl" => 1, "key" => "Cancel Total", "amount" => $cancel_total],
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
+          ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
         ],
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
@@ -1624,6 +1653,7 @@ class DayShiftServices
 
       $cancel_total = 0;
       $void_total = 0;
+      $discount_total = 0;
 
 
       $orderpendinghold = TrOrderModel::whereIn('status', ['pending', 'hold'])->get();
@@ -1651,6 +1681,7 @@ class DayShiftServices
         //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
+          $discount_total += $orderitem->total_discount;
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
@@ -1889,6 +1920,7 @@ class DayShiftServices
           ["pl" => 1, "key" => "Avg Gross Sales Per Bill", "amount" => $avg_grosssales_per_bill],
           ["pl" => 1, "key" => "Cancel Total", "amount" => $cancel_total],
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
+          ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
         ],
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
@@ -1975,6 +2007,7 @@ class DayShiftServices
 
       $cancel_total = 0;
       $void_total = 0;
+      $discount_total = 0;
 
 
       $orderpendinghold = TrOrderModel::whereIn('status', ['pending', 'hold'])->get();
@@ -2002,6 +2035,7 @@ class DayShiftServices
         //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
+          $discount_total += $orderitem->total_discount;
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
@@ -2240,6 +2274,7 @@ class DayShiftServices
           ["pl" => 1, "key" => "Avg Gross Sales Per Bill", "amount" => $avg_grosssales_per_bill],
           ["pl" => 1, "key" => "Cancel Total", "amount" => $cancel_total],
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
+          ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
         ],
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
@@ -2343,6 +2378,7 @@ class DayShiftServices
 
       $cancel_total = 0;
       $void_total = 0;
+      $discount_total = 0;
 
 
       $orderpendinghold = TrOrderModel::whereIn('status', ['pending', 'hold'])->get();
@@ -2370,6 +2406,7 @@ class DayShiftServices
         //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
         if ($orderitem->status == "paid") {
           $number_of_bill += 1;
+          $discount_total += $orderitem->total_discount;
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
@@ -2608,6 +2645,7 @@ class DayShiftServices
           ["pl" => 1, "key" => "Avg Gross Sales Per Bill", "amount" => $avg_grosssales_per_bill],
           ["pl" => 1, "key" => "Cancel Total", "amount" => $cancel_total],
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
+          ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
         ],
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class MasterVisitPurposeModel extends Model
 {
     //
+    public $timestamps = false;
     protected $table = 'mr_visit_purpose';
     protected $guarded = []; 
 }

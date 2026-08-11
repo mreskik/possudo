@@ -59,6 +59,21 @@ class SetupServices
     return Http::post($url, ['username' => $username, 'password' => $password]);
   }
 
+  // upsertRows: dipakai buat sebagian besar sync master data -- baris yang id-nya udah ada
+  // di lokal di-update, yang baru di-insert. Baris lokal yang gak ada lagi di response TIDAK
+  // dihapus (beda dari pola truncate+insert lama) -- data yang dihapus/dinonaktifkan di server
+  // bakal tetap nyangkut di lokal sampai ditangani terpisah (belum diminta/digarap).
+  // Pengecualian yang TETAP truncate+insert (replace): getMasterUser (data akses login/user,
+  // harus selalu cerminan pasti dari server) dan getTableSectionPrintCategorySetting (id dari
+  // server gak reliable buat dedup, lihat catatan di fungsi itu).
+  private function upsertRows(string $modelClass, array $rows, string $uniqueBy = 'id'): void
+  {
+    if (empty($rows)) {
+      return;
+    }
+
+    $modelClass::upsert($rows, [$uniqueBy]);
+  }
 
   public function getDatabranch(string $username, string $password, string $branch_id, ?string $token = null)
   {
@@ -69,6 +84,10 @@ class SetupServices
       $response = $this->syncRequest($username, $password, $token, $url);
 
       if ($response->json('code') == 0) {
+        // ambil dulu sebelum truncate -- dipakai fallback kalau download gambar gagal (bukan
+        // di-null-in, lihat catatan di downloadImage()).
+        $existing = BranchModel::first();
+
         BranchModel::truncate();
 
         BranchModel::create([
@@ -83,8 +102,8 @@ class SetupServices
           'printing_footer' => $response->json('data.PrintingFooter'),
           'company_id' => $response->json("data.CompanyId"),
           'token' => $response->json("data.Token"),
-          'logo_header_src' => $this->downloadBranchImage($response->json('data.LogoHeaderSrc')),
-          'image_footer_src' => $this->downloadBranchImage($response->json('data.ImageFooterSrc')),
+          'logo_header_src' => $this->downloadImage($response->json('data.LogoHeaderSrc'), 'branch', $existing->logo_header_src ?? null),
+          'image_footer_src' => $this->downloadImage($response->json('data.ImageFooterSrc'), 'branch', $existing->image_footer_src ?? null),
         ]);
       }
 
@@ -94,7 +113,15 @@ class SetupServices
     }
   }
 
-  private function downloadBranchImage(?string $remotePath): ?string
+  // downloadImage: tarik gambar dari server ERP (path relatif, mis. /storage/uploads/images/xxx.png)
+  // terus simpen lokal di public/img/{subdir}/, dipakai buat branch (logo/footer) & item (menu).
+  // $fallback: nilai lokal yang lama (kalau ada) -- dibalikin kalau download gagal (network
+  // hiccup, timeout, dll), BUKAN null. Soalnya sync sekarang jalan berkali-kali (upsert, bukan
+  // truncate) -- kalau gagal download langsung dibalikin null, gambar yang sebelumnya udah
+  // bener-bener kepakai bisa "ilang" cuma gara-gara 1 kegagalan network sesaat. $remotePath
+  // kosong tetep dianggap "emang gak ada gambar" (sengaja dihapus di server), bukan kegagalan --
+  // itu masih balikin null, bukan fallback.
+  private function downloadImage(?string $remotePath, string $subdir, ?string $fallback = null): ?string
   {
     if (empty($remotePath)) {
       return null;
@@ -102,10 +129,16 @@ class SetupServices
 
     try {
       $imageUrl = $this->endpoint . $remotePath;
-      $contents = Http::get($imageUrl)->body();
+      $imageResponse = Http::get($imageUrl);
 
+      if (!$imageResponse->successful()) {
+        Log::warning('Gagal download image, remote status ' . $imageResponse->status() . ': ' . $imageUrl);
+        return $fallback;
+      }
+
+      $contents = $imageResponse->body();
       $filename = basename($remotePath);
-      $dir = public_path('img/branch');
+      $dir = public_path('img/' . $subdir);
 
       if (!is_dir($dir)) {
         mkdir($dir, 0755, true);
@@ -113,10 +146,10 @@ class SetupServices
 
       file_put_contents($dir . '/' . $filename, $contents);
 
-      return '/img/branch/' . $filename;
+      return '/img/' . $subdir . '/' . $filename;
     } catch (\Throwable $e) {
-      Log::warning('Gagal download branch image: ' . $e->getMessage());
-      return null;
+      Log::warning('Gagal download image: ' . $e->getMessage());
+      return $fallback;
     }
   }
 
@@ -132,8 +165,6 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        StationModel::truncate();
-
         $datastation = [];
         foreach ($response->json('data') as $item) {
           $datastation[] = [
@@ -150,7 +181,7 @@ class SetupServices
             'line_character' => $item['LineCharacter'],
           ];
         }
-        StationModel::insert($datastation);
+        $this->upsertRows(StationModel::class, $datastation);
       }
 
       return $response;
@@ -171,8 +202,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        CategoryModel::truncate();
-        CategoryModel::insert($response->json('data'));
+        $this->upsertRows(CategoryModel::class, $response->json('data'));
       }
 
       return $response;
@@ -192,8 +222,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        SubCategoryModel::truncate();
-        SubCategoryModel::insert($response->json('data'));
+        $this->upsertRows(SubCategoryModel::class, $response->json('data'));
       }
 
       return $response;
@@ -213,8 +242,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        TableSectionModel::truncate();
-        TableSectionModel::insert($response->json('data'));
+        $this->upsertRows(TableSectionModel::class, $response->json('data'));
       }
 
       return $response;
@@ -234,8 +262,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        TableModel::truncate();
-        TableModel::insert($response->json('data'));
+        $this->upsertRows(TableModel::class, $response->json('data'));
       }
 
       return $response;
@@ -255,8 +282,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterTaxModel::truncate();
-        MasterTaxModel::insert($response->json('data'));
+        $this->upsertRows(MasterTaxModel::class, $response->json('data'));
       }
 
       return $response;
@@ -276,8 +302,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        TerminalModel::truncate();
-        TerminalModel::insert($response->json('data'));
+        $this->upsertRows(TerminalModel::class, $response->json('data'));
       }
 
       return $response;
@@ -299,8 +324,23 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterItemModel::truncate();
-        MasterItemModel::insert($response->json("data"));
+        $items = $response->json("data");
+
+        // fallback per item -- gambar lokal yang lama, dipakai kalau download gagal (bukan
+        // di-null-in, lihat catatan di downloadImage()).
+        $existingImages = MasterItemModel::whereIn('id', array_column($items, 'id'))
+          ->pluck('image', 'id');
+
+        foreach ($items as &$item) {
+          $item['image'] = $this->downloadImage(
+            $item['image'] ?? null,
+            'item',
+            $existingImages[$item['id']] ?? null
+          );
+        }
+        unset($item);
+
+        $this->upsertRows(MasterItemModel::class, $items);
       }
 
       return $response;
@@ -320,8 +360,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterItemConvModel::truncate();
-        MasterItemConvModel::insert($response->json('data'));
+        $this->upsertRows(MasterItemConvModel::class, $response->json('data'));
       }
 
       return $response;
@@ -341,8 +380,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterItemPackageModel::truncate();
-        MasterItemPackageModel::insert($response->json('data'));
+        $this->upsertRows(MasterItemPackageModel::class, $response->json('data'));
       }
 
       return $response;
@@ -364,8 +402,7 @@ class SetupServices
       Log::info($response);
 
       if ($response->json('code') == 0) {
-        MasterItemPackageGroupModel::truncate();
-        MasterItemPackageGroupModel::insert($response->json('data'));
+        $this->upsertRows(MasterItemPackageGroupModel::class, $response->json('data'));
       }
 
       return $response;
@@ -385,8 +422,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterItemPackageDetailModel::truncate();
-        MasterItemPackageDetailModel::insert($response->json('data'));
+        $this->upsertRows(MasterItemPackageDetailModel::class, $response->json('data'));
       }
 
       return $response;
@@ -406,8 +442,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPricelistModel::truncate();
-        MasterPricelistModel::insert($response->json('data'));
+        $this->upsertRows(MasterPricelistModel::class, $response->json('data'));
       }
 
       return $response;
@@ -427,8 +462,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPricelistDetailModel::truncate();
-        MasterPricelistDetailModel::insert($response->json('data'));
+        $this->upsertRows(MasterPricelistDetailModel::class, $response->json('data'));
       }
 
       return $response;
@@ -452,8 +486,7 @@ class SetupServices
       Log::info($response->json("data"));
 
       if ($response->json('code') == 0) {
-        MasterPaymentMethodModel::truncate();
-        MasterPaymentMethodModel::insert($response->json('data'));
+        $this->upsertRows(MasterPaymentMethodModel::class, $response->json('data'));
       }
 
       return $response;
@@ -473,8 +506,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPaymentMethodGroupModel::truncate();
-        MasterPaymentMethodGroupModel::insert($response->json('data'));
+        $this->upsertRows(MasterPaymentMethodGroupModel::class, $response->json('data'));
       }
 
       return $response;
@@ -494,8 +526,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPaymentMethodTypeModel::truncate();
-        MasterPaymentMethodTypeModel::insert($response->json('data'));
+        $this->upsertRows(MasterPaymentMethodTypeModel::class, $response->json('data'));
       }
 
       return $response;
@@ -515,8 +546,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPaymentMethodVisitPurposeModel::truncate();
-        MasterPaymentMethodVisitPurposeModel::insert($response->json('data'));
+        $this->upsertRows(MasterPaymentMethodVisitPurposeModel::class, $response->json('data'));
       }
 
       return $response;
@@ -536,8 +566,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterBranchVisitPurposeModel::truncate();
-        MasterBranchVisitPurposeModel::insert($response->json('data'));
+        $this->upsertRows(MasterBranchVisitPurposeModel::class, $response->json('data'));
       }
 
       return $response;
@@ -557,8 +586,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterVisitPurposeModel::truncate();
-        MasterVisitPurposeModel::insert($response->json('data'));
+        $this->upsertRows(MasterVisitPurposeModel::class, $response->json('data'));
       }
 
       return $response;
@@ -567,6 +595,9 @@ class SetupServices
     }
   }
 
+  // getMasterUser: SENGAJA tetap truncate+insert (replace), bukan upsert -- ini data
+  // login/akses user, harus selalu cerminan pasti dari server (user yang dihapus/dinonaktifkan
+  // di server wajib ikut hilang di lokal, gak boleh nyangkut).
   public function getMasterUser(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -599,8 +630,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        RoleAccessModel::truncate();
-        RoleAccessModel::insert($response->json('data'));
+        $this->upsertRows(RoleAccessModel::class, $response->json('data'));
       }
 
       return $response;
@@ -620,8 +650,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterMenuAppModel::truncate();
-        MasterMenuAppModel::insert($response->json('data'));
+        $this->upsertRows(MasterMenuAppModel::class, $response->json('data'));
       }
 
       return $response;
@@ -630,6 +659,9 @@ class SetupServices
     }
   }
 
+  // getTableSectionPrintCategorySetting: SENGAJA tetap truncate+insert (replace), bukan
+  // upsert -- id dari APIANDORDER dibuang (lihat komentar di bawah) karena bisa kembar antar
+  // baris, jadi gak ada kolom unik yang aman dipakai buat dedup upsert.
   public function getTableSectionPrintCategorySetting(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -668,9 +700,9 @@ class SetupServices
   /**
    * Promo rows from APIANDORDER use Go `omitempty` on nullable fields (type_percent_rate,
    * type_freeitem_item_id, created_by, updated_at, updated_by) — when null, the key is missing
-   * entirely instead of being `null`. Model::insert() builds one SQL statement from the column
-   * list of the first row, so rows with different key sets break with "column count doesn't
-   * match value count". Pad every row to the same set of keys before inserting.
+   * entirely instead of being `null`. Model::insert()/upsert() builds one SQL statement from the
+   * column list of the first row, so rows with different key sets break with "column count
+   * doesn't match value count". Pad every row to the same set of keys before inserting/upserting.
    */
   private function normalizeInsertRows(array $rows): array
   {
@@ -695,8 +727,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPromoModel::truncate();
-        MasterPromoModel::insert($this->normalizeInsertRows($response->json('data')));
+        $this->upsertRows(MasterPromoModel::class, $this->normalizeInsertRows($response->json('data')));
       }
 
       return $response;
@@ -716,8 +747,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPromoBranchesModel::truncate();
-        MasterPromoBranchesModel::insert($response->json('data'));
+        $this->upsertRows(MasterPromoBranchesModel::class, $response->json('data'));
       }
 
       return $response;
@@ -737,8 +767,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPromoVisitPurposesModel::truncate();
-        MasterPromoVisitPurposesModel::insert($response->json('data'));
+        $this->upsertRows(MasterPromoVisitPurposesModel::class, $response->json('data'));
       }
 
       return $response;
@@ -758,8 +787,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPromoTypeMembersModel::truncate();
-        MasterPromoTypeMembersModel::insert($response->json('data'));
+        $this->upsertRows(MasterPromoTypeMembersModel::class, $response->json('data'));
       }
 
       return $response;
@@ -779,8 +807,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPromoCategoriesModel::truncate();
-        MasterPromoCategoriesModel::insert($response->json('data'));
+        $this->upsertRows(MasterPromoCategoriesModel::class, $response->json('data'));
       }
 
       return $response;
@@ -800,8 +827,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPromoSubCategoriesModel::truncate();
-        MasterPromoSubCategoriesModel::insert($response->json('data'));
+        $this->upsertRows(MasterPromoSubCategoriesModel::class, $response->json('data'));
       }
 
       return $response;
@@ -821,8 +847,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPromoItemsModel::truncate();
-        MasterPromoItemsModel::insert($response->json('data'));
+        $this->upsertRows(MasterPromoItemsModel::class, $response->json('data'));
       }
 
       return $response;
@@ -842,8 +867,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPromoDaysModel::truncate();
-        MasterPromoDaysModel::insert($response->json('data'));
+        $this->upsertRows(MasterPromoDaysModel::class, $response->json('data'));
       }
 
       return $response;
@@ -863,8 +887,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterPromoTimesModel::truncate();
-        MasterPromoTimesModel::insert($response->json('data'));
+        $this->upsertRows(MasterPromoTimesModel::class, $response->json('data'));
       }
 
       return $response;
@@ -886,8 +909,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterMemberTypeModel::truncate();
-        MasterMemberTypeModel::insert($this->normalizeInsertRows($response->json('data')));
+        $this->upsertRows(MasterMemberTypeModel::class, $this->normalizeInsertRows($response->json('data')));
       }
 
       return $response;
@@ -907,8 +929,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterMemberModel::truncate();
-        MasterMemberModel::insert($this->normalizeInsertRows($response->json('data')));
+        $this->upsertRows(MasterMemberModel::class, $this->normalizeInsertRows($response->json('data')));
       }
 
       return $response;
