@@ -31,6 +31,7 @@ Response:
                     {
                         "subcategory_id": 12,
                         "subcategory_name": "FOOD",
+                        "icon_src": "/img/subcategory/019f648a-f12e-7252-a76f-aa8fc55679bf.jpg",
                         "items": [
                             {
                                 "detail_pricelist_id": 93,
@@ -121,6 +122,7 @@ Kalau `id` gak ketemu:
 - `service_charge`/`vat`/`pb1` — nilainya itu **tax_id** (FK ke `mr_tax.id`), bukan rate langsung.
 - `service_charge_rate`/`vat_rate`/`pb1_rate` — persentase asli dari `mr_tax.rate` (lookup dari tax_id di atas), `null` kalau tax_id-nya gak ketemu di `mr_tax`.
 - `image_src` — path relatif ke gambar item (dari `mr_item.image`, di-download & disimpen lokal pas sync, lihat `SetupServices::downloadImage()`), `null` kalau item belum ada gambarnya. **Path relatif**, bukan URL penuh — frontend perlu prefix sendiri pakai base URL Laravel (sama pola kayak `logo_header_src`/`image_footer_src` branch di `paymentPage.vue`: `${API_BASE}${item.image_src}`).
+- `icon_src` (di tiap `subcategories[]`) — path relatif ke icon sub category (dari `mr_subcategory.icon_src`, di-download & disimpen lokal pas sync, lihat `SetupServices::getSubCategoryList()`), `null` kalau sub category itu belum ada icon-nya. Sama aturan path relatif kayak `image_src` item.
 
 ## Sumber & pemetaan
 
@@ -153,9 +155,15 @@ Pemetaan nama field per level (versi POS camelCase → kiosk snake_case):
 
 `package_list[]` (kalau item punya package) juga di-snake_case-in: `packageId`→`package_id`, `packageName`→`package_name`, `minQty`→`min_qty`, `maxQty`→`max_qty`, `menuPackageList`→`menu_package_list` (isinya: `menuPackageId`→`menu_package_id`, `itemId`→`item_id`, `menuName`→`menu_name`, `menuPrice`→`menu_price`, `taxType`→`tax_type`, `bomId`→`bom_id`, `taxId`→`tax_id`, `taxRate`→`tax_rate`).
 
+`subcategories[]` juga ada pemetaan sendiri (versi POS `$subcategory` query → kiosk): `subCategoryId`→`subcategory_id`, `SubCategoryName`→`subcategory_name`, `subCategoryIconSrc`→`icon_src`.
+
 ## Update (2026-08-11)
 
 `image_src` ditambahin — sebelumnya `MenuServices::GetMasterMenuList()` gak nge-select `mr_item.image` sama sekali, jadi Kiosk gak bisa nampilin gambar item. Sekarang di-tambahin ke query `$listmenu` (`mi.image as imageSrc`), otomatis kepakai juga di endpoint POS lain yang reuse fungsi yang sama (satu sumber logic). Tervalidasi live: set gambar test di 1 item, `image_src` muncul bener di response, direvert lagi abis test.
+
+## Update (2026-08-12)
+
+`icon_src` ditambahin di tiap `subcategories[]` — nyusul kolom `mr_subcategory.icon_src` yang baru ditambah bareng sync pull-nya (lihat `SYNC PULL.md`). Query `$subcategory` di `MenuServices::GetMasterMenuList()` ditambah `msc.icon_src as subCategoryIconSrc`, dipetakan ke `icon_src` di `KioskController::GetBranchVisitPurposeDetail()`. Sama kayak `image_src` item, ini otomatis kepakai juga di endpoint POS lain yang reuse fungsi yang sama. Tervalidasi live: set icon test di 1 sub category yang beneran ada di pohon menu visit purpose, `icon_src` muncul bener di response-nya, sub category lain tetap `null`, direvert lagi abis test.
 
 ## Catatan performa
 

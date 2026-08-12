@@ -226,7 +226,24 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(SubCategoryModel::class, $response->json('data'));
+        $list = $response->json("data");
+
+        // icon_src dari ERP itu path relatif ke server ERP -- didownload dulu ke lokal (sama
+        // pola kayak MasterItemModel::image / MasterImageListModel::image_src), biar Kiosk
+        // gak gantung koneksi ke ERP tiap kali icon kategori dirender.
+        $existingIcons = SubCategoryModel::whereIn('id', array_column($list, 'id'))
+          ->pluck('icon_src', 'id');
+
+        foreach ($list as &$item) {
+          $item['icon_src'] = $this->downloadImage(
+            $item['icon_src'] ?? null,
+            'subcategory',
+            $existingIcons[$item['id']] ?? null
+          );
+        }
+        unset($item);
+
+        $this->upsertRows(SubCategoryModel::class, $list);
       }
 
       return $response;

@@ -244,6 +244,7 @@ class KioskController extends Controller
                     $subcategories[] = [
                         'subcategory_id' => $sub->subCategoryId,
                         'subcategory_name' => $sub->SubCategoryName,
+                        'icon_src' => $sub->subCategoryIconSrc,
                         'items' => $items,
                     ];
                 }

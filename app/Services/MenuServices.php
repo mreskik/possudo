@@ -103,14 +103,15 @@ class MenuServices
       ", [$visitPurposeRow->menuPriceListId]);
 
       $subcategory = DB::select("
-      SELECT DISTINCT 
+      SELECT DISTINCT
       mi.category_id as categoryId,
       mi.subcategory_id as subCategoryId,
-      msc.name as SubCategoryName
+      msc.name as SubCategoryName,
+      msc.icon_src as subCategoryIconSrc
 
       FROM mr_pricelist_detail mpd
       JOIN mr_pricelist mp on mp.id = mpd.pricelist_id
-      JOIN mr_item_conv mic on mic.id = mpd.item_conv_detail_id 
+      JOIN mr_item_conv mic on mic.id = mpd.item_conv_detail_id
       JOIN mr_item mi on mi.id = mic.item_id
       JOIN mr_subcategory msc on msc.id = mi.subcategory_id
 
