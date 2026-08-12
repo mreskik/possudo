@@ -28,9 +28,11 @@ Route::prefix('kiosk')->group(function () {
   Route::get('terminal/{id}', [KioskController::class, 'GetTerminalDetail']);
   Route::post('save-order', [KioskController::class, 'SaveOrder']);
   Route::get('order/{order_number}', [KioskController::class, 'GetOrderDetail']);
+  Route::get('order-history', [KioskController::class, 'GetOrderHistory']);
   Route::get('payment-method', [KioskController::class, 'GetPaymentMethodList']);
   Route::post('payment/request', [KioskController::class, 'RequestPayment']);
   Route::get('payment/check-status/{order_number}', [KioskController::class, 'CheckPaymentStatus']);
+  Route::post('cancel-order', [KioskController::class, 'CancelOrder']);
 });
 
 Route::prefix('setup')->group(function () {

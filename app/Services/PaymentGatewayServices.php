@@ -165,6 +165,22 @@ class PaymentGatewayServices
       ->update(['payment_gateway_order_id' => $attempt->order_id]);
   }
 
+  // CancelPendingAttempt: dipanggil dari KioskController::CancelOrder() -- kalau order yang
+  // mau di-cancel masih punya attempt payment 'pending' (customer sempat minta QR tapi belum
+  // scan/bayar), attempt itu ikut di-cancel ke Midtrans juga, biar gak nyangkut pending/expired
+  // sendiri di sana meski order-nya udah dianggap batal di sisi kita. Gak ada attempt pending ->
+  // no-op (order emang belum pernah minta payment, atau attempt terakhirnya udah cancel/settlement).
+  public function CancelPendingAttempt(string $order_number): void
+  {
+    $pendingAttempt = KioskPaymentRequestModel::where('order_number', $order_number)
+      ->where('status', 'pending')
+      ->first();
+
+    if ($pendingAttempt) {
+      $this->cancelAttempt($pendingAttempt);
+    }
+  }
+
   // cancelAttempt: batalin 1 attempt pending -- ke Midtrans (lewat service payment) dulu, baru
   // tandain lokal. Gagal cancel di Midtrans (mis. race sama settlement) sengaja gak dianggap
   // fatal di sini -- tetap lanjut ke attempt baru, biar customer gak keblokir cuma gara-gara

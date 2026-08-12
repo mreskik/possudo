@@ -244,6 +244,105 @@ class KioskController extends Controller
         }
     }
 
+    // GetOrderHistory: list header order kiosk (order_source = 'kiosk'), filter date range by
+    // order_date + optional terminal_id. Belum termasuk list item -- detail per-order nyusul
+    // endpoint terpisah. date_from/date_to optional, default hari ini kalau gak dikirim (format
+    // Y-m-d). member_name pakai LEFT JOIN (bukan inner) -- order tanpa member_id gak match
+    // mr_member, jangan sampai ke-drop dari list gara-gara inner join.
+    //
+    // payment_method_id/payment_method diambil dari attempt TERAKHIR di tr_kiosk_payment_request
+    // (bukan dari tr_order_payment) -- sengaja, biar tetap ada meski order-nya masih 'pending'
+    // (belum kebayar). Kiosk butuh payment_method_id ini buat retry langsung dari list history:
+    // order pending di-tap -> panggil ulang payment/request pakai payment_method_id yang sama,
+    // gak perlu customer milih payment method lagi dari awal.
+    public function GetOrderHistory(Request $request)
+    {
+        try {
+            $dateFrom = $request->query('date_from') ?: now()->toDateString();
+            $dateTo = $request->query('date_to') ?: now()->toDateString();
+            $terminalId = $request->query('terminal_id');
+
+            $where = "o.order_source = 'kiosk' AND o.order_date BETWEEN ? AND ?";
+            $bindings = [$dateFrom, $dateTo];
+
+            if ($terminalId) {
+                $where .= " AND o.terminal_id = ?";
+                $bindings[] = $terminalId;
+            }
+
+            $data = DB::select("SELECT
+                    o.order_number,
+                    o.payment_number,
+                    o.status,
+                    o.order_date,
+                    o.order_name,
+                    o.total_billing,
+                    o.total_item,
+                    o.customer_phone_number,
+                    m.name as member_name,
+                    latest.payment_method_id,
+                    pm.name as payment_method
+                    FROM tr_order o
+                    LEFT JOIN mr_member m ON m.id = o.member_id
+                    LEFT JOIN (
+                        SELECT kpr.order_number, kpr.payment_method_id
+                        FROM tr_kiosk_payment_request kpr
+                        INNER JOIN (
+                            SELECT order_number, MAX(created_at) as max_created_at
+                            FROM tr_kiosk_payment_request
+                            GROUP BY order_number
+                        ) latest_kpr ON latest_kpr.order_number = kpr.order_number
+                            AND latest_kpr.max_created_at = kpr.created_at
+                    ) latest ON latest.order_number = o.order_number
+                    LEFT JOIN mr_payment_method pm ON pm.id = latest.payment_method_id
+                    WHERE $where
+                    ORDER BY o.order_date DESC, o.created_at DESC", $bindings);
+
+            return response()->json([
+                'code' => 0,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    // CancelOrder: batalin order kiosk sebelum bayar -- reuse OrderServices::CancelOrder() yang
+    // sama dipakai POS (udah guard cuma order status pending/hold yang bisa di-cancel, order yang
+    // udah paid otomatis ketolak). Sebelum itu, kalau order ini masih punya attempt payment
+    // pending (customer sempat minta QR tapi belum bayar), attempt itu ikut di-cancel ke Midtrans
+    // juga (lihat PaymentGatewayServices::CancelPendingAttempt()) -- biar gak nyangkut sendiri.
+    public function CancelOrder(Request $request)
+    {
+        try {
+            $order_number = $request->input('order_number');
+            $notes = $request->input('notes', '');
+
+            if (!$order_number) {
+                return response()->json([
+                    'code' => 100,
+                    'message' => 'order_number wajib diisi',
+                ]);
+            }
+
+            (new PaymentGatewayServices())->CancelPendingAttempt($order_number);
+            $message = OrderServices::CancelOrder($order_number, $notes);
+
+            return response()->json([
+                'code' => 0,
+                'message' => $message,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
     // GetBranchVisitPurposeDetail: detail 1 visit purpose (config vat/pb1/service_charge/
     // order_fee, plus rate-nya masing-masing) + pohon menu lengkap (category > subcategory >
     // item) buat visit purpose itu. Reuse MenuServices::GetMasterMenuList() apa adanya (tax
