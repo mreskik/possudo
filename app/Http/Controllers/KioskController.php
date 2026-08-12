@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\DayShiftServices;
+use App\Services\MemberServices;
 use App\Services\MenuServices;
 use App\Services\OrderServices;
 use App\Services\PaymentGatewayServices;
@@ -75,6 +76,26 @@ class KioskController extends Controller
                     JOIN mr_image_list_apply_for milaf ON milaf.master_image_list_id = mil.id
                     WHERE mi.is_active = 1 AND milaf.apply_for = 'cd_kiosk'
                     ORDER BY mil.sequence ASC");
+
+            return response()->json([
+                'code' => 0,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    // CheckMemberByPhone: cek nomor HP udah kedaftar member apa belum -- LIVE ke ERP (bukan
+    // baca mr_member lokal), lihat MemberServices::CheckByPhone(). data null (bukan error)
+    // kalau nomornya belum kedaftar -- Kiosk yang mutusin mau nawarin daftar member atau enggak.
+    public function CheckMemberByPhone(Request $request, string $phone_number)
+    {
+        try {
+            $data = (new MemberServices())->CheckByPhone($phone_number);
 
             return response()->json([
                 'code' => 0,
@@ -417,6 +438,7 @@ class KioskController extends Controller
                     'menu_price' => $mpl->menuPrice,
                     'tax_type' => $mpl->taxType,
                     'bom_id' => $mpl->bomId,
+                    'icon_src' => $mpl->iconSrc ?? null,
                     'tax_id' => $mpl->taxId,
                     'tax_rate' => $mpl->taxRate,
                 ];
@@ -438,6 +460,7 @@ class KioskController extends Controller
             'menu_name' => $item->menuName,
             'menu_color' => $item->menuColor,
             'image_src' => $item->imageSrc ?? null,
+            'icon_src' => $item->iconSrc ?? null,
             'bom_id' => $item->bomId,
             'category_id' => $item->categoryId,
             'subcategory_id' => $item->subCategoryId,

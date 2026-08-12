@@ -63,7 +63,8 @@ class MenuServices
   mi.name as menuName,
   mipd.price as menuPrice,
   mi.tax_type as taxType,
-  mi.bom_id as bomId
+  mi.bom_id as bomId,
+  mi.icon_src as iconSrc
 
 
   FROM mr_item_package_detail mipd
@@ -134,7 +135,8 @@ class MenuServices
         mi.tax_type as taxType,
         mi.stok_qty as stokQty,
         mi.flag_soldout as flagSoldOut,
-        mi.image as imageSrc
+        mi.image as imageSrc,
+        mi.icon_src as iconSrc
 
         FROM mr_pricelist_detail mpd
         JOIN mr_pricelist mp on mp.id = mpd.pricelist_id

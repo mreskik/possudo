@@ -41,6 +41,7 @@ Response:
                                 "menu_name": "PAKET MERCON",
                                 "menu_color": "#2563eb",
                                 "image_src": "/img/item/019f6f6b-ac43-7f11-a421-53efae5e0402.jpg",
+                                "icon_src": "/img/item-icon/019f648a-f12e-7252-a76f-aa8fc55679bf.jpg",
                                 "bom_id": null,
                                 "category_id": 39,
                                 "subcategory_id": 12,
@@ -67,6 +68,7 @@ Response:
                                                 "menu_price": "0.00",
                                                 "tax_type": "vat",
                                                 "bom_id": null,
+                                                "icon_src": null,
                                                 "tax_id": 100,
                                                 "tax_rate": "11.00"
                                             },
@@ -77,6 +79,7 @@ Response:
                                                 "menu_price": "5000.00",
                                                 "tax_type": "vat",
                                                 "bom_id": null,
+                                                "icon_src": null,
                                                 "tax_id": 100,
                                                 "tax_rate": "11.00"
                                             }
@@ -95,6 +98,7 @@ Response:
                                                 "menu_price": "0.00",
                                                 "tax_type": "vat",
                                                 "bom_id": null,
+                                                "icon_src": null,
                                                 "tax_id": 100,
                                                 "tax_rate": "11.00"
                                             }
@@ -111,7 +115,7 @@ Response:
 }
 ```
 
-`package_list` di atas contoh ilustrasi struktur (item bebas pilih 1 dari "PAKET 1" + boleh nambah dari "PAKET 2", `min_qty`/`max_qty` per group ngatur wajib/batasnya) — bukan hasil curl asli, karena di data lokal saat ini belum ada item kiosk yang punya package terisi.
+`package_list` di atas contoh ilustrasi struktur (item bebas pilih 1 dari "PAKET 1" + boleh nambah dari "PAKET 2", `min_qty`/`max_qty` per group ngatur wajib/batasnya) — bukan hasil curl asli. **Update**: sejak testing `icon_src` (2026-08-12) ketemu kombinasi visit purpose yang beneran punya package terisi (`visit_purpose_id: 3`, item "AMERICANO / ON THE ROCK" dengan package "VARIAN") — struktur di atas udah tervalidasi sesuai data real, cuma nilai contohnya masih ilustrasi.
 
 Kalau `id` gak ketemu:
 
@@ -123,6 +127,7 @@ Kalau `id` gak ketemu:
 - `service_charge_rate`/`vat_rate`/`pb1_rate` — persentase asli dari `mr_tax.rate` (lookup dari tax_id di atas), `null` kalau tax_id-nya gak ketemu di `mr_tax`.
 - `image_src` — path relatif ke gambar item (dari `mr_item.image`, di-download & disimpen lokal pas sync, lihat `SetupServices::downloadImage()`), `null` kalau item belum ada gambarnya. **Path relatif**, bukan URL penuh — frontend perlu prefix sendiri pakai base URL Laravel (sama pola kayak `logo_header_src`/`image_footer_src` branch di `paymentPage.vue`: `${API_BASE}${item.image_src}`).
 - `icon_src` (di tiap `subcategories[]`) — path relatif ke icon sub category (dari `mr_subcategory.icon_src`, di-download & disimpen lokal pas sync, lihat `SetupServices::getSubCategoryList()`), `null` kalau sub category itu belum ada icon-nya. Sama aturan path relatif kayak `image_src` item.
+- `icon_src` (di tiap `items[]` dan di tiap `menu_package_list[]`) — path relatif ke icon item (dari `mr_item.icon_src`, di-download & disimpen lokal pas sync, lihat `SetupServices::getMasterItem()`), `null` kalau item itu belum ada icon-nya. Sama aturan path relatif, terpisah dari `image_src` (dua file berbeda per item).
 
 ## Sumber & pemetaan
 
@@ -139,6 +144,7 @@ Pemetaan nama field per level (versi POS camelCase → kiosk snake_case):
 | `menuName`             | `menu_name`              |
 | `menuColor`            | `menu_color`             |
 | `imageSrc`             | `image_src`              |
+| `iconSrc`               | `icon_src`               |
 | `bomId`                | `bom_id`                 |
 | `categoryId`           | `category_id`            |
 | `subCategoryId`        | `subcategory_id`         |
@@ -153,7 +159,7 @@ Pemetaan nama field per level (versi POS camelCase → kiosk snake_case):
 | `separatePrintPackage` | `separate_print_package` |
 | `packageList`          | `package_list`           |
 
-`package_list[]` (kalau item punya package) juga di-snake_case-in: `packageId`→`package_id`, `packageName`→`package_name`, `minQty`→`min_qty`, `maxQty`→`max_qty`, `menuPackageList`→`menu_package_list` (isinya: `menuPackageId`→`menu_package_id`, `itemId`→`item_id`, `menuName`→`menu_name`, `menuPrice`→`menu_price`, `taxType`→`tax_type`, `bomId`→`bom_id`, `taxId`→`tax_id`, `taxRate`→`tax_rate`).
+`package_list[]` (kalau item punya package) juga di-snake_case-in: `packageId`→`package_id`, `packageName`→`package_name`, `minQty`→`min_qty`, `maxQty`→`max_qty`, `menuPackageList`→`menu_package_list` (isinya: `menuPackageId`→`menu_package_id`, `itemId`→`item_id`, `menuName`→`menu_name`, `menuPrice`→`menu_price`, `taxType`→`tax_type`, `bomId`→`bom_id`, `iconSrc`→`icon_src`, `taxId`→`tax_id`, `taxRate`→`tax_rate`).
 
 `subcategories[]` juga ada pemetaan sendiri (versi POS `$subcategory` query → kiosk): `subCategoryId`→`subcategory_id`, `SubCategoryName`→`subcategory_name`, `subCategoryIconSrc`→`icon_src`.
 
@@ -164,6 +170,12 @@ Pemetaan nama field per level (versi POS camelCase → kiosk snake_case):
 ## Update (2026-08-12)
 
 `icon_src` ditambahin di tiap `subcategories[]` — nyusul kolom `mr_subcategory.icon_src` yang baru ditambah bareng sync pull-nya (lihat `SYNC PULL.md`). Query `$subcategory` di `MenuServices::GetMasterMenuList()` ditambah `msc.icon_src as subCategoryIconSrc`, dipetakan ke `icon_src` di `KioskController::GetBranchVisitPurposeDetail()`. Sama kayak `image_src` item, ini otomatis kepakai juga di endpoint POS lain yang reuse fungsi yang sama. Tervalidasi live: set icon test di 1 sub category yang beneran ada di pohon menu visit purpose, `icon_src` muncul bener di response-nya, sub category lain tetap `null`, direvert lagi abis test.
+
+## Update (2026-08-12, lanjutan)
+
+`icon_src` ditambahin juga di **level item** — di tiap `items[]` (menu utama) **dan** di tiap `menu_package_list[]` (item di dalam package/varian) — nyusul kolom `mr_item.icon_src` yang baru ditambah (lihat `SYNC PULL.md`, sekarang `getMasterItem()` download 2 file per item: `image` dan `icon_src`, subfolder beda). Query `$listmenu` (item utama) dan `$menuPackageDetail` (item di dalam package) di `MenuServices::GetMasterMenuList()` sama-sama ditambah `mi.icon_src as iconSrc`, dipetakan ke `icon_src` di `mapKioskMenuItem()`.
+
+Tervalidasi live: set icon test di 2 item real (1 item utama, 1 item yang ada di dalam `menu_package_list` beneran, bukan contoh ilustrasi lagi — nemu kombinasi visit purpose yang emang punya package terisi) — `icon_src` muncul bener di kedua level, direvert lagi abis test.
 
 ## Catatan performa
 

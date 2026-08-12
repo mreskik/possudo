@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('kiosk')->group(function () {
   Route::get('day-status', [KioskController::class, 'GetDayStatus']);
   Route::get('images', [KioskController::class, 'GetImages']);
+  Route::get('member/check/{phone_number}', [KioskController::class, 'CheckMemberByPhone']);
   Route::get('branch-visit-purpose', [KioskController::class, 'GetBranchVisitPurposeList']);
   Route::get('branch-visit-purpose/{id}', [KioskController::class, 'GetBranchVisitPurposeDetail']);
   Route::get('terminal/{id}', [KioskController::class, 'GetTerminalDetail']);

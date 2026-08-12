@@ -347,16 +347,23 @@ class SetupServices
       if ($response->json('code') == 0) {
         $items = $response->json("data");
 
-        // fallback per item -- gambar lokal yang lama, dipakai kalau download gagal (bukan
+        // fallback per item -- gambar/icon lokal yang lama, dipakai kalau download gagal (bukan
         // di-null-in, lihat catatan di downloadImage()).
         $existingImages = MasterItemModel::whereIn('id', array_column($items, 'id'))
           ->pluck('image', 'id');
+        $existingIcons = MasterItemModel::whereIn('id', array_column($items, 'id'))
+          ->pluck('icon_src', 'id');
 
         foreach ($items as &$item) {
           $item['image'] = $this->downloadImage(
             $item['image'] ?? null,
             'item',
             $existingImages[$item['id']] ?? null
+          );
+          $item['icon_src'] = $this->downloadImage(
+            $item['icon_src'] ?? null,
+            'item-icon',
+            $existingIcons[$item['id']] ?? null
           );
         }
         unset($item);
