@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('kiosk')->group(function () {
   Route::get('day-status', [KioskController::class, 'GetDayStatus']);
+  Route::get('images', [KioskController::class, 'GetImages']);
   Route::get('branch-visit-purpose', [KioskController::class, 'GetBranchVisitPurposeList']);
   Route::get('branch-visit-purpose/{id}', [KioskController::class, 'GetBranchVisitPurposeDetail']);
   Route::get('terminal/{id}', [KioskController::class, 'GetTerminalDetail']);
@@ -61,6 +62,9 @@ Route::prefix('sync_pull')->group(function () {
   Route::get('get_payment_method_visit_purpose', [SyncController::class, 'getMasterPaymentMethodVisitPurpose']);
   Route::get('get_branch_visit_purpose', [SyncController::class, 'getMasterBranchVisitPurpose']);
   Route::get('get_branch_ops_setting', [SyncController::class, 'getMasterBranchOpsSetting']);
+  Route::get('get_master_image', [SyncController::class, 'getMasterImage']);
+  Route::get('get_master_image_list', [SyncController::class, 'getMasterImageList']);
+  Route::get('get_master_image_list_apply_for', [SyncController::class, 'getMasterImageListApplyFor']);
   Route::get('get_visit_purpose', [SyncController::class, 'getMasterVisitPurpose']);
   Route::get('get_master_user', [SyncController::class, 'getMasterUser']);
   Route::get('get_master_role_access', [SyncController::class, 'getMasterRoleAccess']);

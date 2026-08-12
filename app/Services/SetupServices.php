@@ -5,6 +5,9 @@ namespace App\Services;
 use App\Models\BranchModel;
 use App\Models\CategoryModel;
 use App\Models\MasterBranchOpsSettingModel;
+use App\Models\MasterImageListApplyForModel;
+use App\Models\MasterImageListModel;
+use App\Models\MasterImageModel;
 use App\Models\MasterBranchVisitPurposeModel;
 use App\Models\MasterItemConvModel;
 use App\Models\MasterItemModel;
@@ -588,6 +591,87 @@ class SetupServices
 
       if ($response->json('code') == 0) {
         $this->upsertRows(MasterBranchOpsSettingModel::class, $response->json('data'));
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  // getMasterImage/getMasterImageList/getMasterImageListApplyFor: 3 endpoint flat terpisah
+  // buat data nested master_image (header -> image_list -> apply_for) di ERP, ngikutin pola
+  // getMasterItemPackage/_Group/_Detail -- upsert-by-id, gak ada penghapusan baris lokal yang
+  // udah gak ada lagi di server (limitasi yang sama & diterima kayak pull lain, lihat SYNC PULL.md).
+  public function getMasterImage(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_master_image/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        $this->upsertRows(MasterImageModel::class, $response->json('data'));
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  public function getMasterImageList(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_master_image_list/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        $list = $response->json("data");
+
+        // image_src dari ERP itu path relatif ke server ERP (file fisiknya ada di sana, bukan
+        // di POS) -- didownload dulu ke lokal (sama pola kayak MasterItemModel::image), biar
+        // Kiosk/POS bisa nampilin tanpa gantung koneksi ke ERP tiap kali gambar di-render.
+        $existingImages = MasterImageListModel::whereIn('id', array_column($list, 'id'))
+          ->pluck('image_src', 'id');
+
+        foreach ($list as &$item) {
+          $item['image_src'] = $this->downloadImage(
+            $item['image_src'] ?? null,
+            'master-image',
+            $existingImages[$item['id']] ?? null
+          );
+        }
+        unset($item);
+
+        $this->upsertRows(MasterImageListModel::class, $list);
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  public function getMasterImageListApplyFor(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_master_image_list_apply_for/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        $this->upsertRows(MasterImageListApplyForModel::class, $response->json('data'));
       }
 
       return $response;

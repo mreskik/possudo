@@ -61,6 +61,33 @@ class KioskController extends Controller
         }
     }
 
+    // GetImages: daftar gambar buat layar Kiosk (banner/slideshow), filter apply_for = 'cd_kiosk'
+    // udah fix di query (bukan parameter client) -- urut sequence. image_src udah path lokal
+    // POS (didownload pas pull, lihat SetupServices::getMasterImageList()), bukan path ERP.
+    public function GetImages(Request $request)
+    {
+        try {
+            $data = DB::select("SELECT
+                    mil.image_src,
+                    mil.sequence
+                    FROM mr_image_list mil
+                    JOIN mr_image mi ON mi.id = mil.master_image_id
+                    JOIN mr_image_list_apply_for milaf ON milaf.master_image_list_id = mil.id
+                    WHERE mi.is_active = 1 AND milaf.apply_for = 'cd_kiosk'
+                    ORDER BY mil.sequence ASC");
+
+            return response()->json([
+                'code' => 0,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
     // GetTerminalDetail: detail 1 terminal by id, apa adanya dari mr_terminal (gak ada join).
     // Dipakai kiosk pas pertama kali device ini "kenal diri" abis pilih terminal
     // (lihat TerminalPage.vue).
