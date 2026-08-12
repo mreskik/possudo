@@ -5,25 +5,24 @@ namespace App\Http\Controllers;
 use App\Services\DayShiftServices;
 use App\Services\MenuServices;
 use App\Services\OrderServices;
+use App\Services\PaymentGatewayServices;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class KioskController extends Controller
 {
-    // GetDayStatus: cek toko lagi buka apa engga (ada dayshift aktif -- dayin_time keisi,
-    // dayout_time masih null). Kiosk pakai ini sebelum ngizinin self-order.
+    // GetDayStatus: cek toko lagi buka apa engga -- gabungan jam operasional branch
+    // (mr_branch_ops_setting, per hari) dan status dayshift (dayin_time keisi, dayout_time
+    // masih null). Kiosk pakai ini sebelum ngizinin self-order. Lihat
+    // DayShiftServices::GetKioskDayStatus() buat urutan cek lengkapnya.
     public function GetDayStatus(Request $request)
     {
         try {
-            $dayshift = DayShiftServices::GetDayShift();
+            $data = DayShiftServices::GetKioskDayStatus();
 
             return response()->json([
                 'code' => 0,
-                'data' => [
-                    'is_open' => $dayshift !== null,
-                    'dayin_time' => $dayshift->dayin_time ?? null,
-                    'ulid' => $dayshift->ulid ?? null,
-                ],
+                'data' => $data,
             ]);
         } catch (\Throwable $e) {
             return response()->json([
@@ -132,6 +131,36 @@ class KioskController extends Controller
                 ->whereNotNull('payment_gateway_code')
                 ->where('payment_gateway_code', '!=', '')
                 ->get();
+
+            return response()->json([
+                'code' => 0,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    // RequestPayment: minta QR/dst ke payment gateway (APIANDORDER -> Midtrans) buat 1 order.
+    // Wajib payment_method_id yang punya payment_gateway_code keisi (sama kayak filter di
+    // GetPaymentMethodList()) -- kalau kosong/null, ditolak "payment method tidak didukung".
+    public function RequestPayment(Request $request)
+    {
+        try {
+            $order_number = $request->input('order_number');
+            $payment_method_id = $request->input('payment_method_id');
+
+            if (!$order_number || !$payment_method_id) {
+                return response()->json([
+                    'code' => 100,
+                    'message' => 'order_number dan payment_method_id wajib diisi',
+                ]);
+            }
+
+            $data = (new PaymentGatewayServices())->RequestPayment($order_number, (int) $payment_method_id);
 
             return response()->json([
                 'code' => 0,

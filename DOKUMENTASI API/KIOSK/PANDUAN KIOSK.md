@@ -18,7 +18,10 @@
 - [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md) — `POST /api/kiosk/save-order` — wrapper tipis ke `OrderServices::SaveOrder()` yang sama dipakai POS (`order_source` di-hardcode `kiosk`, `table_section_id` di-resolve dari `mr_terminal`). Print kitchen ditunda sampai payment, bukan pas save-order.
 - [KIOSK ORDER DETAIL.md](./KIOSK%20ORDER%20DETAIL.md) — `GET /api/kiosk/order/{order_number}` — header order doang (`order_name`, `sub_total`, `total_tax`, `total_discount`, `total_billing`), belum termasuk list item.
 - [KIOSK PAYMENT METHOD.md](./KIOSK%20PAYMENT%20METHOD.md) — `GET /api/kiosk/payment-method` — list payment method yang `payment_gateway_code`-nya keisi (belum difilter per visit purpose).
+- [KIOSK PAYMENT REQUEST.md](./KIOSK%20PAYMENT%20REQUEST.md) — `POST /api/kiosk/payment/request` — minta QR ke payment gateway (proxy APIANDORDER → Midtrans) buat 1 order. Validasi `payment_gateway_code` dulu, `amount` dari `tr_order.total_billing` (server-side).
 
 ## Status
 
-7 endpoint (day-status, branch-visit-purpose list+detail, terminal detail, save-order, order detail, payment method) udah kelar, tervalidasi live, dan terdokumentasi. Belum ada frontend Kiosk (`public/kiosk/` masih kosong) — endpoint-endpoint ini nunggu dipakai begitu bundle Vue Kiosk mulai dibangun.
+8 endpoint (day-status, branch-visit-purpose list+detail, terminal detail, save-order, order detail, payment method, payment request) udah kelar, tervalidasi live, dan terdokumentasi. Belum ada frontend Kiosk (`public/kiosk/` masih kosong) — endpoint-endpoint ini nunggu dipakai begitu bundle Vue Kiosk mulai dibangun.
+
+Yang masih nyusul: endpoint **polling status pembayaran** (lihat [KIOSK PAYMENT REQUEST.md](./KIOSK%20PAYMENT%20REQUEST.md) bagian bawah) — perlu buat tau kapan `payment/request` di atas beneran udah dibayar, terus manggil `PaymentServices::SavePayment()` buat nyelesein order-nya.

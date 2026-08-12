@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BranchModel;
 use App\Models\DayShiftDetailModel;
 use App\Models\DaySiftModel;
+use App\Models\MasterBranchOpsSettingModel;
 use App\Models\SessionModel;
 use App\Models\TrOrderDetailModel;
 use App\Models\TrOrderDetailPackageModel;
@@ -81,6 +82,55 @@ class DayShiftServices
     } catch (\Throwable $e) {
       throw $e;
     }
+  }
+
+  // GetKioskDayStatus: dipakai khusus buat Kiosk (KioskController::GetDayStatus) -- beda dari
+  // GetDayShift() yang murni dayshift, ini juga mempertimbangkan jam operasional branch
+  // (mr_branch_ops_setting) supaya kiosk otomatis "tutup" begitu lewat jam operasional, gak
+  // nunggu kasir manual dayout (kadang dayshift sengaja dibiarin kebuka lama buat urus selisih
+  // kas, tapi customer tetap gak boleh order lewat kiosk kalau udah lewat jam tutup).
+  //
+  // Urutan cek (berhenti di step pertama yang nentuin hasil):
+  // 1. mr_branch_ops_setting gak ada baris buat hari ini -> throw (belum di-pull/di-setting,
+  //    error, bukan is_open:false -- gak bisa dijawab beneran buka/tutup tanpa data ini).
+  // 2. status 'closed' -> is_open false, gak peduli dayshift.
+  // 3. status 'open' & sekarang di luar [open_time, closed_time] -> is_open false, gak peduli
+  //    dayshift (prioritas di atas status dayshift).
+  // 4. sisanya (status 'always_open', atau 'open' & masih dalam jam) -> is_open ikutin
+  //    dayshift (dayin_time keisi, dayout_time NULL).
+  public static function GetKioskDayStatus(): array
+  {
+    $today = strtolower(now()->format('l')); // 'monday'..'sunday', cocok sama kolom `day`
+
+    $opsSetting = MasterBranchOpsSettingModel::where('day', $today)->first();
+    if (!$opsSetting) {
+      throw new \Exception('branch ops setting belum di-pull, tidak bisa cek jam operasional');
+    }
+
+    $dayshift = self::GetDayShift();
+
+    if ($opsSetting->status === 'closed') {
+      return self::buildKioskDayStatus(false, $dayshift);
+    }
+
+    if ($opsSetting->status === 'open') {
+      $now = now()->format('H:i:s');
+      if ($now < $opsSetting->open_time || $now > $opsSetting->closed_time) {
+        return self::buildKioskDayStatus(false, $dayshift);
+      }
+    }
+
+    // status 'always_open', atau 'open' & masih dalam jam operasional
+    return self::buildKioskDayStatus($dayshift !== null, $dayshift);
+  }
+
+  private static function buildKioskDayStatus(bool $isOpen, $dayshift): array
+  {
+    return [
+      'is_open' => $isOpen,
+      'dayin_time' => $dayshift->dayin_time ?? null,
+      'ulid' => $dayshift->ulid ?? null,
+    ];
   }
 
   public static function StartDay($start_cash)
@@ -180,16 +230,34 @@ class DayShiftServices
       ]);
       PrintServices::PrintEndDay($dayshift_ulid);
 
-      // PUSH DATA ORDER DAN DETAIL SERTA PAYMENT 
+      // PUSH DATA DAYSHIFT DULU -- wajib duluan sebelum request jurnal, karena endpoint jurnal
+      // di ERP (EndDayExec) sekarang nolak kalau baris pos_dayshift-nya belum ada di sana
+      // (guard ditambah bareng flag_jurnal_run, lihat MASTER DAYSHIFT JURNAL.md).
       $pushService = new PushDataServices;
+      $pushService->pushDataDayShift();
+      $pushService->pushDataDayShiftDetail();
+
+      // PUSH DATA ORDER DAN DETAIL SERTA PAYMENT
       $pushService->pushDataOrder();
       $pushService->pushDataOrderDetail();
       $pushService->pushDataOrderDetailPackage();
       $pushService->pushDataOrderPayment();
 
-      // JURNAL END DAY
+      // JURNAL END DAY -- token branch yang sama dipakai buat auth /pos/sync/*, sekarang
+      // wajib juga buat /pos/endday/* (lihat middleware.BranchTokenAuth di APIANDORDER dan
+      // midleware.BranchTokenAuth di sudocore2, keduanya validasi token yang sama).
       $branch = BranchModel::first();
-      $resc = Http::get(env('SERVER_ENDPOINT') . "/pos/endday/jurnal/" . $branch->id . "/" . $dayshift_ulid);
+      $resc = Http::withToken($branch->token)->get(env('SERVER_ENDPOINT') . "/pos/endday/jurnal/" . $branch->id . "/" . $dayshift_ulid);
+      if ($resc->json('code') !== 0) {
+        // sengaja gak throw -- dayout tetap harus sukses di lokal walau jurnal ERP gagal
+        // (bisa di-retry manual lewat modul Dayshift Jurnal di ERP), tapi kegagalannya dicatat
+        // biar ketauan, gak lagi diam-diam kelewat kayak sebelumnya.
+        Log::error('gagal request jurnal endday ke ERP', [
+          'dayshift_ulid' => $dayshift_ulid,
+          'branch_id' => $branch->id,
+          'response' => $resc->json(),
+        ]);
+      }
       DB::commit();
       return "end day success!";
     } catch (\Throwable $e) {

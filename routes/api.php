@@ -27,6 +27,7 @@ Route::prefix('kiosk')->group(function () {
   Route::post('save-order', [KioskController::class, 'SaveOrder']);
   Route::get('order/{order_number}', [KioskController::class, 'GetOrderDetail']);
   Route::get('payment-method', [KioskController::class, 'GetPaymentMethodList']);
+  Route::post('payment/request', [KioskController::class, 'RequestPayment']);
 });
 
 Route::prefix('setup')->group(function () {
@@ -59,6 +60,7 @@ Route::prefix('sync_pull')->group(function () {
   Route::get('get_payment_method_type', [SyncController::class, 'getMasterPaymentMethodType']);
   Route::get('get_payment_method_visit_purpose', [SyncController::class, 'getMasterPaymentMethodVisitPurpose']);
   Route::get('get_branch_visit_purpose', [SyncController::class, 'getMasterBranchVisitPurpose']);
+  Route::get('get_branch_ops_setting', [SyncController::class, 'getMasterBranchOpsSetting']);
   Route::get('get_visit_purpose', [SyncController::class, 'getMasterVisitPurpose']);
   Route::get('get_master_user', [SyncController::class, 'getMasterUser']);
   Route::get('get_master_role_access', [SyncController::class, 'getMasterRoleAccess']);

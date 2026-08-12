@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\BranchModel;
 use App\Models\CategoryModel;
+use App\Models\MasterBranchOpsSettingModel;
 use App\Models\MasterBranchVisitPurposeModel;
 use App\Models\MasterItemConvModel;
 use App\Models\MasterItemModel;
@@ -567,6 +568,26 @@ class SetupServices
 
       if ($response->json('code') == 0) {
         $this->upsertRows(MasterBranchVisitPurposeModel::class, $response->json('data'));
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  public function getMasterBranchOpsSetting(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_branch_ops_setting/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        $this->upsertRows(MasterBranchOpsSettingModel::class, $response->json('data'));
       }
 
       return $response;

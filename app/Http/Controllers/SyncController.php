@@ -430,6 +430,26 @@ class SyncController extends Controller
     }
   }
 
+  public function getMasterBranchOpsSetting()
+  {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
+    try {
+      $response = $this->setupservices->getMasterBranchOpsSetting('', '', $branch->id, $branch->token);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message'),
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
   public function getMasterVisitPurpose()
   {
     $branch = $this->currentBranch();

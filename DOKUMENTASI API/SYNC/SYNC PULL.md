@@ -28,6 +28,7 @@ Kolom **Navbar** = apa fungsi ini kepanggil otomatis pas user klik tombol Sync u
 | Payment method type | `getMasterPaymentMethodType` | `GET /api/sync_pull/get_payment_method_type` | ❌ tidak ke-routing | `MasterPaymentMethodTypeModel` → `mr_payment_method_type` | ✅ | ✅ |
 | Payment method x visit purpose | `getMasterPaymentMethodVisitPurpose` | `GET /api/sync_pull/get_payment_method_visit_purpose` | ❌ tidak ke-routing | `MasterPaymentMethodVisitPurposeModel` → `mr_payment_method_visit_purpose` | ✅ | ✅ |
 | Branch visit purpose | `getMasterBranchVisitPurpose` | `GET /api/sync_pull/get_branch_visit_purpose` | ❌ tidak ke-routing | `MasterBranchVisitPurposeModel` → `mr_branch_visit_purpose` | ✅ | ✅ |
+| Branch ops setting (jam operasional per hari) | `getMasterBranchOpsSetting` | `GET /api/sync_pull/get_branch_ops_setting` | ❌ tidak ke-routing | `MasterBranchOpsSettingModel` → `mr_branch_ops_setting` | ✅ | ✅ |
 | Visit purpose | `getMasterVisitPurpose` | `GET /api/sync_pull/get_visit_purpose` | ❌ tidak ke-routing | `MasterVisitPurposeModel` → `mr_visit_purpose` | ✅ | ✅ |
 | Master user | `getMasterUser` | `GET /api/sync_pull/get_master_user` | ❌ tidak ke-routing | `MasterUserModel` → `mr_user` | ⚠️ **tidak** ada di `syncQueue` Navbar | ✅ |
 | Role access | `getMasterRoleAccess` | `GET /api/sync_pull/get_master_role_access` | ❌ tidak ke-routing | `RoleAccessModel` → `mr_role_access` | ⚠️ **tidak** ada di `syncQueue` Navbar | ✅ |

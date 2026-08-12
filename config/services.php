@@ -16,6 +16,10 @@ return [
 
     'server_endpoint' => env('SERVER_ENDPOINT', ''),
 
+    // payment gateway service -- terpisah dari APIANDORDER (SERVER_ENDPOINT), service Go
+    // sendiri di folder dev/payment/, defaultnya port 98 (APIANDORDER pakai 99).
+    'payment_gateway_endpoint' => env('PAYMENT_GATEWAY_ENDPOINT', ''),
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],
