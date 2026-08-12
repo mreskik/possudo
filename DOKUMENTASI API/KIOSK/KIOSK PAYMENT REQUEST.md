@@ -25,11 +25,34 @@ Minta QR/pembayaran ke payment gateway (proxy ke service Go `payment` yang terpi
 1. `payment_method_id` dicek ke `mr_payment_method` — kalau gak ketemu → error.
 2. **`payment_gateway_code` wajib keisi** (bukan `NULL`/string kosong `''`) — sama persis filter yang dipakai [KIOSK PAYMENT METHOD.md](./KIOSK%20PAYMENT%20METHOD.md), jadi harusnya gak akan gagal di sini kalau frontend ambil `payment_method_id` dari situ. Kalau gagal → `"payment method tidak didukung"`.
 3. `order_number` dicek ke `tr_order` — kalau gak ketemu → error. **`amount` diambil dari `tr_order.total_billing` di server**, **bukan** dari client — biar gak bisa dimanipulasi dari frontend.
-4. `order_id` yang dikirim ke service `payment` = `order_number` **apa adanya** (gak digenerate ulang) — biar gampang di-lacak balik.
-5. `branch_id`/`company_id` diambil dari `mr_branch` lokal (branch pertama).
-6. Proxy `POST {PAYMENT_GATEWAY_ENDPOINT}/payment-gateway/qris` — response dari service `payment` diteruskan **apa adanya** ke client (udah `snake_case` dari sononya, gak perlu reshape).
+4. **Cek attempt lama** — kalau `order_number` ini masih punya baris `tr_kiosk_payment_request` berstatus `pending` (request payment sebelumnya buat order yang sama, mis. QR expired/customer minta ulang), attempt lama itu **di-cancel dulu** (lihat bagian "Retry & cancel" di bawah) sebelum lanjut bikin attempt baru.
+5. **`order_id`** yang dikirim ke service `payment` — attempt pertama = `order_number` apa adanya, attempt ke-2/3/dst kena suffix (`{order_number}-2`, `{order_number}-3`, dst) karena `order_id` itu **primary key** di `payment_gateway` (Postgres), gak boleh dipakai ulang.
+6. `branch_id` diambil dari `mr_branch` lokal (branch pertama) — **`company_id` gak dikirim lagi** (lihat bagian "company_id" di bawah).
+7. Insert baris baru ke `tr_kiosk_payment_request` (`status: pending`) **sebelum** manggil service `payment` — kalau ternyata gagal, baris ini di-update jadi `status: failed` (bukan dibiarin nyangkut `pending` palsu).
+8. Proxy `POST {PAYMENT_GATEWAY_ENDPOINT}/payment-gateway/qris` — response dari service `payment` diteruskan **apa adanya** ke client (udah `snake_case` dari sononya, gak perlu reshape). `order_id` di response itu `order_id` attempt ini (bisa beda dari `order_number` kalau ini retry).
 
 Catatan: baru `MIDTRANS_QRIS` yang ada endpoint-nya di service `payment` (`/payment-gateway/qris`) — kalau nanti ada `payment_gateway_code` lain (provider/channel beda), butuh routing tambahan di `PaymentGatewayServices::RequestPayment()` buat manggil endpoint yang sesuai.
+
+## Retry & cancel (tabel `tr_kiosk_payment_request`)
+
+Tabel lokal baru (`tr_kiosk_payment_request`, PK `order_id`) nyatet tiap **attempt** request pembayaran per `order_number` — perlu karena pembayaran gak otomatis nyatet ke `tr_order_payment` (nunggu konfirmasi settlement dulu lewat [KIOSK PAYMENT CHECK STATUS.md](./KIOSK%20PAYMENT%20CHECK%20STATUS.md)), dan `order_id` gak boleh dipakai ulang di `payment_gateway`.
+
+| Kolom | Isi |
+| --- | --- |
+| `order_id` (PK) | ID yang dikirim ke service `payment` |
+| `order_number` | order yang mana punya attempt ini |
+| `payment_method_id` | disimpen di sini, dipakai lagi nanti pas confirm ke `PaymentServices::SavePayment()` |
+| `amount` | snapshot nominal pas request dibuat |
+| `status` | `pending` / `settlement` / `cancel` / `failed` / `expired` |
+
+**Alur retry**: kalau ada request baru masuk buat `order_number` yang masih punya attempt `pending`:
+1. `PaymentGatewayServices::cancelAttempt()` — `POST {PAYMENT_GATEWAY_ENDPOINT}/payment-gateway/{order_id_lama}/cancel` (endpoint baru di service `payment`, wrapper `coreapi.Client.CancelTransaction()` Midtrans), baris lama di-update `status: cancel`.
+2. Gagal cancel ke Midtrans (mis. race sama settlement, network error) **sengaja gak dianggap fatal** — tetap lanjut bikin attempt baru, biar customer gak keblokir. Kalau attempt lama itu ternyata beneran udah `settlement` pas mau di-cancel, itu ketahuan/ditangani belakangan di [KIOSK PAYMENT CHECK STATUS.md](./KIOSK%20PAYMENT%20CHECK%20STATUS.md), bukan di titik ini.
+3. Attempt baru dibuat dengan `order_id` baru (suffix `-2`, `-3`, dst).
+
+## `company_id` di-resolve server-side (bukan dikirim dari POS)
+
+Sebelumnya Laravel ngirim `company_id` (dari `mr_branch` lokal) ke service `payment`, dan service-nya validasi `company_id == 0` berarti "belum diisi". Ini keliru buat company yang ID aslinya emang `0`, dan lagian `company_id` lokal POS bisa aja basi. **Dibenerin**: Laravel sekarang cuma kirim `branch_id`, service `payment` (`CreateQrisPayment`) resolve `company_id` sendiri lewat `SELECT company_id FROM master_branch WHERE id = ?` (connect langsung ke Postgres yang sama kayak sudocore2). Validasi wajibnya pindah ke `branch_id` (gak ada branch_id valid yang nilainya `0`, jadi aman dijadiin penentu "diisi/enggak").
 
 `vendor_qr_url` (link gambar QR dari Midtrans, ada border/branding mereka) dan `vendor_qr_string` (raw EMV QRIS payload, buat digambar sendiri kalau perlu QR polos) diteruskan apa adanya — Kiosk yang milih mau pakai yang mana buat ditampilin. **Sengaja gak ada gambar base64 di-generate di server** buat sekarang (dicoba sekali, dibalikin lagi — biar minimal dulu).
 
@@ -74,13 +97,22 @@ Order gak ketemu:
 { "code": 100, "message": "order tidak ditemukan" }
 ```
 
-## Cara dapetin status pembayaran (belum ada endpoint-nya)
+## Cara dapetin status pembayaran
 
-Setelah `vendor_qr_url`/`vendor_qr_string` ditampilin ke customer, Kiosk perlu tau kapan pembayaran sukses — ini butuh endpoint **polling status** terpisah (belum dibikin) yang proxy ke `GET {PAYMENT_GATEWAY_ENDPOINT}/payment-gateway/{order_id}` di service `payment`, dan kalau statusnya `settlement`, langsung manggil `PaymentServices::SavePayment()` yang udah ada (nyatet `tr_order_payment`, ubah status order jadi `paid`). **Ini yang bikin alur Kiosk belum bisa dipakai beneran** — tanpa ini, print kitchen (yang sengaja ditunda sampai payment sukses, lihat [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md)) gak akan pernah jalan walau customer udah bayar. Prioritas berikutnya.
+Endpoint polling status **dipisah sendiri**, lihat [KIOSK PAYMENT CHECK STATUS.md](./KIOSK%20PAYMENT%20CHECK%20STATUS.md) (`GET /api/kiosk/payment/check-status/{order_number}`) — di situ juga yang trigger `PaymentServices::SavePayment()` kalau statusnya `settlement`.
 
 ## Tervalidasi live (2026-08-11)
 
 End-to-end pakai order beneran + Midtrans sandbox asli, lewat service `payment` yang baru dipisah dari APIANDORDER: payment method tanpa gateway code → ditolak. Order dibuat via `save-order` → `payment/request` sukses, QR asli ke-generate, `order_id` = `order_number`, `amount` cocok sama `total_billing` order, data kesimpen bener di `payment_gateway` (Postgres) dengan `branch_id`/`company_id` yang bener. Data test udah dibersihin.
+
+## Tervalidasi live (2026-08-12) — retry & cancel
+
+Order test dibuat, `payment/request` dipanggil 3x berturut-turut buat `order_number` yang sama:
+- Attempt 1 sempat gagal (nemuin & langsung dibenerin bug `company_id` di atas) → `tr_kiosk_payment_request` kesimpen `status: failed`, gak nyangkut `pending`.
+- Attempt 2 sukses, `order_id = {order_number}-2` (bukan `order_number` polos, karena attempt 1 udah kepake meski gagal).
+- Attempt 3 sukses, `order_id = {order_number}-3` — dan attempt 2 kekonfirmasi **beneran ke-cancel** (dicek langsung `GET /payment-gateway/{order_id}` ke service `payment`, `status: cancel`, bukan cuma lokal yang bilang gitu).
+
+Data test (Postgres `payment_gateway`/`payment_gateway_webhook_logs`, MySQL `tr_kiosk_payment_request`/`tr_order`/`tr_order_detail`, `mr_payment_method.payment_gateway_code`) udah dibersihin semua abis verifikasi.
 
 ### Riwayat: ekstraksi jadi service terpisah (2026-08-11)
 

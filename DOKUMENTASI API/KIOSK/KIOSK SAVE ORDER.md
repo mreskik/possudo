@@ -6,10 +6,12 @@ POST /api/kiosk/save-order
 
 Wrapper tipis di `KioskController::SaveOrder()` — **manggil `OrderServices::SaveOrder()` yang sama persis dipakai POS**, gak ada logic order baru ditulis ulang. Payload masuk **`snake_case`** (konsisten sama endpoint Kiosk lain) — di-convert ke `camelCase` internal lewat `mapKioskOrderPayload()` sebelum diteruskan ke `OrderServices::SaveOrder()` (yang gak diubah, masih dipakai bareng POS yang `camelCase`).
 
-Selain convert case, ada 2 hal yang di-resolve/dipaksa di controller, gak dipercaya dari client:
+Selain convert case, ada 4 hal yang di-resolve/dipaksa di controller, gak dipercaya dari client:
 
 1. **`order_source`** — di-hardcode `'kiosk'` (client gak bisa ngirim/override ini).
 2. **`table_section_id`** — diambil dari `mr_terminal.table_section_id` berdasarkan `terminal_id` yang dikirim (device Kiosk pra-dikonfigurasi ke 1 table section tetap, user gak milih meja). Kalau `mr_terminal.table_section_id` kosong (`NULL`), request ditolak: `{"code":100,"message":"terminal ini belum dikonfigurasi table_section_id, hubungi admin"}` — **setiap terminal Kiosk wajib di-set `table_section_id`-nya dulu** sebelum bisa dipakai order beneran.
+3. **`order_number`** — dipaksa kosong (`''`), gak peduli apa yang dikirim client (kalaupun dikirim, diabaikan). Kiosk gak pernah edit order existing (beda dari POS yang bisa hold/reopen order lewat `order_number`), jadi selalu diperlakukan sebagai order baru. **Field ini gak perlu dikirim lagi** — dihapus dari payload (lihat "Update (2026-08-12)" di bawah).
+4. **`member_id`** — **gak dipercaya dari client sama sekali**, di-derive server-side dari `customer_phone_number`. Kalau `customer_phone_number` ada isinya, di-lookup ke `mr_member` **lokal** (bukan live ke ERP — beda dari `GET /api/kiosk/member/check/{phone_number}` yang live, di sini sengaja pakai data lokal biar nyimpen order gak gantung koneksi ke ERP). Nomor kosong/null atau gak ketemu member → `member_id` tetap `null`, order tetap kesimpen (jadi member bukan syarat wajib). **Field `member_id` gak perlu dikirim lagi** — dihapus dari payload.
 
 ## Field duit/rate/amount — kirim sebagai string
 
@@ -28,7 +30,6 @@ POST /api/kiosk/save-order
 Content-Type: application/json
 
 {
-  "order_number": "",
   "order_name": "Kiosk Terminal 1 - 14:32",
   "customer_phone_number": "",
   "terminal_id": 4,
@@ -40,7 +41,6 @@ Content-Type: application/json
   "total_tax": "0.00",
   "total_billing": "22500.00",
   "total_discount": "0.00",
-  "member_id": null,
   "list_order": [
     {
       "menu_pricelist_id": 49,
@@ -140,17 +140,15 @@ Gagal — error lain dari `OrderServices::SaveOrder()` (stok habis, dayshift bel
 | Field | Isi |
 | --- | --- |
 | `terminal_id` | id terminal Kiosk (dari [KIOSK TERMINAL DETAIL.md](./KIOSK%20TERMINAL%20DETAIL.md)) — **wajib**, dipakai buat resolve `table_section_id` |
-| `order_number` | `""` buat order baru |
 | `order_name` | nama/label order (bebas, misal nomor antrian atau nama customer) |
-| `customer_phone_number` | opsional |
+| `customer_phone_number` | opsional — kalau diisi, dipakai server buat cari `member_id` (lihat poin 4 di atas). Kosongin (`""`) atau jangan dikirim kalau customer gak mau/gak punya nomor. |
 | `visit_purpose_id` | dari [KIOSK BRANCH VISIT PURPOSE.md](./KIOSK%20BRANCH%20VISIT%20PURPOSE.md) (`visit_purpose_id`, bukan `id`) |
 | `price_list_id` | `menu_pricelist_id` dari [KIOSK BRANCH VISIT PURPOSE DETAIL.md](./KIOSK%20BRANCH%20VISIT%20PURPOSE%20DETAIL.md) |
 | `order_pax`, `total_item` | dihitung di frontend dari isi keranjang (number, bukan string) |
 | `sub_total`, `total_tax`, `total_billing`, `total_discount` | dihitung di frontend dari isi keranjang — **string** (lihat bagian "Field duit/rate/amount" di atas) |
-| `member_id` | `null` kalau Kiosk gak ada fitur login member |
 | `list_order[]` | isi keranjang, lihat mapping di bawah |
 
-**Jangan kirim `order_source`/`table_section_id`** — kalaupun dikirim, bakal ketimpa server.
+**Jangan kirim `order_source`/`table_section_id`/`order_number`/`member_id`** — kalaupun dikirim, bakal diabaikan/ketimpa server (lihat poin 1-4 di atas).
 
 ## Bentuk `list_order[]` — sumbernya dari respons [KIOSK BRANCH VISIT PURPOSE DETAIL.md](./KIOSK%20BRANCH%20VISIT%20PURPOSE%20DETAIL.md)
 
@@ -186,6 +184,15 @@ Order dari POS (`order_source='pos'`) **gak berubah** — tetep print langsung p
 - Validasi: tanpa `terminal_id` → error. Terminal gak ketemu → error. Terminal ada tapi `table_section_id` `NULL` → error.
 - Happy path (payload `snake_case`): `save-order` → `order_source='kiosk'`, `table_section_id` ke-resolve otomatis dari terminal, `order_type` ikut kederivasi (`takeaway`), `done_print=0` (print ke-skip). Lanjut `save-payment` → sukses, `done_print` berubah jadi `1` (print kitchen ke-trigger di titik ini).
 - Regression: order `order_source='pos'` lewat `/api/order/save-order` (masih `camelCase`, gak lewat wrapper Kiosk) tetep `done_print=1` langsung abis `SaveOrder()`, gak kepengaruh perubahan ini.
+
+## Update (2026-08-12)
+
+2 field dihapus dari payload yang perlu dikirim client:
+
+- **`order_number`** — dulu client kirim `""`, sekarang gak perlu dikirim sama sekali (server selalu paksa `''`, apapun yang dikirim diabaikan).
+- **`member_id`** — dulu client yang nentuin (biasanya `null` karena belum ada fitur login member), sekarang **selalu di-derive server-side** dari `customer_phone_number` lewat lookup ke `mr_member` lokal (`WHERE phone_number = ? AND is_active = 1`). Sengaja pakai data lokal (bukan live ke ERP kayak `GET /api/kiosk/member/check/{phone_number}`) karena ini jalur kritis nyimpen order — gak boleh gagal/lambat cuma gara-gara APIANDORDER lagi bermasalah.
+
+Tervalidasi live: kirim `order_number`/`member_id` palsu di payload (`"SHOULD_BE_IGNORED"` dan `999`) — server tetap generate `order_number` baru sendiri dan resolve `member_id` yang bener dari `customer_phone_number` (bukan nilai yang dikirim). Kirim `customer_phone_number: ""` → `member_id` tersimpan `NULL`, order tetap sukses. Data test dibersihin abis verifikasi.
 
 ## Known gap (belum digarap, sengaja ditunda)
 

@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('kiosk')->group(function () {
   Route::get('day-status', [KioskController::class, 'GetDayStatus']);
-  Route::get('images', [KioskController::class, 'GetImages']);
+  Route::get('banner-image', [KioskController::class, 'GetBannerImageKiosk']);
   Route::get('member/check/{phone_number}', [KioskController::class, 'CheckMemberByPhone']);
   Route::get('branch-visit-purpose', [KioskController::class, 'GetBranchVisitPurposeList']);
   Route::get('branch-visit-purpose/{id}', [KioskController::class, 'GetBranchVisitPurposeDetail']);
@@ -30,6 +30,7 @@ Route::prefix('kiosk')->group(function () {
   Route::get('order/{order_number}', [KioskController::class, 'GetOrderDetail']);
   Route::get('payment-method', [KioskController::class, 'GetPaymentMethodList']);
   Route::post('payment/request', [KioskController::class, 'RequestPayment']);
+  Route::get('payment/check-status/{order_number}', [KioskController::class, 'CheckPaymentStatus']);
 });
 
 Route::prefix('setup')->group(function () {

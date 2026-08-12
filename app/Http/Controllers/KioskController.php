@@ -62,10 +62,11 @@ class KioskController extends Controller
         }
     }
 
-    // GetImages: daftar gambar buat layar Kiosk (banner/slideshow), filter apply_for = 'cd_kiosk'
-    // udah fix di query (bukan parameter client) -- urut sequence. image_src udah path lokal
-    // POS (didownload pas pull, lihat SetupServices::getMasterImageList()), bukan path ERP.
-    public function GetImages(Request $request)
+    // GetBannerImageKiosk: daftar gambar banner/slideshow buat layar Kiosk, filter apply_for =
+    // 'cd_kiosk' udah fix di query (bukan parameter client, request gak dipakai) -- urut
+    // sequence. image_src udah path lokal POS (didownload pas pull, lihat
+    // SetupServices::getMasterImageList()), bukan path ERP.
+    public function GetBannerImageKiosk(Request $request)
     {
         try {
             $data = DB::select("SELECT
@@ -209,6 +210,27 @@ class KioskController extends Controller
             }
 
             $data = (new PaymentGatewayServices())->RequestPayment($order_number, (int) $payment_method_id);
+
+            return response()->json([
+                'code' => 0,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    // CheckPaymentStatus: polling status pembayaran -- cuma butuh order_number (bukan order_id,
+    // Kiosk gak pernah pegang itu, lihat PaymentGatewayServices::CheckStatus()). Kalau statusnya
+    // 'settlement', SavePayment() otomatis ke-trigger di dalam sana -- print kitchen (yang
+    // sengaja ditunda, lihat SaveOrder()) baru jalan di titik ini.
+    public function CheckPaymentStatus(Request $request, string $order_number)
+    {
+        try {
+            $data = (new PaymentGatewayServices())->CheckStatus($order_number);
 
             return response()->json([
                 'code' => 0,
@@ -405,10 +427,15 @@ class KioskController extends Controller
             ];
         }
 
+        $customerPhoneNumber = $data['customer_phone_number'] ?? null;
+
         return [
-            'orderNumber' => $data['order_number'] ?? '',
+            // Kiosk gak pernah edit order existing (beda dari POS yang bisa hold/reopen) --
+            // selalu order baru, jadi orderNumber dipaksa kosong di sini, gak dipercaya dari
+            // client (client gak perlu kirim field ini lagi sama sekali).
+            'orderNumber' => '',
             'orderName' => $data['order_name'] ?? '',
-            'customerPhoneNumber' => $data['customer_phone_number'] ?? null,
+            'customerPhoneNumber' => $customerPhoneNumber,
             'terminalId' => $data['terminal_id'] ?? null,
             'visitPurposeId' => $data['visit_purpose_id'] ?? null,
             'priceListId' => $data['price_list_id'] ?? null,
@@ -418,9 +445,30 @@ class KioskController extends Controller
             'totalTax' => $data['total_tax'] ?? null,
             'totalBilling' => $data['total_billing'] ?? null,
             'totalDiscount' => $data['total_discount'] ?? 0,
-            'memberId' => $data['member_id'] ?? null,
+            // memberId gak lagi dipercaya dari client -- di-derive dari customerPhoneNumber
+            // (kalau ada isinya) lewat data lokal mr_member (bukan live ke ERP, ini jalur
+            // kritis nyimpen order, gak boleh gantung koneksi ke ERP -- live check ada
+            // sendiri di GET /api/kiosk/member/check/{phone_number}). Kosong/gak ketemu ->
+            // tetap null, order tetap kesimpen (bukan syarat wajib jadi member).
+            'memberId' => $this->resolveMemberIdByPhone($customerPhoneNumber),
             'listOrder' => $listOrder,
         ];
+    }
+
+    // resolveMemberIdByPhone: cari member_id dari nomor HP yang dikirim customer, pakai data
+    // lokal mr_member (sync, bukan live ke ERP). Null/string kosong -> skip, gak usah dicari.
+    private function resolveMemberIdByPhone(?string $phoneNumber): ?int
+    {
+        if (empty($phoneNumber)) {
+            return null;
+        }
+
+        $member = DB::table('mr_member')
+            ->where('phone_number', $phoneNumber)
+            ->where('is_active', 1)
+            ->first();
+
+        return $member->id ?? null;
     }
 
     // mapKioskMenuItem: reshape 1 item dari MenuServices::GetMasterMenuList() (camelCase, plus
