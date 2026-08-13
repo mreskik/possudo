@@ -137,27 +137,95 @@ class KioskController extends Controller
         }
     }
 
-    // GetOrderDetail: header order doang (order_name, sub_total, total_tax, total_discount,
-    // total_billing) by order_number -- dipakai kiosk buat nampilin ringkasan/status order abis
-    // save-order, sebelum bayar. Baru header, belum termasuk list item (nyusul kalau dibutuhin).
+    // GetOrderDetail: header order + list item (`items[]`) by order_number -- dipakai dobel:
+    // preview abis save-order (sebelum bayar) dan detail pas order di-tap dari GetOrderHistory.
+    // Header-nya SENGAJA disamain kolomnya sama GetOrderHistory (status/member_name/
+    // payment_method_id/dkk, pola join yang sama persis -- payment_method_id dari attempt
+    // TERAKHIR tr_kiosk_payment_request, bukan tr_order_payment, lihat catatan di
+    // GetOrderHistory), plus tambahan sub_total/total_tax/total_discount yang emang cuma
+    // relevan buat tampilan detail (bukan list). Join mr_item_conv -> mr_item persis pola
+    // OrderServices::viewOrder() (sumber nama menu yang "real", trod.menu_id itu FK ke
+    // mr_item_conv, bukan langsung ke mr_item). Item package (`tr_order_detail_package`)
+    // di-nest ke `package[]` per item, query terpisah per-ulid sama kayak pola aslinya di
+    // OrderServices -- jumlah item per order kecil, N+1 di sini gak masalah.
     public function GetOrderDetail(Request $request, string $order_number)
     {
         try {
-            $data = DB::table('tr_order')
-                ->select('order_number', 'order_name', 'sub_total', 'total_tax', 'total_discount', 'total_billing')
-                ->where('order_number', $order_number)
-                ->first();
+            $order = DB::select("SELECT
+                    o.order_number,
+                    o.payment_number,
+                    o.status,
+                    o.order_in,
+                    o.order_name,
+                    o.sub_total,
+                    o.total_tax,
+                    o.total_discount,
+                    o.total_billing,
+                    o.total_item,
+                    o.customer_phone_number,
+                    m.name as member_name,
+                    latest.payment_method_id,
+                    pm.name as payment_method
+                    FROM tr_order o
+                    LEFT JOIN mr_member m ON m.id = o.member_id
+                    LEFT JOIN (
+                        SELECT kpr.order_number, kpr.payment_method_id
+                        FROM tr_kiosk_payment_request kpr
+                        INNER JOIN (
+                            SELECT order_number, MAX(created_at) as max_created_at
+                            FROM tr_kiosk_payment_request
+                            GROUP BY order_number
+                        ) latest_kpr ON latest_kpr.order_number = kpr.order_number
+                            AND latest_kpr.max_created_at = kpr.created_at
+                    ) latest ON latest.order_number = o.order_number
+                    LEFT JOIN mr_payment_method pm ON pm.id = latest.payment_method_id
+                    WHERE o.order_number = ?", [$order_number]);
+            $order = $order[0] ?? null;
 
-            if (!$data) {
+            if (!$order) {
                 return response()->json([
                     'code' => 100,
                     'message' => 'order tidak ditemukan',
                 ]);
             }
 
+            $items = DB::select("SELECT
+                    trod.ulid,
+                    trod.menu_id,
+                    mri.name as menu_name,
+                    trod.qty,
+                    trod.notes,
+                    trod.base_price as price,
+                    trod.discount_value,
+                    trod.tax_value,
+                    trod.total
+                    FROM tr_order_detail trod
+                    JOIN mr_item_conv mric ON mric.id = trod.menu_id
+                    JOIN mr_item mri ON mri.id = mric.item_id
+                    WHERE trod.order_number = ?", [$order_number]);
+
+            foreach ($items as $item) {
+                $item->package = DB::select("SELECT
+                        trodp.menu_id,
+                        mri.name as menu_name,
+                        trodp.qty,
+                        trodp.notes,
+                        trodp.base_price as price,
+                        trodp.discount_value,
+                        trodp.tax_value,
+                        trodp.total
+                        FROM tr_order_detail_package trodp
+                        JOIN mr_item_conv mric ON mric.id = trodp.menu_id
+                        JOIN mr_item mri ON mri.id = mric.item_id
+                        WHERE trodp.tr_order_detail_ulid = ?", [$item->ulid]);
+                unset($item->ulid);
+            }
+
+            $order->items = $items;
+
             return response()->json([
                 'code' => 0,
-                'data' => $data,
+                'data' => $order,
             ]);
         } catch (\Throwable $e) {
             return response()->json([
