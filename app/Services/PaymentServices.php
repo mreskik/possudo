@@ -85,10 +85,23 @@ class PaymentServices
       DB::commit();
 
 
-      PrintServices::PrintPayment($datajson->order_number);
+      // Kiosk yang terminal-nya di-set flag_printer_frontend (browser yang nge-print struk,
+      // bukan printer server) -- skip PrintPayment() server-side. Endpoint buat frontend
+      // ambil data struk by order_number nyusul terpisah (belum digarap). POS gak kepengaruh
+      // sama sekali, tetap selalu print server-side kayak biasa.
+      $terminal = DB::table('mr_terminal')->where('id', $dataorder_current->terminal_id)->first();
+      $skipReceiptPrint = $dataorder_current->order_source === 'kiosk'
+        && $terminal
+        && $terminal->flag_printer_frontend;
+
+      if (!$skipReceiptPrint) {
+        PrintServices::PrintPayment($datajson->order_number);
+      }
 
       // order Kiosk sengaja gak nge-print kitchen pas SaveOrder (nunggu kepastian bayar dulu,
-      // lihat OrderServices::SaveOrder()) -- baru di sini, abis payment sukses.
+      // lihat OrderServices::SaveOrder()) -- baru di sini, abis payment sukses. Ini SELALU
+      // jalan buat kiosk, gak kepengaruh flag_printer_frontend -- dapur tetap butuh tau apa
+      // yang harus dimasak, terlepas dari cara struk customer di-print.
       if ($dataorder_current->order_source === 'kiosk') {
         PrintServices::PrintTableChecker2($dataorder_current->table_section_id, $datajson->order_number);
         PrintServices::PrintMainChecker2($dataorder_current->table_section_id, $datajson->order_number);

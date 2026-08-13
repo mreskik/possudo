@@ -27,7 +27,7 @@ class PrintServices
   // sejak migration 2026_08_09_000003 -- order yang dibuat SEBELUM itu kolomnya NULL. Buat
   // reprint order lama, fallback baca dari baris tr_order_detail pertama order itu (bukan
   // diasumsikan true/false) supaya struk lama tetap akurat.
-  private static function ResolveFlagInclusiveTax($data_order): ?bool
+  public static function ResolveFlagInclusiveTax($data_order): ?bool
   {
     if ($data_order->flag_inclusive_tax !== null) {
       return (bool) $data_order->flag_inclusive_tax;
@@ -43,7 +43,7 @@ class PrintServices
   // gabungan tr_order_detail + tr_order_detail_package. Beda dari flag_inclusive_tax,
   // tax_type itu SUMBERNYA per-item (mr_item.tax_type) jadi 1 order bisa campur beberapa
   // tax_type -- dipakai buat breakdown pajak di struk order exclusive-tax.
-  private static function GetTaxBreakdownByType(string $order_number): array
+  public static function GetTaxBreakdownByType(string $order_number): array
   {
     $rows = DB::select("
       SELECT tax_type, SUM(tax_amount) AS tax_amount FROM (

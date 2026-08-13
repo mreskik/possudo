@@ -417,6 +417,13 @@ class SetupServices
     }
   }
 
+  // getMasterItemPackageGroup/getMasterItemPackageDetail: TETAP truncate()+insert() (bukan
+  // upsertRows() kayak sync pull lain) -- ERP (sudocore2) replace-all baris
+  // master_item_package_group/detail tiap admin edit package config 1 item (lihat
+  // ReplacePackageGroups() di item_service.go), id-nya SELALU baru tiap edit, gak pernah
+  // dipertahanin. Kalau di sini pakai upsert-by-id, id lama yang udah dihapus di ERP gak
+  // pernah ikut kehapus di lokal (upsert emang gak nge-delete) -- baris nyampah menumpuk
+  // TIAP KALI package item itu diedit, bukan cuma occasional stale data biasa.
   public function getMasterItemPackageGroup(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -427,10 +434,9 @@ class SetupServices
         $this->endpoint . '/pos/sync/get_item_package_group/' . $branch_id
       );
 
-      Log::info($response);
-
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterItemPackageGroupModel::class, $response->json('data'));
+        MasterItemPackageGroupModel::truncate();
+        MasterItemPackageGroupModel::insert($response->json('data'));
       }
 
       return $response;
@@ -450,7 +456,8 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterItemPackageDetailModel::class, $response->json('data'));
+        MasterItemPackageDetailModel::truncate();
+        MasterItemPackageDetailModel::insert($response->json('data'));
       }
 
       return $response;

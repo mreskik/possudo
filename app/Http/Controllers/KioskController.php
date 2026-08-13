@@ -7,6 +7,7 @@ use App\Services\MemberServices;
 use App\Services\MenuServices;
 use App\Services\OrderServices;
 use App\Services\PaymentGatewayServices;
+use App\Services\PrintServices;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -111,19 +112,54 @@ class KioskController extends Controller
         }
     }
 
-    // GetTerminalDetail: detail 1 terminal by id, apa adanya dari mr_terminal (gak ada join).
-    // Dipakai kiosk pas pertama kali device ini "kenal diri" abis pilih terminal
-    // (lihat TerminalPage.vue).
+    // GetTerminalDetail: detail 1 terminal by id, ditambah join pos_type (nama) + nested
+    // receipt_station (detail mr_station-nya, sekalian nama printer_type/printer_connection/
+    // printing_mode -- 3 tabel lookup kecil yang emang udah disiapin dari awal, mr_printer_type/
+    // mr_printer_connection/mr_printing_mode, bukan enum tanpa makna). Dipakai kiosk pas
+    // pertama kali device ini "kenal diri" abis pilih terminal (lihat TerminalPage.vue).
+    // Boolean (is_active/is_used/flag_printer_frontend/auto_cut/cash_drawer) di-cast eksplisit
+    // ke bool -- default-nya PDO balikin "0"/"1" (string), bukan true/false asli.
     public function GetTerminalDetail(Request $request, int $id)
     {
         try {
-            $data = DB::table('mr_terminal')->where('id', $id)->first();
+            $data = DB::table('mr_terminal as t')
+                ->leftJoin('mr_pos_type as pt', 'pt.id', '=', 't.pos_type_id')
+                ->select('t.*', 'pt.name as pos_type_name', 'pt.device_type as pos_type_device_type')
+                ->where('t.id', $id)
+                ->first();
 
             if (!$data) {
                 return response()->json([
                     'code' => 100,
                     'message' => 'terminal tidak ditemukan',
                 ]);
+            }
+
+            $data->is_active = (bool) $data->is_active;
+            $data->is_used = (bool) $data->is_used;
+            $data->flag_printer_frontend = (bool) $data->flag_printer_frontend;
+
+            $data->receipt_station = null;
+            if ($data->receipt_station_id) {
+                $station = DB::table('mr_station as s')
+                    ->leftJoin('mr_printer_type as pty', 'pty.id', '=', 's.printer_type')
+                    ->leftJoin('mr_printer_connection as pc', 'pc.id', '=', 's.printer_connection')
+                    ->leftJoin('mr_printing_mode as pm', 'pm.id', '=', 's.printing_mode')
+                    ->select(
+                        's.*',
+                        'pty.name as printer_type_name',
+                        'pc.name as printer_connection_name',
+                        'pm.name as printing_mode_name'
+                    )
+                    ->where('s.id', $data->receipt_station_id)
+                    ->first();
+
+                if ($station) {
+                    $station->auto_cut = (bool) $station->auto_cut;
+                    $station->cash_drawer = (bool) $station->cash_drawer;
+                }
+
+                $data->receipt_station = $station;
             }
 
             return response()->json([
@@ -231,6 +267,115 @@ class KioskController extends Controller
             return response()->json([
                 'code' => 0,
                 'data' => $order,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    // GetPrintData: data struk terstruktur (JSON, bukan ESC/POS) buat kiosk yang terminal-nya
+    // flag_printer_frontend=true (print lewat browser, PrintServices::PrintPayment() di-skip
+    // server-side, lihat PaymentServices::SavePayment()). Kiosk manggil ini abis check-status
+    // pertama kali balikin 'paid' -- momen itu udah jadi sinyal alami "sekarang saatnya print",
+    // gak butuh sinyal tambahan dari backend.
+    //
+    // Reuse query yang SAMA persis dipakai PrintServices::PrintPayment() (termasuk
+    // ResolveFlagInclusiveTax()/GetTaxBreakdownByType(), sekarang public static biar bisa
+    // dipanggil dari sini) -- biar breakdown pajak/subtotal di struk browser konsisten sama
+    // versi cetak server, bukan diitung ulang dengan logic terpisah yang bisa nyimpang.
+    // SENGAJA gak include cashier/print_ke/logic "COPY n" -- itu konsep reprint fisik POS,
+    // Kiosk gak pernah reprint struk yang sama.
+    public function GetPrintData(Request $request, string $order_number)
+    {
+        try {
+            $data_order = DB::table('tr_order as o')
+                ->leftJoin('mr_member as m', 'o.member_id', '=', 'm.id')
+                ->select('o.*', 'm.name as member_name')
+                ->where('o.order_number', $order_number)
+                ->first();
+
+            if (!$data_order) {
+                return response()->json([
+                    'code' => 100,
+                    'message' => 'order tidak ditemukan',
+                ]);
+            }
+
+            if ($data_order->status !== 'paid') {
+                return response()->json([
+                    'code' => 100,
+                    'message' => 'order belum dibayar, belum ada struk buat ini',
+                ]);
+            }
+
+            $branch = DB::table('mr_branch')->first();
+
+            $items = DB::select("SELECT
+                    trod.ulid,
+                    trod.qty,
+                    trod.total,
+                    trod.discount_value,
+                    trod.notes,
+                    mi.name as menu_name,
+                    mp.name as promo_name
+                    FROM tr_order_detail trod
+                    JOIN mr_item_conv mic ON mic.id = trod.menu_id
+                    JOIN mr_item mi ON mi.id = mic.item_id
+                    LEFT JOIN mr_promo mp ON mp.id = trod.promo_id
+                    WHERE trod.order_number = ?", [$order_number]);
+
+            foreach ($items as $item) {
+                $item->package = DB::select("SELECT
+                        trodp.qty,
+                        trodp.total,
+                        trodp.notes,
+                        mi.name as menu_name
+                        FROM tr_order_detail_package trodp
+                        JOIN mr_item_conv mic ON mic.id = trodp.menu_id
+                        JOIN mr_item mi ON mi.id = mic.item_id
+                        WHERE trodp.tr_order_detail_ulid = ?", [$item->ulid]);
+                unset($item->ulid);
+            }
+
+            $paymentDetail = DB::select("SELECT
+                    tpd.payment_amount,
+                    mpm.name as payment_method_name
+                    FROM tr_order_payment tpd
+                    JOIN mr_payment_method mpm ON mpm.id = tpd.payment_method_id
+                    WHERE tpd.payment_number = ?", [$data_order->payment_number]);
+
+            $isInclusiveTax = PrintServices::ResolveFlagInclusiveTax($data_order);
+            $taxBreakdown = PrintServices::GetTaxBreakdownByType($order_number);
+
+            return response()->json([
+                'code' => 0,
+                'data' => [
+                    'branch' => [
+                        'logo_header_src' => $branch->logo_header_src ?? null,
+                        'printing_header' => $branch->printing_header ?? null,
+                        'printing_footer' => $branch->printing_footer ?? null,
+                        'image_footer_src' => $branch->image_footer_src ?? null,
+                    ],
+                    'order_number' => $data_order->order_number,
+                    'payment_number' => $data_order->payment_number,
+                    'order_in' => $data_order->order_in,
+                    'order_name' => $data_order->order_name,
+                    'member_name' => $data_order->member_name,
+                    'pax' => $data_order->pax,
+                    'status' => $data_order->status,
+                    'total_item' => $data_order->total_item,
+                    'sub_total' => $data_order->sub_total,
+                    'total_discount' => $data_order->total_discount,
+                    'total_tax' => $data_order->total_tax,
+                    'total_billing' => $data_order->total_billing,
+                    'is_inclusive_tax' => $isInclusiveTax,
+                    'tax_breakdown' => $taxBreakdown,
+                    'items' => $items,
+                    'payment_detail' => $paymentDetail,
+                ],
             ]);
         } catch (\Throwable $e) {
             return response()->json([
