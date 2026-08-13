@@ -9,6 +9,7 @@ use App\Services\OrderServices;
 use App\Services\PaymentGatewayServices;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class KioskController extends Controller
 {
@@ -315,6 +316,71 @@ class KioskController extends Controller
         }
     }
 
+    // CancelPayment: cancel QR/attempt payment yang lagi aktif TANPA nyentuh status order (order
+    // tetap 'pending') -- beda dari CancelOrder (yang niatnya emang batalin ordernya sekalian).
+    // Dipakai kalau customer cuma mau batalin QR doang (ganti pikiran soal metode bayar, dll)
+    // tapi masih niat lanjut bayar/edit order-nya nanti. Guard: cuma bisa dipanggil kalau order
+    // masih status 'pending' DAN belum pernah dibayar (payment_number null) -- order yang
+    // statusnya udah lain (paid/cancel/hold/expired/dst) ditolak duluan, gak sempat nyoba
+    // cancel apa-apa ke Midtrans.
+    //
+    // Race guard: PaymentGatewayServices::CancelPendingAttempt() live-check ke Midtrans dulu
+    // sebelum cancel -- kalau ternyata attempt-nya UDAH settlement (customer sempet bayar PERSIS
+    // pas mau di-cancel), order otomatis kejadi 'paid' di dalam sana (bukan di-cancel), response
+    // di sini ngasih tau itu bukannya pura-pura sukses cancel.
+    public function CancelPayment(Request $request)
+    {
+        try {
+            $order_number = $request->input('order_number');
+            if (!$order_number) {
+                return response()->json([
+                    'code' => 100,
+                    'message' => 'order_number wajib diisi',
+                ]);
+            }
+
+            $order = DB::table('tr_order')->where('order_number', $order_number)->first();
+            if (!$order) {
+                return response()->json([
+                    'code' => 100,
+                    'message' => 'order tidak ditemukan',
+                ]);
+            }
+            if ($order->status !== 'pending' || $order->payment_number !== null) {
+                return response()->json([
+                    'code' => 100,
+                    'message' => 'payment order ini tidak bisa di-cancel (bukan status pending / sudah dibayar)',
+                ]);
+            }
+
+            $result = (new PaymentGatewayServices())->CancelPendingAttempt($order_number);
+
+            if ($result['settled']) {
+                return response()->json([
+                    'code' => 100,
+                    'message' => 'order ternyata sudah dibayar, tidak jadi di-cancel',
+                ]);
+            }
+
+            if (!$result['cancelled']) {
+                return response()->json([
+                    'code' => 0,
+                    'message' => 'tidak ada payment aktif buat di-cancel',
+                ]);
+            }
+
+            return response()->json([
+                'code' => 0,
+                'message' => 'payment berhasil di-cancel',
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
     // GetOrderHistory: list header order kiosk (order_source = 'kiosk'), filter date range by
     // order_in (bukan order_date -- order_in dateTime, punya jam, dan konsisten sama filter
     // tanggal yang dipakai modul lain kayak SalesServices/DayShiftServices) + optional
@@ -396,6 +462,12 @@ class KioskController extends Controller
     // udah paid otomatis ketolak). Sebelum itu, kalau order ini masih punya attempt payment
     // pending (customer sempat minta QR tapi belum bayar), attempt itu ikut di-cancel ke Midtrans
     // juga (lihat PaymentGatewayServices::CancelPendingAttempt()) -- biar gak nyangkut sendiri.
+    //
+    // Race guard: CancelPendingAttempt() sekarang live-check ke Midtrans dulu -- kalau ternyata
+    // attempt-nya udah settlement duluan (customer sempet bayar PERSIS pas mau di-cancel), order
+    // otomatis kejadi 'paid' di dalam sana (bukan 'cancel'). Gak perlu guard tambahan eksplisit
+    // di sini -- OrderServices::CancelOrder() di bawah udah otomatis nolak (status udah bukan
+    // pending/hold lagi begitu jadi 'paid'), pesan errornya udah cukup jelas apa adanya.
     public function CancelOrder(Request $request)
     {
         try {
@@ -501,19 +573,28 @@ class KioskController extends Controller
         }
     }
 
-    // SaveOrder: wrapper tipis ke atas OrderServices::SaveOrder() yang sama persis dipakai POS --
-    // gak ada logic order baru ditulis di sini. Client kirim snake_case (konvensi Kiosk), di-convert
-    // ke camelCase di sini (mapKioskOrderPayload()) sebelum diteruskan, karena OrderServices masih
-    // dipakai bareng POS yang camelCase. 2 hal yang di-resolve/dipaksa di sini, gak dipercaya dari
-    // client:
+    // SaveOrder: 1 endpoint buat create DAN edit, dibedain dari `order_number` -- sama persis
+    // konvensi POS (OrderController::saveOrder(), 1 route buat keduanya). `order_number`
+    // kosong/gak dikirim -> create baru (wrapper tipis ke atas OrderServices::SaveOrder(),
+    // reuse persis logic yang sama dipakai POS). `order_number` diisi -> edit (branch
+    // editExistingOrder() di bawah, TIDAK lewat OrderServices::SaveOrder() -- ada alasannya,
+    // lihat komentar di situ).
+    //
+    // Buat create, 2 hal di-resolve/dipaksa di sini, gak dipercaya dari client:
     // - order_source di-hardcode 'kiosk' (bukan dari client), dipakai OrderServices buat nunda
-    //   print kitchen sampai payment sukses (lihat SaveOrder()/PaymentServices::SavePayment()).
+    //   print kitchen sampai payment sukses (lihat PaymentServices::SavePayment()).
     // - table_section_id diambil dari mr_terminal.table_section_id (device Kiosk pra-dikonfigurasi
     //   ke 1 table section tetap), bukan dipilih user -- kalau kosong, terminal itu emang belum
-    //   di-setup buat kiosk, gak bisa lanjut.
+    //   di-setup buat kiosk, gak bisa lanjut. Gak relevan buat edit (table_section_id order gak
+    //   berubah abis dibuat), jadi validasi ini di-skip pas order_number diisi.
     public function SaveOrder(Request $request)
     {
         try {
+            $order_number = $request->input('order_number');
+            if ($order_number) {
+                return $this->editExistingOrder($request, $order_number);
+            }
+
             $terminal_id = $request->input('terminal_id');
             if (!$terminal_id) {
                 return response()->json([
@@ -559,8 +640,153 @@ class KioskController extends Controller
         }
     }
 
-    // mapKioskOrderPayload: convert payload save-order dari snake_case (konvensi Kiosk) ke
-    // camelCase yang diharapkan OrderServices::SaveOrder() (dipakai bareng POS, gak diubah).
+    // editExistingOrder: dipanggil SaveOrder() pas order_number diisi. SENGAJA gak reuse branch
+    // edit OrderServices::SaveOrder() (yang merge-by-ulid, dipakai POS) -- itu logic dirancang
+    // buat POS, dimana sebagian item order yang lagi jalan bisa aja UDAH keprint ke dapur
+    // (done_print=true), jadi harus di-preserve/di-merge, bukan dihapus. Kiosk beda kondisi:
+    // print kitchen SELALU ditunda sampai payment sukses (lihat SaveOrder() di atas), jadi
+    // gak ada baris tr_order_detail yang perlu dijaga -- REPLACE-ALL (hapus semua baris lama,
+    // insert ulang full list_order yang dikirim) aman dipakai di sini, dan lebih simpel buat
+    // client (kirim cart lengkap tiap kali, gak perlu tracking ulid item lama vs baru).
+    //
+    // Konsekuensi replace-all: validasi/potong stok (mr_item.stok_qty, dilakuin pas create)
+    // SENGAJA di-skip di sini -- kalau ikut dilakuin buat SEMUA item di list baru (termasuk
+    // yang sebenernya udah ada dari sebelumnya), stok bakal double-potong tiap kali order
+    // diedit. Cancel-order sendiri juga belum ngembaliin stok (lihat OrderServices::CancelOrder()),
+    // jadi tracking stok emang udah gak fully-consistent di flow ini -- gak diperparah di sini,
+    // tapi juga gak diperbaiki (di luar scope).
+    private function editExistingOrder(Request $request, string $order_number)
+    {
+        $order = DB::table('tr_order')->where('order_number', $order_number)->first();
+        if (!$order) {
+            return response()->json([
+                'code' => 100,
+                'message' => 'order tidak ditemukan',
+            ]);
+        }
+        if (!in_array($order->status, ['pending', 'hold'])) {
+            return response()->json([
+                'code' => 100,
+                'message' => 'order sudah tidak bisa diedit (bukan status pending/hold)',
+            ]);
+        }
+
+        // QR aktif (kalau ada) digenerate buat total_billing versi LAMA -- begitu order diedit
+        // amount-nya bisa berubah, QR lama jadi gak valid lagi buat nominal baru.
+        //
+        // Race guard: kalau CancelPendingAttempt() ternyata nemuin attempt-nya UDAH settlement
+        // (customer sempet bayar PERSIS pas mau diedit -- sistem ini polling, ada window race),
+        // order-nya otomatis kejadi 'paid' di dalam sana, BUKAN di-cancel. Jangan lanjut
+        // replace-all kalau itu kejadian -- item/nominal yang udah dibayar gak boleh ketimpa
+        // sama isi edit yang baru.
+        $cancelResult = (new PaymentGatewayServices())->CancelPendingAttempt($order_number);
+        if ($cancelResult['settled']) {
+            return response()->json([
+                'code' => 100,
+                'message' => 'order sudah dibayar, tidak bisa diedit lagi',
+            ]);
+        }
+
+        $data = $request->all();
+        $listOrder = $data['list_order'] ?? [];
+        $customerPhoneNumber = $data['customer_phone_number'] ?? null;
+
+        DB::beginTransaction();
+        try {
+            $oldUlids = DB::table('tr_order_detail')->where('order_number', $order_number)->pluck('ulid');
+            DB::table('tr_order_detail_package')->whereIn('tr_order_detail_ulid', $oldUlids)->delete();
+            DB::table('tr_order_detail')->where('order_number', $order_number)->delete();
+
+            $totalItem = 0;
+            $orderDetailRows = [];
+            $orderDetailPackageRows = [];
+            foreach ($listOrder as $item) {
+                $ulid = (string) Str::ulid();
+                $totalItem += (int) ($item['qty'] ?? 0);
+
+                $orderDetailRows[] = [
+                    'ulid' => $ulid,
+                    'order_number' => $order_number,
+                    'pricelist_detail_id' => $item['menu_pricelist_id'] ?? null,
+                    'menu_id' => $item['menu_id'] ?? null,
+                    'qty' => $item['qty'] ?? null,
+                    'flag_inclusive_tax' => $item['flag_inclusive_tax'] ?? null,
+                    'base_price' => $item['price'] ?? null,
+                    'tax_id' => $item['tax_id'] ?? null,
+                    'tax_type' => $item['tax_type'] ?? null,
+                    'tax_rate' => $item['tax_rate'] ?? null,
+                    'tax_value' => $item['tax_value'] ?? null,
+                    'promo_id' => $item['promo_id'] ?? null,
+                    'is_free_item_promo' => $item['is_free_item_promo'] ?? false,
+                    'discount_rate' => $item['discount_rate'] ?? null,
+                    'discount_value' => $item['discount_value'] ?? null,
+                    'after_discount' => $item['after_discount'] ?? null,
+                    'dpp' => $item['dpp'] ?? null,
+                    'total' => $item['total'] ?? null,
+                    'notes' => $item['notes'] ?? null,
+                    'batch' => 1,
+                ];
+
+                foreach ($item['menu_package_list'] ?? [] as $pkg) {
+                    $orderDetailPackageRows[] = [
+                        'ulid' => (string) Str::ulid(),
+                        'tr_order_detail_ulid' => $ulid,
+                        'menu_package_id' => $pkg['menu_package_id'] ?? null,
+                        'menu_id' => $pkg['menu_id'] ?? null,
+                        'qty' => $pkg['qty'] ?? null,
+                        'flag_inclusive_tax' => $pkg['flag_inclusive_tax'] ?? null,
+                        'base_price' => $pkg['price'] ?? null,
+                        'tax_id' => $pkg['tax_id'] ?? null,
+                        'tax_type' => $pkg['tax_type'] ?? null,
+                        'tax_rate' => $pkg['tax_rate'] ?? null,
+                        'tax_value' => $pkg['tax_value'] ?? null,
+                        'promo_id' => $pkg['promo_id'] ?? null,
+                        'discount_rate' => $pkg['discount_rate'] ?? null,
+                        'discount_value' => $pkg['discount_value'] ?? null,
+                        'total' => $pkg['total'] ?? null,
+                        'notes' => $pkg['notes'] ?? null,
+                    ];
+                }
+            }
+
+            if (count($orderDetailRows) > 0) {
+                DB::table('tr_order_detail')->insert($orderDetailRows);
+            }
+            if (count($orderDetailPackageRows) > 0) {
+                DB::table('tr_order_detail_package')->insert($orderDetailPackageRows);
+            }
+
+            DB::table('tr_order')->where('order_number', $order_number)->update([
+                'order_name' => $data['order_name'] ?? $order->order_name,
+                'customer_phone_number' => $customerPhoneNumber,
+                'pax' => $data['order_pax'] ?? $order->pax,
+                'total_item' => $data['total_item'] ?? $totalItem,
+                'sub_total' => $data['sub_total'] ?? null,
+                'total_tax' => $data['total_tax'] ?? null,
+                'total_billing' => $data['total_billing'] ?? null,
+                'total_discount' => $data['total_discount'] ?? 0,
+                'member_id' => $this->resolveMemberIdByPhone($customerPhoneNumber),
+                'sync_at' => null,
+            ]);
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+
+        return response()->json([
+            'code' => 0,
+            'data' => [
+                'order_number' => $order_number,
+            ],
+        ]);
+    }
+
+    // mapKioskOrderPayload: convert payload save-order (bikin baru) dari snake_case (konvensi
+    // Kiosk) ke camelCase yang diharapkan OrderServices::SaveOrder() (dipakai bareng POS, gak
+    // diubah). Cuma dipakai buat jalur create -- editExistingOrder() gak lewat sini (gak lewat
+    // OrderServices sama sekali, lihat komentar di situ).
     private function mapKioskOrderPayload(array $data): array
     {
         $listOrder = [];
@@ -610,9 +836,6 @@ class KioskController extends Controller
         $customerPhoneNumber = $data['customer_phone_number'] ?? null;
 
         return [
-            // Kiosk gak pernah edit order existing (beda dari POS yang bisa hold/reopen) --
-            // selalu order baru, jadi orderNumber dipaksa kosong di sini, gak dipercaya dari
-            // client (client gak perlu kirim field ini lagi sama sekali).
             'orderNumber' => '',
             'orderName' => $data['order_name'] ?? '',
             'customerPhoneNumber' => $customerPhoneNumber,

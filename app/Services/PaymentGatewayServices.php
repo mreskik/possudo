@@ -45,6 +45,12 @@ class PaymentGatewayServices
       throw new \Exception('order tidak ditemukan');
     }
 
+    // order yang udah di-cancel (lihat KioskController::CancelOrder()) itu tindakan final --
+    // gak boleh diminta payment lagi lewat sini. Beda dari 'expired' (pasif, boleh di-retry).
+    if ($order->status === 'cancel') {
+      throw new \Exception('order sudah dibatalkan, tidak bisa request payment lagi');
+    }
+
     $branch = BranchModel::first();
     $amount = (int) $order->total_billing;
 
@@ -86,6 +92,14 @@ class PaymentGatewayServices
       $requestRow->update(['status' => 'failed']);
       throw new \Exception($response->json('message'));
     }
+
+    // order yang attempt sebelumnya expired (QR kadaluarsa) -- attempt baru ini valid, jangan
+    // biarin order-nya nyangkut status 'expired' padahal QR baru aktif. Guard status = 'expired'
+    // doang -- order yang di-cancel lewat KioskController::CancelOrder() sengaja gak ke-reset
+    // di sini, itu tindakan eksplisit, beda kasus dari expired yang sifatnya pasif.
+    TrOrderModel::where('order_number', $order_number)
+      ->where('status', 'expired')
+      ->update(['status' => 'pending']);
 
     return $response->json('data');
   }
@@ -179,20 +193,59 @@ class PaymentGatewayServices
       ->update(['payment_gateway_order_id' => $attempt->order_id]);
   }
 
-  // CancelPendingAttempt: dipanggil dari KioskController::CancelOrder() -- kalau order yang
-  // mau di-cancel masih punya attempt payment 'pending' (customer sempat minta QR tapi belum
-  // scan/bayar), attempt itu ikut di-cancel ke Midtrans juga, biar gak nyangkut pending/expired
-  // sendiri di sana meski order-nya udah dianggap batal di sisi kita. Gak ada attempt pending ->
-  // no-op (order emang belum pernah minta payment, atau attempt terakhirnya udah cancel/settlement).
-  public function CancelPendingAttempt(string $order_number): void
+  // CancelPendingAttempt: dipanggil dari KioskController::CancelOrder(), editExistingOrder(),
+  // dan endpoint publik KioskController::CancelPayment() -- kalau order yang mau di-cancel/edit
+  // masih punya attempt payment 'pending', attempt itu perlu diinvalidate biar gak nyangkut QR
+  // aktif yang gak relevan lagi.
+  //
+  // LIVE-CHECK dulu ke Midtrans sebelum mutusin cancel (bukan blind-cancel) -- jaga-jaga race:
+  // customer bisa aja sempet scan & bayar QR itu PERSIS pas mau di-cancel (sistem ini polling,
+  // bukan webhook, jadi ada window dimana Midtrans udah settlement tapi Laravel belum tau).
+  // Kalau blind-cancel aja terus caller lanjut ubah order (edit-order) atau nge-cancel order
+  // (cancel-order), duit yang UDAH beneran kebayar itu bisa ke-orphan -- order nyangkut gak
+  // sinkron sama status pembayaran aslinya. Jadi:
+  // - Attempt masih pending/udah expired/cancel/failed di Midtrans -> aman, cancel (kalau
+  //   masih pending) / sinkronin status lokal, return ['cancelled' => true, 'settled' => false].
+  // - Attempt ternyata UDAH settlement (race) -> JANGAN di-cancel, proses confirmPayment()
+  //   malah (order jadi 'paid', bener-bener kebayar) -- caller WAJIB cek 'settled' di return
+  //   value dan batalin aksi yang lagi dilakuin (edit/cancel) kalau true.
+  // - Gak ada attempt pending sama sekali -> no-op, ['cancelled' => false, 'settled' => false].
+  public function CancelPendingAttempt(string $order_number): array
   {
     $pendingAttempt = KioskPaymentRequestModel::where('order_number', $order_number)
       ->where('status', 'pending')
+      ->orderByDesc('created_at')
       ->first();
 
-    if ($pendingAttempt) {
-      $this->cancelAttempt($pendingAttempt);
+    if (!$pendingAttempt) {
+      return ['cancelled' => false, 'settled' => false];
     }
+
+    $response = Http::get($this->endpoint . '/payment-gateway/' . $pendingAttempt->order_id);
+    $liveStatus = $response->json('code') === 0 ? $response->json('data.status') : null;
+
+    if ($liveStatus === 'settlement') {
+      $pendingAttempt->update(['status' => 'settlement']);
+
+      $order = TrOrderModel::where('order_number', $order_number)->first();
+      if ($order && $order->payment_number === null) {
+        $this->confirmPayment($order, $pendingAttempt);
+      }
+
+      return ['cancelled' => false, 'settled' => true];
+    }
+
+    if ($liveStatus === 'pending' || $liveStatus === null) {
+      // masih pending beneran (atau live-check-nya sendiri gagal, mis. network) -- coba cancel.
+      $this->cancelAttempt($pendingAttempt);
+    } else {
+      // udah expired/cancel/failed duluan di Midtrans (bukan gara-gara kita) -- gak perlu
+      // manggil cancel lagi (Midtrans bakal nolak, transaksinya emang udah mati), sinkronin
+      // status lokal aja.
+      $pendingAttempt->update(['status' => $liveStatus]);
+    }
+
+    return ['cancelled' => true, 'settled' => false];
   }
 
   // cancelAttempt: batalin 1 attempt pending -- ke Midtrans (lewat service payment) dulu, baru

@@ -20,8 +20,9 @@ Batalin order kiosk **sebelum bayar**. Logic di `KioskController::CancelOrder()`
 
 ## Alur
 
-1. **Cancel attempt payment pending (kalau ada)** — kalau order ini masih punya baris `tr_kiosk_payment_request` berstatus `pending` (customer sempat minta QR lewat [KIOSK PAYMENT REQUEST.md](./KIOSK%20PAYMENT%20REQUEST.md) tapi belum scan/bayar), attempt itu di-cancel dulu ke Midtrans (`PaymentGatewayServices::CancelPendingAttempt()`, reuse logic yang sama kayak retry — lihat "Retry & cancel" di situ). Gak ada attempt pending → no-op, lanjut aja.
-2. **`OrderServices::CancelOrder()`** — cuma jalan kalau `tr_order.status` masih `pending` atau `hold`. Order yang udah `paid` (settlement lewat [KIOSK PAYMENT CHECK STATUS.md](./KIOSK%20PAYMENT%20CHECK%20STATUS.md)) otomatis **ketolak** di titik ini — endpoint ini bukan buat refund/void order yang udah kebayar.
+1. **Cancel attempt payment pending (kalau ada)** — kalau order ini masih punya baris `tr_kiosk_payment_request` berstatus `pending` (customer sempat minta QR lewat [KIOSK PAYMENT REQUEST.md](./KIOSK%20PAYMENT%20REQUEST.md) tapi belum scan/bayar), attempt itu di-cancel dulu ke Midtrans (`PaymentGatewayServices::CancelPendingAttempt()`, reuse logic yang sama dipakai retry & [KIOSK CANCEL PAYMENT.md](./KIOSK%20CANCEL%20PAYMENT.md)). Gak ada attempt pending → no-op, lanjut aja.
+   - **Race guard**: `CancelPendingAttempt()` live-check ke Midtrans dulu sebelum cancel — kalau ternyata attempt-nya udah `settlement` (customer sempet bayar PERSIS pas mau di-cancel), order otomatis kejadi `paid` (bukan di-cancel), lihat detail lengkap di [KIOSK CANCEL PAYMENT.md](./KIOSK%20CANCEL%20PAYMENT.md).
+2. **`OrderServices::CancelOrder()`** — cuma jalan kalau `tr_order.status` masih `pending` atau `hold`. Order yang udah `paid` (baik dari settlement normal lewat [KIOSK PAYMENT CHECK STATUS.md](./KIOSK%20PAYMENT%20CHECK%20STATUS.md), maupun dari race di poin 1) otomatis **ketolak** di titik ini — endpoint ini bukan buat refund/void order yang udah kebayar.
 3. Sukses → `tr_order.status = 'cancel'`, `cancel_at`/`cancel_notes` keisi.
 
 ## Response

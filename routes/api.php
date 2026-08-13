@@ -32,6 +32,7 @@ Route::prefix('kiosk')->group(function () {
   Route::get('payment-method', [KioskController::class, 'GetPaymentMethodList']);
   Route::post('payment/request', [KioskController::class, 'RequestPayment']);
   Route::get('payment/check-status/{order_number}', [KioskController::class, 'CheckPaymentStatus']);
+  Route::post('payment/cancel', [KioskController::class, 'CancelPayment']);
   Route::post('cancel-order', [KioskController::class, 'CancelOrder']);
 });
 
