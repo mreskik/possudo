@@ -112,19 +112,38 @@ class KioskController extends Controller
         }
     }
 
-    // GetTerminalDetail: detail 1 terminal by id, ditambah join pos_type (nama) + nested
-    // receipt_station (detail mr_station-nya, sekalian nama printer_type/printer_connection/
-    // printing_mode -- 3 tabel lookup kecil yang emang udah disiapin dari awal, mr_printer_type/
-    // mr_printer_connection/mr_printing_mode, bukan enum tanpa makna). Dipakai kiosk pas
-    // pertama kali device ini "kenal diri" abis pilih terminal (lihat TerminalPage.vue).
-    // Boolean (is_active/is_used/flag_printer_frontend/auto_cut/cash_drawer) di-cast eksplisit
-    // ke bool -- default-nya PDO balikin "0"/"1" (string), bukan true/false asli.
+    // GetTerminalDetail: detail 1 terminal by id, ditambah join pos_type/branch/table_section
+    // (nama) + nested receipt_station (detail mr_station-nya, sekalian nama printer_type/
+    // printer_connection/printing_mode -- 3 tabel lookup kecil yang emang udah disiapin dari
+    // awal, mr_printer_type/mr_printer_connection/mr_printing_mode, bukan enum tanpa makna).
+    // Dipakai kiosk pas pertama kali device ini "kenal diri" abis pilih terminal (lihat
+    // TerminalPage.vue). Boolean (is_active/is_used/flag_printer_frontend/auto_cut/cash_drawer)
+    // di-cast eksplisit ke bool -- default-nya PDO balikin "0"/"1" (string), bukan true/false asli.
     public function GetTerminalDetail(Request $request, int $id)
     {
         try {
+            // Select eksplisit (bukan t.* + tempel di belakang) -- biar tiap *_name nempel
+            // persis abis *_id pasangannya di response JSON, enak dibaca urut.
             $data = DB::table('mr_terminal as t')
                 ->leftJoin('mr_pos_type as pt', 'pt.id', '=', 't.pos_type_id')
-                ->select('t.*', 'pt.name as pos_type_name', 'pt.device_type as pos_type_device_type')
+                ->leftJoin('mr_branch as b', 'b.id', '=', 't.branch_id')
+                ->leftJoin('mr_table_section as ts', 'ts.id', '=', 't.table_section_id')
+                ->select(
+                    't.id',
+                    't.name',
+                    't.branch_id',
+                    'b.branch_name',
+                    't.device_id',
+                    't.pos_type_id',
+                    'pt.name as pos_type_name',
+                    'pt.device_type as pos_type_device_type',
+                    't.is_active',
+                    't.is_used',
+                    't.table_section_id',
+                    'ts.name as table_section_name',
+                    't.receipt_station_id',
+                    't.flag_printer_frontend'
+                )
                 ->where('t.id', $id)
                 ->first();
 
@@ -157,6 +176,9 @@ class KioskController extends Controller
                 if ($station) {
                     $station->auto_cut = (bool) $station->auto_cut;
                     $station->cash_drawer = (bool) $station->cash_drawer;
+                    // id/branch_id station dibuang -- udah kewakilan dari receipt_station_id
+                    // (header) dan branch_id (header, sama-sama 1 branch), gak perlu dobel.
+                    unset($station->id, $station->branch_id);
                 }
 
                 $data->receipt_station = $station;

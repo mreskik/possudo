@@ -7,9 +7,19 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-// KioskCheckPendingPayment: polling background buat order kiosk yang masih 'pending' DAN udah
-// pernah manggil payment/request (exists check ke tr_kiosk_payment_request -- order yang masih
-// di tahap milih menu, belum sampe minta QR, gak usah dicek, gak ada yang perlu di-polling).
+// KioskCheckPendingPayment: polling background buat order kiosk yang masih 'pending' DAN
+// attempt TERAKHIRNYA di tr_kiosk_payment_request masih 'pending'/'settlement' (exists check,
+// dibatesin ke created_at = MAX(created_at) per order_number biar yang dicek beneran attempt
+// terakhir, bukan sembarang baris lama).
+// - Order yang belum pernah manggil payment/request sama sekali -- gak ke-exists, gak usah
+//   dicek (belum ada apa-apa buat di-live-check).
+// - Order yang attempt terakhirnya udah 'cancel'/'expired'/'failed' -- SENGAJA di-exclude,
+//   itu state final, Midtrans gak bakal ngubah itu lagi, dicek ulang tiap menit cuma buang
+//   API call ke service payment percuma.
+// - 'settlement' SENGAJA tetep di-include (bukan cuma 'pending') -- kalau confirmPayment()
+//   di CheckStatus() sempet gagal di tengah jalan (network/DB error) abis status attempt-nya
+//   keupdate duluan jadi 'settlement', order itu nyangkut 'pending' padahal duitnya udah
+//   settlement. Kalau di-exclude, order kayak gini gak akan PERNAH ke-retry lagi oleh sweep ini.
 // Manggil PaymentGatewayServices::CheckStatus() langsung in-process (logic yang sama dipakai
 // GET /api/kiosk/payment/check-status/{order_number}), bukan HTTP request ke diri sendiri.
 //
@@ -35,7 +45,9 @@ class KioskCheckPendingPayment extends Command
                 ->whereExists(function ($query) {
                     $query->select(DB::raw(1))
                         ->from('tr_kiosk_payment_request as kpr')
-                        ->whereColumn('kpr.order_number', 'o.order_number');
+                        ->whereColumn('kpr.order_number', 'o.order_number')
+                        ->whereIn('kpr.status', ['pending', 'settlement'])
+                        ->whereRaw('kpr.created_at = (SELECT MAX(created_at) FROM tr_kiosk_payment_request WHERE order_number = o.order_number)');
                 })
                 ->pluck('o.order_number');
 
