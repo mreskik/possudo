@@ -44,6 +44,7 @@ Tabel lokal baru (`tr_kiosk_payment_request`, PK `order_id`) nyatet tiap **attem
 | `payment_method_id` | disimpen di sini, dipakai lagi nanti pas confirm ke `PaymentServices::SavePayment()` |
 | `amount` | snapshot nominal pas request dibuat |
 | `status` | `pending` / `settlement` / `cancel` / `failed` / `expired` |
+| `expired_at` | snapshot `expired_at` dari Midtrans pas request sukses — dipakai buat `payment_expired_at` di [KIOSK ORDER HISTORY.md](./KIOSK%20ORDER%20HISTORY.md)/[KIOSK ORDER DETAIL.md](./KIOSK%20ORDER%20DETAIL.md) |
 
 **Alur retry**: kalau ada request baru masuk buat `order_number` yang masih punya attempt `pending`:
 1. `PaymentGatewayServices::cancelAttempt()` — `POST {PAYMENT_GATEWAY_ENDPOINT}/payment-gateway/{order_id_lama}/cancel` (endpoint baru di service `payment`, wrapper `coreapi.Client.CancelTransaction()` Midtrans), baris lama di-update `status: cancel`.

@@ -168,12 +168,13 @@ class KioskController extends Controller
                     o.visit_purpose_id,
                     mvp.name as visit_purpose_name,
                     latest.payment_method_id,
+                    latest.expired_at as payment_expired_at,
                     pm.name as payment_method
                     FROM tr_order o
                     LEFT JOIN mr_member m ON m.id = o.member_id
                     LEFT JOIN mr_visit_purpose mvp ON mvp.id = o.visit_purpose_id
                     LEFT JOIN (
-                        SELECT kpr.order_number, kpr.payment_method_id
+                        SELECT kpr.order_number, kpr.payment_method_id, kpr.expired_at
                         FROM tr_kiosk_payment_request kpr
                         INNER JOIN (
                             SELECT order_number, MAX(created_at) as max_created_at
@@ -427,12 +428,13 @@ class KioskController extends Controller
                     o.visit_purpose_id,
                     mvp.name as visit_purpose_name,
                     latest.payment_method_id,
+                    latest.expired_at as payment_expired_at,
                     pm.name as payment_method
                     FROM tr_order o
                     LEFT JOIN mr_member m ON m.id = o.member_id
                     LEFT JOIN mr_visit_purpose mvp ON mvp.id = o.visit_purpose_id
                     LEFT JOIN (
-                        SELECT kpr.order_number, kpr.payment_method_id
+                        SELECT kpr.order_number, kpr.payment_method_id, kpr.expired_at
                         FROM tr_kiosk_payment_request kpr
                         INNER JOIN (
                             SELECT order_number, MAX(created_at) as max_created_at

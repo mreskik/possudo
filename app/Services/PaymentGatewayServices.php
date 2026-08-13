@@ -93,6 +93,11 @@ class PaymentGatewayServices
       throw new \Exception($response->json('message'));
     }
 
+    // snapshot expired_at dari vendor -- dipakai buat nampilin payment_expired_at di
+    // KIOSK ORDER HISTORY.md / KIOSK ORDER DETAIL.md (biar Kiosk tau kapan QR yang lagi aktif
+    // itu mati, tanpa perlu ke service payment lagi).
+    $requestRow->update(['expired_at' => $response->json('data.expired_at')]);
+
     // order yang attempt sebelumnya expired (QR kadaluarsa) -- attempt baru ini valid, jangan
     // biarin order-nya nyangkut status 'expired' padahal QR baru aktif. Guard status = 'expired'
     // doang -- order yang di-cancel lewat KioskController::CancelOrder() sengaja gak ke-reset

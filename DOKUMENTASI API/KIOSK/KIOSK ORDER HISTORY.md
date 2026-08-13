@@ -41,6 +41,7 @@ Filter-nya ke kolom `tr_order.order_in` (timestamp order dibuat, ada jamnya) —
       "visit_purpose_id": 2,
       "visit_purpose_name": "TAKEAWAY",
       "payment_method_id": 1,
+      "payment_expired_at": "2026-08-13 13:25:45",
       "payment_method": null
     }
   ]
@@ -56,6 +57,7 @@ Gak ada order yang match → `data: []` (bukan error).
 - `customer_phone_number`/`member_name` — `null` kalau order gak diisi nomor HP / nomor HP-nya gak match member manapun (lihat [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md), phone number itu best-effort, gak pernah nge-block save-order).
 - `visit_purpose_id`/`visit_purpose_name` — `tro.visit_purpose_id` itu FK **langsung** ke `mr_visit_purpose.id` (bukan ke `mr_branch_visit_purpose`, beda id-space — pola join yang sama dipakai `OrderServices::viewOrder()` di POS).
 - `payment_method_id`/`payment_method` — diambil dari **attempt terakhir** di `tr_kiosk_payment_request` (bukan dari `tr_order_payment`) — sengaja, biar tetap keisi meski order masih `pending` (belum kebayar). Kiosk pakai `payment_method_id` ini buat **retry langsung dari list history**: order `pending` di-tap → panggil ulang [KIOSK PAYMENT REQUEST.md](./KIOSK%20PAYMENT%20REQUEST.md) pakai `payment_method_id` yang sama, customer gak perlu milih payment method dari awal lagi. `null` kalau order ini belum pernah manggil `payment/request` sama sekali.
+- `payment_expired_at` — kapan QR attempt terakhir itu kadaluarsa (snapshot dari `vendor_qr`/Midtrans pas `payment/request` sukses, disimpen di `tr_kiosk_payment_request.expired_at`). `null` kalau belum pernah `payment/request`. **Gak otomatis update** kalau QR-nya udah kepake/expired — cuma nunjukin kapan attempt *terakhir* itu mati, bukan status real-time (buat itu, pakai [KIOSK PAYMENT CHECK STATUS.md](./KIOSK%20PAYMENT%20CHECK%20STATUS.md)).
 
 Urutan: `order_in DESC` (terbaru duluan).
 
@@ -81,3 +83,7 @@ Field & filter diganti dari `order_date` (tanggal doang) ke `order_in` (timestam
 ## Tervalidasi live (2026-08-13) — visit_purpose_id/visit_purpose_name
 
 Order test dengan visit purpose `TAKEAWAY` (`visit_purpose_id: 2`) → balikin `visit_purpose_id`/`visit_purpose_name` sesuai (`2`/`"TAKEAWAY"`), konsisten sama baris yang sama di [KIOSK ORDER DETAIL.md](./KIOSK%20ORDER%20DETAIL.md).
+
+## Tervalidasi live (2026-08-13) — payment_expired_at
+
+Order test → `payment/request` → `order-history` balikin `payment_expired_at` sesuai `expired_at` asli dari Midtrans (`"2026-08-13 13:25:45"`), konsisten sama baris yang sama di [KIOSK ORDER DETAIL.md](./KIOSK%20ORDER%20DETAIL.md).

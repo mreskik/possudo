@@ -33,6 +33,7 @@ Sukses (item biasa + item package):
     "visit_purpose_id": 2,
     "visit_purpose_name": "TAKEAWAY",
     "payment_method_id": 1,
+    "payment_expired_at": "2026-08-13 13:25:45",
     "payment_method": "QRIS",
     "items": [
       {
@@ -79,6 +80,7 @@ Sukses (item biasa + item package):
 - `customer_phone_number`/`member_name` — `null` kalau order gak diisi nomor HP / gak match member (sama kayak history).
 - `visit_purpose_id`/`visit_purpose_name` — `tro.visit_purpose_id` itu FK **langsung** ke `mr_visit_purpose.id` (bukan ke `mr_branch_visit_purpose`, beda id-space — pola join yang sama dipakai `OrderServices::viewOrder()` di POS).
 - `payment_method_id`/`payment_method` — dari attempt terakhir `tr_kiosk_payment_request` (bukan `tr_order_payment`), sama persis penjelasannya di [KIOSK ORDER HISTORY.md](./KIOSK%20ORDER%20HISTORY.md) — keisi meski order masih `pending`, buat retry.
+- `payment_expired_at` — kapan QR attempt terakhir kadaluarsa (snapshot dari Midtrans pas `payment/request` sukses). `null` kalau belum pernah `payment/request`. Sama persis penjelasannya di [KIOSK ORDER HISTORY.md](./KIOSK%20ORDER%20HISTORY.md).
 
 `order_number` gak ketemu:
 
@@ -103,3 +105,7 @@ Order yang udah `paid` → header keluar lengkap (`status: paid`, `payment_numbe
 ## Tervalidasi live (2026-08-13) — visit_purpose_id/visit_purpose_name
 
 Order test dengan visit purpose `TAKEAWAY` (`visit_purpose_id: 2`) → balikin `visit_purpose_id`/`visit_purpose_name` sesuai (`2`/`"TAKEAWAY"`), konsisten sama baris yang sama di [KIOSK ORDER HISTORY.md](./KIOSK%20ORDER%20HISTORY.md).
+
+## Tervalidasi live (2026-08-13) — payment_expired_at
+
+Order test → `payment/request` → `order-detail` balikin `payment_expired_at` sesuai `expired_at` asli dari Midtrans (`"2026-08-13 13:25:45"`), konsisten sama baris yang sama di [KIOSK ORDER HISTORY.md](./KIOSK%20ORDER%20HISTORY.md).
