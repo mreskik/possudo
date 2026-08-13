@@ -245,10 +245,13 @@ class KioskController extends Controller
     }
 
     // GetOrderHistory: list header order kiosk (order_source = 'kiosk'), filter date range by
-    // order_date + optional terminal_id. Belum termasuk list item -- detail per-order nyusul
-    // endpoint terpisah. date_from/date_to optional, default hari ini kalau gak dikirim (format
-    // Y-m-d). member_name pakai LEFT JOIN (bukan inner) -- order tanpa member_id gak match
-    // mr_member, jangan sampai ke-drop dari list gara-gara inner join.
+    // order_in (bukan order_date -- order_in dateTime, punya jam, dan konsisten sama filter
+    // tanggal yang dipakai modul lain kayak SalesServices/DayShiftServices) + optional
+    // terminal_id. Belum termasuk list item -- detail per-order nyusul endpoint terpisah.
+    // date_from/date_to optional, default hari ini kalau gak dikirim (format Y-m-d) --
+    // date_to inclusive (dibandingin sampai < date_to + 1 hari). member_name pakai LEFT JOIN
+    // (bukan inner) -- order tanpa member_id gak match mr_member, jangan sampai ke-drop dari
+    // list gara-gara inner join.
     //
     // payment_method_id/payment_method diambil dari attempt TERAKHIR di tr_kiosk_payment_request
     // (bukan dari tr_order_payment) -- sengaja, biar tetap ada meski order-nya masih 'pending'
@@ -262,7 +265,7 @@ class KioskController extends Controller
             $dateTo = $request->query('date_to') ?: now()->toDateString();
             $terminalId = $request->query('terminal_id');
 
-            $where = "o.order_source = 'kiosk' AND o.order_date BETWEEN ? AND ?";
+            $where = "o.order_source = 'kiosk' AND o.order_in >= ? AND o.order_in < DATE_ADD(?, INTERVAL 1 DAY)";
             $bindings = [$dateFrom, $dateTo];
 
             if ($terminalId) {
@@ -274,7 +277,7 @@ class KioskController extends Controller
                     o.order_number,
                     o.payment_number,
                     o.status,
-                    o.order_date,
+                    o.order_in,
                     o.order_name,
                     o.total_billing,
                     o.total_item,
@@ -296,7 +299,7 @@ class KioskController extends Controller
                     ) latest ON latest.order_number = o.order_number
                     LEFT JOIN mr_payment_method pm ON pm.id = latest.payment_method_id
                     WHERE $where
-                    ORDER BY o.order_date DESC, o.created_at DESC", $bindings);
+                    ORDER BY o.order_in DESC", $bindings);
 
             return response()->json([
                 'code' => 0,

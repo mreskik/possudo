@@ -93,8 +93,13 @@ class PaymentGatewayServices
   // CheckStatus: dipanggil Kiosk buat polling -- cuma butuh order_number, gak perlu tau
   // order_id (bisa beda-beda tiap attempt gara-gara retry, server yang cari attempt terbaru
   // sendiri). Idempotency guard duluan (cek tr_order.payment_number) biar polling berkali-kali
-  // gak dobel proses SavePayment(). Balikin status apa adanya (pending/settlement/cancel/
-  // failed/expired) -- Kiosk yang mutusin UI-nya.
+  // gak dobel proses SavePayment().
+  //
+  // Status yang DIBALIKIN ke client (pending/paid/cancel/failed/expired) sengaja beda dari
+  // status internal gateway (pending/settlement/cancel/failed/expired, "settlement" istilah
+  // Midtrans) -- "settlement" di-remap jadi "paid" biar konsisten sama tr_order.status. Kolom
+  // tr_kiosk_payment_request.status TETEP nyimpen "settlement" apa adanya (audit trail attempt,
+  // harus persis sama payment_gateway di service payment), remap-nya cuma di response ini.
   public function CheckStatus(string $order_number): array
   {
     $order = TrOrderModel::where('order_number', $order_number)->first();
@@ -105,7 +110,7 @@ class PaymentGatewayServices
     // udah pernah ke-confirm sebelumnya (attempt lain/polling sebelumnya) -- jangan cek ulang
     // ke Midtrans lagi, apalagi sampe manggil SavePayment() dobel.
     if ($order->payment_number !== null) {
-      return ['status' => 'settlement', 'order_number' => $order_number];
+      return ['status' => 'paid', 'order_number' => $order_number];
     }
 
     $attempt = KioskPaymentRequestModel::where('order_number', $order_number)
@@ -127,7 +132,16 @@ class PaymentGatewayServices
       $this->confirmPayment($order, $attempt);
     }
 
-    return ['status' => $status, 'order_number' => $order_number];
+    // order yang QR-nya kadaluarsa di Midtrans (gak pernah di-scan) -- samain tr_order.status
+    // jadi 'expired' juga, biar gak nyangkut 'pending' selamanya. Guard status = 'pending' di
+    // where() ini murni jaga-jaga (idempotency guard di atas udah nutup kasus order paid duluan).
+    if ($status === 'expired') {
+      TrOrderModel::where('order_number', $order_number)
+        ->where('status', 'pending')
+        ->update(['status' => 'expired']);
+    }
+
+    return ['status' => $status === 'settlement' ? 'paid' : $status, 'order_number' => $order_number];
   }
 
   // confirmPayment: manggil PaymentServices::SavePayment() yang SAMA dipakai POS -- payment_detail
