@@ -30,6 +30,8 @@ Sukses (item biasa + item package):
     "total_item": 1,
     "customer_phone_number": null,
     "member_name": null,
+    "visit_purpose_id": 2,
+    "visit_purpose_name": "TAKEAWAY",
     "payment_method_id": 1,
     "payment_method": "QRIS",
     "items": [
@@ -75,6 +77,7 @@ Sukses (item biasa + item package):
 - `qty`/`total_item` — integer.
 - `status` — apa adanya dari `tr_order.status` (`pending`/`paid`/`cancel`/`expired`/dst, sama kayak [KIOSK ORDER HISTORY.md](./KIOSK%20ORDER%20HISTORY.md)).
 - `customer_phone_number`/`member_name` — `null` kalau order gak diisi nomor HP / gak match member (sama kayak history).
+- `visit_purpose_id`/`visit_purpose_name` — `tro.visit_purpose_id` itu FK **langsung** ke `mr_visit_purpose.id` (bukan ke `mr_branch_visit_purpose`, beda id-space — pola join yang sama dipakai `OrderServices::viewOrder()` di POS).
 - `payment_method_id`/`payment_method` — dari attempt terakhir `tr_kiosk_payment_request` (bukan `tr_order_payment`), sama persis penjelasannya di [KIOSK ORDER HISTORY.md](./KIOSK%20ORDER%20HISTORY.md) — keisi meski order masih `pending`, buat retry.
 
 `order_number` gak ketemu:
@@ -96,3 +99,7 @@ Sukses (item biasa + item package):
 ## Tervalidasi live (2026-08-13) — header disamain sama order history
 
 Order yang udah `paid` → header keluar lengkap (`status: paid`, `payment_number` keisi, `payment_method_id`/`payment_method` sesuai attempt terakhirnya) — konsisten sama baris yang sama di [KIOSK ORDER HISTORY.md](./KIOSK%20ORDER%20HISTORY.md). `order_number` gak ketemu tetap error yang sama.
+
+## Tervalidasi live (2026-08-13) — visit_purpose_id/visit_purpose_name
+
+Order test dengan visit purpose `TAKEAWAY` (`visit_purpose_id: 2`) → balikin `visit_purpose_id`/`visit_purpose_name` sesuai (`2`/`"TAKEAWAY"`), konsisten sama baris yang sama di [KIOSK ORDER HISTORY.md](./KIOSK%20ORDER%20HISTORY.md).

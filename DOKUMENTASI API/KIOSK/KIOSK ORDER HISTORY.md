@@ -38,6 +38,8 @@ Filter-nya ke kolom `tr_order.order_in` (timestamp order dibuat, ada jamnya) —
       "total_item": 1,
       "customer_phone_number": "08121314423",
       "member_name": "bagus",
+      "visit_purpose_id": 2,
+      "visit_purpose_name": "TAKEAWAY",
       "payment_method_id": 1,
       "payment_method": null
     }
@@ -52,6 +54,7 @@ Gak ada order yang match → `data: []` (bukan error).
 - `total_billing` — string (hasil select langsung kolom `decimal` MySQL, konsisten sama konvensi field duit lain).
 - `total_item` — integer.
 - `customer_phone_number`/`member_name` — `null` kalau order gak diisi nomor HP / nomor HP-nya gak match member manapun (lihat [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md), phone number itu best-effort, gak pernah nge-block save-order).
+- `visit_purpose_id`/`visit_purpose_name` — `tro.visit_purpose_id` itu FK **langsung** ke `mr_visit_purpose.id` (bukan ke `mr_branch_visit_purpose`, beda id-space — pola join yang sama dipakai `OrderServices::viewOrder()` di POS).
 - `payment_method_id`/`payment_method` — diambil dari **attempt terakhir** di `tr_kiosk_payment_request` (bukan dari `tr_order_payment`) — sengaja, biar tetap keisi meski order masih `pending` (belum kebayar). Kiosk pakai `payment_method_id` ini buat **retry langsung dari list history**: order `pending` di-tap → panggil ulang [KIOSK PAYMENT REQUEST.md](./KIOSK%20PAYMENT%20REQUEST.md) pakai `payment_method_id` yang sama, customer gak perlu milih payment method dari awal lagi. `null` kalau order ini belum pernah manggil `payment/request` sama sekali.
 
 Urutan: `order_in DESC` (terbaru duluan).
@@ -74,3 +77,7 @@ Order yang udah pernah manggil `payment/request` (termasuk yang udah di-cancel v
 ## Tervalidasi live (2026-08-13) — filter pindah ke order_in
 
 Field & filter diganti dari `order_date` (tanggal doang) ke `order_in` (timestamp, ada jamnya) — sama query `date_from=2026-08-12&date_to=2026-08-12` yang sebelumnya jalan pakai `order_date`, hasilnya tetap sama order-nya (termasuk order yang statusnya udah `paid`/`expired` dari sesi test sebelumnya), cuma field-nya sekarang nunjukin jam (`"order_in": "2026-08-12 17:48:34"`). Range tanggal masa depan tetap `data: []`.
+
+## Tervalidasi live (2026-08-13) — visit_purpose_id/visit_purpose_name
+
+Order test dengan visit purpose `TAKEAWAY` (`visit_purpose_id: 2`) → balikin `visit_purpose_id`/`visit_purpose_name` sesuai (`2`/`"TAKEAWAY"`), konsisten sama baris yang sama di [KIOSK ORDER DETAIL.md](./KIOSK%20ORDER%20DETAIL.md).

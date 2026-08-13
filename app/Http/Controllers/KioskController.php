@@ -164,10 +164,13 @@ class KioskController extends Controller
                     o.total_item,
                     o.customer_phone_number,
                     m.name as member_name,
+                    o.visit_purpose_id,
+                    mvp.name as visit_purpose_name,
                     latest.payment_method_id,
                     pm.name as payment_method
                     FROM tr_order o
                     LEFT JOIN mr_member m ON m.id = o.member_id
+                    LEFT JOIN mr_visit_purpose mvp ON mvp.id = o.visit_purpose_id
                     LEFT JOIN (
                         SELECT kpr.order_number, kpr.payment_method_id
                         FROM tr_kiosk_payment_request kpr
@@ -326,6 +329,10 @@ class KioskController extends Controller
     // (belum kebayar). Kiosk butuh payment_method_id ini buat retry langsung dari list history:
     // order pending di-tap -> panggil ulang payment/request pakai payment_method_id yang sama,
     // gak perlu customer milih payment method lagi dari awal.
+    //
+    // visit_purpose_id/visit_purpose_name -- LEFT JOIN mr_visit_purpose langsung (tro.visit_purpose_id
+    // itu FK ke mr_visit_purpose.id, bukan ke mr_branch_visit_purpose -- pola yang sama dipakai
+    // OrderServices::viewOrder() di POS).
     public function GetOrderHistory(Request $request)
     {
         try {
@@ -351,10 +358,13 @@ class KioskController extends Controller
                     o.total_item,
                     o.customer_phone_number,
                     m.name as member_name,
+                    o.visit_purpose_id,
+                    mvp.name as visit_purpose_name,
                     latest.payment_method_id,
                     pm.name as payment_method
                     FROM tr_order o
                     LEFT JOIN mr_member m ON m.id = o.member_id
+                    LEFT JOIN mr_visit_purpose mvp ON mvp.id = o.visit_purpose_id
                     LEFT JOIN (
                         SELECT kpr.order_number, kpr.payment_method_id
                         FROM tr_kiosk_payment_request kpr
