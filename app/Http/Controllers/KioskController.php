@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\DayShiftServices;
+use App\Services\MemberBalanceServices;
 use App\Services\MemberServices;
 use App\Services\MenuServices;
 use App\Services\OrderServices;
@@ -471,6 +472,58 @@ class KioskController extends Controller
     {
         try {
             $data = (new PaymentGatewayServices())->CheckStatus($order_number);
+
+            return response()->json([
+                'code' => 0,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    // TopupBalance: minta topup saldo member -- Kiosk kirim phone_number, amount,
+    // payment_method_id (WAJIB, wajib py payment_gateway_code keisi -- sama validasi kayak
+    // RequestPayment(), Kiosk gak ada opsi tunai). member_id & payment_gateway_code di-resolve
+    // di MemberBalanceServices::TopupBalance() (bukan dipercaya dari client langsung). Balikin
+    // data QR ('pending'), lanjut polling ke CheckTopupStatus().
+    public function TopupBalance(Request $request)
+    {
+        try {
+            $phoneNumber = $request->input('phone_number');
+            $amount = $request->input('amount');
+            $paymentMethodId = $request->input('payment_method_id');
+
+            if (!$phoneNumber || !$amount || !$paymentMethodId) {
+                return response()->json([
+                    'code' => 100,
+                    'message' => 'phone_number, amount, dan payment_method_id wajib diisi',
+                ]);
+            }
+
+            $data = (new MemberBalanceServices())->TopupBalance($phoneNumber, (float) $amount, (int) $paymentMethodId, 'kiosk');
+
+            return response()->json([
+                'code' => 0,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    // CheckTopupStatus: polling status topup gateway -- dipanggil Kiosk sambil nunggu customer
+    // scan QR (mirip CheckPaymentStatus, tapi buat topup saldo bukan bayar order).
+    public function CheckTopupStatus(Request $request, string $reference_number)
+    {
+        try {
+            $data = (new MemberBalanceServices())->CheckTopupStatus($reference_number);
 
             return response()->json([
                 'code' => 0,

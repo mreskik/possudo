@@ -33,6 +33,8 @@ Route::prefix('kiosk')->group(function () {
   Route::post('payment/request', [KioskController::class, 'RequestPayment']);
   Route::get('payment/check-status/{order_number}', [KioskController::class, 'CheckPaymentStatus']);
   Route::post('payment/cancel', [KioskController::class, 'CancelPayment']);
+  Route::post('member/topup', [KioskController::class, 'TopupBalance']);
+  Route::get('member/topup/check-status/{reference_number}', [KioskController::class, 'CheckTopupStatus']);
   Route::get('print-data/{order_number}', [KioskController::class, 'GetPrintData']);
   Route::post('cancel-order', [KioskController::class, 'CancelOrder']);
 });

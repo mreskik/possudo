@@ -151,6 +151,19 @@ class PaymentGatewayServices
       $this->confirmPayment($order, $attempt);
     }
 
+    // FALLBACK: expired_at snapshot lokal (dari RequestPayment(), disimpen pas QR dibuat) udah
+    // lewat, tapi status yang dibalikin service payment masih 'pending' -- ini kasus webhook
+    // Midtrans gak pernah/belum nyampe ke service payment, jadi status di sana gak akan pernah
+    // ke-update sendiri. Daripada nyangkut 'pending' selamanya nungguin webhook yang gak dateng,
+    // aktif cancel QR itu ke Midtrans (lewat cancelAttempt(), best-effort) terus treat lokal
+    // sebagai 'expired' -- override status 'cancel' dari cancelAttempt() jadi 'expired' biar
+    // kebaca alasannya beneran (kadaluarsa), bukan dibatalin manual.
+    if ($status === 'pending' && $attempt->expired_at !== null && now()->gte($attempt->expired_at)) {
+      $this->cancelAttempt($attempt);
+      $attempt->update(['status' => 'expired']);
+      $status = 'expired';
+    }
+
     // order yang QR-nya kadaluarsa di Midtrans (gak pernah di-scan) -- samain tr_order.status
     // jadi 'expired' juga, biar gak nyangkut 'pending' selamanya. Guard status = 'pending' di
     // where() ini murni jaga-jaga (idempotency guard di atas udah nutup kasus order paid duluan).
