@@ -133,6 +133,40 @@ class DayShiftServices
     ];
   }
 
+  // GetOperationalHoursToday: MURNI jam operasional branch (mr_branch_ops_setting) hari ini,
+  // BEDA dari GetKioskDayStatus() -- gak ikut mempertimbangkan status dayshift sama sekali.
+  // Dipakai KioskController::GetTerminalDetail() buat nampilin info toko di layar terminal
+  // (device-level), bukan buat gerbang boleh/gak-nya self-order (itu tetap lewat endpoint
+  // /kiosk/day-status yang gabung dayshift).
+  // Balikin null (bukan throw) kalau ops setting hari ini belum di-setting -- Terminal Detail
+  // tetap harus bisa kebuka walau data jam operasional belum lengkap, field ini cuma info
+  // tambahan, bukan syarat wajib kayak di GetKioskDayStatus().
+  public static function GetOperationalHoursToday(): ?array
+  {
+    $today = strtolower(now()->format('l'));
+
+    $opsSetting = MasterBranchOpsSettingModel::where('day', $today)->first();
+    if (!$opsSetting) {
+      return null;
+    }
+
+    $isOpen = false;
+    if ($opsSetting->status === 'always_open') {
+      $isOpen = true;
+    } elseif ($opsSetting->status === 'open') {
+      $now = now()->format('H:i:s');
+      $isOpen = $now >= $opsSetting->open_time && $now <= $opsSetting->closed_time;
+    }
+
+    return [
+      'day' => $opsSetting->day,
+      'status' => $opsSetting->status,
+      'open_time' => $opsSetting->open_time,
+      'closed_time' => $opsSetting->closed_time,
+      'is_open' => $isOpen,
+    ];
+  }
+
   public static function StartDay($start_cash)
   {
     try {

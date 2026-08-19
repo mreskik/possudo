@@ -134,6 +134,7 @@ class KioskController extends Controller
                     't.name',
                     't.branch_id',
                     'b.branch_name',
+                    'b.address as branch_address',
                     't.device_id',
                     't.pos_type_id',
                     'pt.name as pos_type_name',
@@ -184,6 +185,13 @@ class KioskController extends Controller
 
                 $data->receipt_station = $station;
             }
+
+            // branch_operational_hours: murni jam operasional branch hari ini
+            // (mr_branch_ops_setting), TANPA dayshift -- lihat
+            // DayShiftServices::GetOperationalHoursToday(). Buat cek boleh/gak-nya self-order
+            // (gabung dayshift) tetap lewat endpoint terpisah GET /api/kiosk/day-status.
+            // null kalau ops setting hari ini belum di-setting.
+            $data->branch_operational_hours = DayShiftServices::GetOperationalHoursToday();
 
             return response()->json([
                 'code' => 0,

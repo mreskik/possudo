@@ -4,7 +4,7 @@
 GET /api/kiosk/terminal/{id}
 ```
 
-Gak butuh token. Detail 1 terminal dari `mr_terminal`, **plus join** `pos_type_name` (dari `mr_pos_type`), `branch_name` (dari `mr_branch`), `table_section_name` (dari `mr_table_section`), dan nested `receipt_station` (detail lengkap `mr_station`-nya, kalau ada).
+Gak butuh token. Detail 1 terminal dari `mr_terminal`, **plus join** `pos_type_name` (dari `mr_pos_type`), `branch_name`/`branch_address` (dari `mr_branch`), `table_section_name` (dari `mr_table_section`), nested `receipt_station` (detail lengkap `mr_station`-nya, kalau ada), dan `branch_operational_hours` (jam operasional branch hari ini, dari `mr_branch_ops_setting`).
 
 Response:
 
@@ -16,6 +16,7 @@ Response:
     "name": "KIOSK 1",
     "branch_id": 14,
     "branch_name": "TONAKO BANDUNG",
+    "branch_address": "Jl. Contoh No. 123, Bandung",
     "device_id": "",
     "pos_type_id": 3,
     "pos_type_name": "Kiosk",
@@ -39,6 +40,13 @@ Response:
       "printer_type_name": "Epson Sticker",
       "printer_connection_name": "Windows Printer Connection",
       "printing_mode_name": "Standar Printing"
+    },
+    "branch_operational_hours": {
+      "day": "wednesday",
+      "status": "open",
+      "open_time": "08:00:00",
+      "closed_time": "22:00:00",
+      "is_open": true
     }
   }
 }
@@ -54,14 +62,17 @@ Kalau `id` gak ketemu:
 
 - **Boolean dinormalisasi eksplisit** ke `true`/`false` asli — `is_active`, `is_used`, `flag_printer_frontend` (terminal), `auto_cut`, `cash_drawer` (station). Default-nya PDO balikin `"0"`/`"1"` (string), bukan boolean JSON — di-cast manual di controller biar konsisten.
 - **`pos_type_name`/`pos_type_device_type`** — join `mr_pos_type` via `pos_type_id` (`LEFT JOIN`, walau `pos_type_id` di `mr_terminal` sebenernya `NOT NULL` — tetep pakai left join buat jaga-jaga data yang gak konsisten).
-- **`branch_name`** — join `mr_branch` via `branch_id`. **`table_section_name`** — join `mr_table_section` via `table_section_id`, `null` kalau `table_section_id`-nya emang `null`.
-- **Urutan field response sengaja diatur** — tiap `*_id` diikuti langsung sama `*_name` pasangannya (`branch_id`→`branch_name`, `pos_type_id`→`pos_type_name`→`pos_type_device_type`, `table_section_id`→`table_section_name`), select-nya eksplisit kolom per kolom (bukan `t.*` ditempel di belakang) biar urutannya kekontrol. `receipt_station` (nested object) ada di paling akhir — itu properti baru yang di-assign belakangan di kode, gak bisa disisipin persis abis `receipt_station_id` kayak pasangan `*_id`/`*_name` yang lain.
+- **`branch_name`/`branch_address`** — join `mr_branch` via `branch_id` (`address` di-alias jadi `branch_address`). **`table_section_name`** — join `mr_table_section` via `table_section_id`, `null` kalau `table_section_id`-nya emang `null`.
+- **Urutan field response sengaja diatur** — tiap `*_id` diikuti langsung sama `*_name` pasangannya (`branch_id`→`branch_name`→`branch_address`, `pos_type_id`→`pos_type_name`→`pos_type_device_type`, `table_section_id`→`table_section_name`), select-nya eksplisit kolom per kolom (bukan `t.*` ditempel di belakang) biar urutannya kekontrol. `receipt_station` dan `branch_operational_hours` (nested object) ada di paling akhir — keduanya properti yang di-assign belakangan di kode (bukan hasil select langsung), gak bisa disisipin persis abis pasangan `*_id`/`*_name` yang lain.
 - **`receipt_station`** — **`null`** kalau `receipt_station_id` kosong (terminal belum di-setup station-nya) — bukan error. Kalau ada, isinya row `mr_station` (**tanpa** `id`/`branch_id` — dibuang, udah kewakilan dari `receipt_station_id` dan `branch_id` di level header, gak perlu dobel) plus 3 nama hasil join ke tabel lookup:
   - `printer_type_name` ← `mr_printer_type` (`Thermal Printer` / `Epson Sticker` / `GPrinter Sticker`)
   - `printer_connection_name` ← `mr_printer_connection` (`Windows Printer Connection` / `Network Printer Connection` / `Android Bluetooth Connection` / `Android USB Printer Connection`)
   - `printing_mode_name` ← `mr_printing_mode` (`Standar Printing` / `Single Menu Printing` / `Qty Menu Printing`)
   
   3 tabel lookup ini **udah ada dari awal** (bukan ditambah sesi ini) — `printer_type`/`printer_connection`/`printing_mode` di `mr_station` itu FK ke situ, bukan enum integer tanpa makna.
+- **`branch_operational_hours`** — jam operasional branch **hari ini** (1 baris `mr_branch_ops_setting` yang `day`-nya cocok sama nama hari sekarang), dari `DayShiftServices::GetOperationalHoursToday()`. **`null`** kalau ops setting hari ini belum di-*setting*/di-*pull* — bukan error, Terminal Detail tetap kebuka normal (jam operasional cuma info tambahan di sini, gak jadi syarat wajib).
+  - `is_open` di sini **MURNI jam operasional** — beda sama `is_open` di `GET /api/kiosk/day-status` (`DayShiftServices::GetKioskDayStatus()`) yang juga mempertimbangkan status dayshift kasir. Field di sini cuma jawab "toko lagi jam buka apa engga", bukan "boleh self-order apa engga" — buat itu tetap pakai endpoint `day-status` terpisah.
+  - Logic: `status='closed'` → `false`. `status='always_open'` → `true`. `status='open'` → `true` kalau jam sekarang di antara `open_time` dan `closed_time` (inklusif di kedua ujung), selain itu `false`.
 
 ## Tervalidasi live (2026-08-13)
 
