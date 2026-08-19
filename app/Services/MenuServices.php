@@ -108,7 +108,8 @@ class MenuServices
       mi.category_id as categoryId,
       mi.subcategory_id as subCategoryId,
       msc.name as SubCategoryName,
-      msc.icon_src as subCategoryIconSrc
+      msc.icon_src as subCategoryIconSrc,
+      msc.banner_src as subCategoryBannerSrc
 
       FROM mr_pricelist_detail mpd
       JOIN mr_pricelist mp on mp.id = mpd.pricelist_id

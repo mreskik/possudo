@@ -32,6 +32,7 @@ Response:
                         "subcategory_id": 12,
                         "subcategory_name": "FOOD",
                         "icon_src": "/img/subcategory/019f648a-f12e-7252-a76f-aa8fc55679bf.jpg",
+                        "banner_src": "/img/subcategory-banner/019f648a-f12e-7252-a76f-aa8fc55679bf.jpg",
                         "items": [
                             {
                                 "detail_pricelist_id": 93,
@@ -127,6 +128,7 @@ Kalau `id` gak ketemu:
 - `service_charge_rate`/`vat_rate`/`pb1_rate` — persentase asli dari `mr_tax.rate` (lookup dari tax_id di atas), `null` kalau tax_id-nya gak ketemu di `mr_tax`.
 - `image_src` — path relatif ke gambar item (dari `mr_item.image`, di-download & disimpen lokal pas sync, lihat `SetupServices::downloadImage()`), `null` kalau item belum ada gambarnya. **Path relatif**, bukan URL penuh — frontend perlu prefix sendiri pakai base URL Laravel (sama pola kayak `logo_header_src`/`image_footer_src` branch di `paymentPage.vue`: `${API_BASE}${item.image_src}`).
 - `icon_src` (di tiap `subcategories[]`) — path relatif ke icon sub category (dari `mr_subcategory.icon_src`, di-download & disimpen lokal pas sync, lihat `SetupServices::getSubCategoryList()`), `null` kalau sub category itu belum ada icon-nya. Sama aturan path relatif kayak `image_src` item.
+- `banner_src` (di tiap `subcategories[]`) — path relatif ke banner sub category (dari `mr_subcategory.banner_src`, di-download & disimpen lokal pas sync di subfolder `subcategory-banner`, terpisah dari `icon_src` yang di `subcategory` — 2 file beda per sub category), `null` kalau sub category itu belum ada banner-nya. Sama aturan path relatif.
 - `icon_src` (di tiap `items[]` dan di tiap `menu_package_list[]`) — path relatif ke icon item (dari `mr_item.icon_src`, di-download & disimpen lokal pas sync, lihat `SetupServices::getMasterItem()`), `null` kalau item itu belum ada icon-nya. Sama aturan path relatif, terpisah dari `image_src` (dua file berbeda per item).
 
 ## Sumber & pemetaan
@@ -161,7 +163,7 @@ Pemetaan nama field per level (versi POS camelCase → kiosk snake_case):
 
 `package_list[]` (kalau item punya package) juga di-snake_case-in: `packageId`→`package_id`, `packageName`→`package_name`, `minQty`→`min_qty`, `maxQty`→`max_qty`, `menuPackageList`→`menu_package_list` (isinya: `menuPackageId`→`menu_package_id`, `itemId`→`item_id`, `menuName`→`menu_name`, `menuPrice`→`menu_price`, `taxType`→`tax_type`, `bomId`→`bom_id`, `iconSrc`→`icon_src`, `taxId`→`tax_id`, `taxRate`→`tax_rate`).
 
-`subcategories[]` juga ada pemetaan sendiri (versi POS `$subcategory` query → kiosk): `subCategoryId`→`subcategory_id`, `SubCategoryName`→`subcategory_name`, `subCategoryIconSrc`→`icon_src`.
+`subcategories[]` juga ada pemetaan sendiri (versi POS `$subcategory` query → kiosk): `subCategoryId`→`subcategory_id`, `SubCategoryName`→`subcategory_name`, `subCategoryIconSrc`→`icon_src`, `subCategoryBannerSrc`→`banner_src`.
 
 ## Update (2026-08-11)
 
@@ -176,6 +178,16 @@ Pemetaan nama field per level (versi POS camelCase → kiosk snake_case):
 `icon_src` ditambahin juga di **level item** — di tiap `items[]` (menu utama) **dan** di tiap `menu_package_list[]` (item di dalam package/varian) — nyusul kolom `mr_item.icon_src` yang baru ditambah (lihat `SYNC PULL.md`, sekarang `getMasterItem()` download 2 file per item: `image` dan `icon_src`, subfolder beda). Query `$listmenu` (item utama) dan `$menuPackageDetail` (item di dalam package) di `MenuServices::GetMasterMenuList()` sama-sama ditambah `mi.icon_src as iconSrc`, dipetakan ke `icon_src` di `mapKioskMenuItem()`.
 
 Tervalidasi live: set icon test di 2 item real (1 item utama, 1 item yang ada di dalam `menu_package_list` beneran, bukan contoh ilustrasi lagi — nemu kombinasi visit purpose yang emang punya package terisi) — `icon_src` muncul bener di kedua level, direvert lagi abis test.
+
+## Update (2026-08-19)
+
+`banner_src` ditambahin di tiap `subcategories[]` — nyusul kolom `master_item_sub_category.banner_src` di ERP (hasil rename `image_src`→`banner_src`, lihat `MASTER ITEM SUB CATEGORY.md`) yang sebelumnya **belum ketarik sama sekali** ke POS/Kiosk (mentok di ERP, bridge `APIANDORDER` cuma nge-`SELECT icon_src`). Ditarik lewat 3 lapisan:
+
+1. **Bridge (`APIANDORDER`)** — `MasterService.GetMasterSubCategory()` ditambah `COALESCE(msc.banner_src, '') as banner_src`, `SubCategoryDTO` ditambah field `BannerSrc`.
+2. **POS** — kolom `banner_src` ditambah ke `mr_subcategory` (migration `2026_08_19_100000_add_banner_src_to_mr_subcategory.php`), `SetupServices::getSubCategoryList()` di-update buat download banner-nya juga (subfolder `subcategory-banner`, terpisah dari `icon_src`).
+3. **Kiosk** — query `$subcategory` di `MenuServices::GetMasterMenuList()` ditambah `msc.banner_src as subCategoryBannerSrc`, dipetakan ke `banner_src` di `KioskController::GetBranchVisitPurposeDetail()`.
+
+Tervalidasi: bridge query dites langsung ke DB ERP (set `banner_src` test di 1 sub category real yang match ke branch, query balikin nilainya bener, direvert lagi abis test). Kode POS (`SetupServices`/`MenuServices`/`KioskController`) lolos `php -l`, migration udah di-apply & kolom `banner_src` dikonfirmasi ada di `mr_subcategory`. **Belum** dites end-to-end lewat request HTTP asli (butuh server bridge `APIANDORDER` nyala buat proses sync-nya, gak lagi jalan pas sesi ini) — kalau nanti provisioning banner beneran dipakai, disarankan sync manual 1 branch dulu buat mastiin file ke-download bener.
 
 ## Catatan performa
 

@@ -228,17 +228,26 @@ class SetupServices
       if ($response->json('code') == 0) {
         $list = $response->json("data");
 
-        // icon_src dari ERP itu path relatif ke server ERP -- didownload dulu ke lokal (sama
-        // pola kayak MasterItemModel::image / MasterImageListModel::image_src), biar Kiosk
-        // gak gantung koneksi ke ERP tiap kali icon kategori dirender.
+        // icon_src/banner_src dari ERP itu path relatif ke server ERP -- didownload dulu ke
+        // lokal (sama pola kayak MasterItemModel::image / MasterImageListModel::image_src),
+        // biar Kiosk gak gantung koneksi ke ERP tiap kali icon/banner kategori dirender.
+        // Subdir beda ('subcategory' vs 'subcategory-banner') -- 2 file berbeda per sub
+        // category, sama pola kayak image/icon_src item (subfolder terpisah).
         $existingIcons = SubCategoryModel::whereIn('id', array_column($list, 'id'))
           ->pluck('icon_src', 'id');
+        $existingBanners = SubCategoryModel::whereIn('id', array_column($list, 'id'))
+          ->pluck('banner_src', 'id');
 
         foreach ($list as &$item) {
           $item['icon_src'] = $this->downloadImage(
             $item['icon_src'] ?? null,
             'subcategory',
             $existingIcons[$item['id']] ?? null
+          );
+          $item['banner_src'] = $this->downloadImage(
+            $item['banner_src'] ?? null,
+            'subcategory-banner',
+            $existingBanners[$item['id']] ?? null
           );
         }
         unset($item);

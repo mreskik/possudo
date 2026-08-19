@@ -770,6 +770,7 @@ class KioskController extends Controller
                         'subcategory_id' => $sub->subCategoryId,
                         'subcategory_name' => $sub->SubCategoryName,
                         'icon_src' => $sub->subCategoryIconSrc,
+                        'banner_src' => $sub->subCategoryBannerSrc,
                         'items' => $items,
                     ];
                 }
