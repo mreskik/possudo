@@ -4,9 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class MasterImageListApplyForModel extends Model
+class MasterImageCustomerDisplayModel extends Model
 {
     public $timestamps = false;
-    protected $table = "mr_image_list_apply_for";
+    protected $table = "mr_image_customer_display";
     protected $guarded = [];
 }

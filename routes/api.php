@@ -71,8 +71,8 @@ Route::prefix('sync_pull')->group(function () {
   Route::get('get_branch_visit_purpose', [SyncController::class, 'getMasterBranchVisitPurpose']);
   Route::get('get_branch_ops_setting', [SyncController::class, 'getMasterBranchOpsSetting']);
   Route::get('get_master_image', [SyncController::class, 'getMasterImage']);
-  Route::get('get_master_image_list', [SyncController::class, 'getMasterImageList']);
-  Route::get('get_master_image_list_apply_for', [SyncController::class, 'getMasterImageListApplyFor']);
+  Route::get('get_master_image_customer_display', [SyncController::class, 'getMasterImageCustomerDisplay']);
+  Route::get('get_master_image_kiosk', [SyncController::class, 'getMasterImageKiosk']);
   Route::get('get_visit_purpose', [SyncController::class, 'getMasterVisitPurpose']);
   Route::get('get_master_user', [SyncController::class, 'getMasterUser']);
   Route::get('get_master_role_access', [SyncController::class, 'getMasterRoleAccess']);
@@ -87,6 +87,7 @@ Route::prefix('sync_pull')->group(function () {
   Route::get('get_promo_item', [SyncController::class, 'getPromoItem']);
   Route::get('get_promo_day', [SyncController::class, 'getPromoDay']);
   Route::get('get_promo_time', [SyncController::class, 'getPromoTime']);
+  Route::get('get_promo_apply_to', [SyncController::class, 'getPromoApplyTo']);
 
   Route::get('get_member_type_list', [SyncController::class, 'getMemberTypeList']);
   Route::get('get_member_list', [SyncController::class, 'getMemberList']);
@@ -110,6 +111,8 @@ Route::prefix('master')->group(function () {
   Route::get('terminal-list', [MasterController::class, 'GetTerminalList']);
 
   Route::get('promo-list/{visit_purpose_id}', [MasterController::class, 'GetPromoList']);
+
+  Route::get('banner-image-customer-display', [MasterController::class, 'GetBannerImageCustomerDisplay']);
 });
 
 Route::prefix('order')->group(function () {

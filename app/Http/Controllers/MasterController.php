@@ -304,6 +304,13 @@ class MasterController extends Controller
                             WHERE mpt.promo_id = mp.id AND ? BETWEEN mpt.time_start AND mpt.time_end
                         )
                     )
+                    AND (
+                        mp.flag_apply_to_all = true
+                        OR EXISTS (
+                            SELECT 1 FROM mr_promo_apply_to mpat
+                            WHERE mpat.promo_id = mp.id AND mpat.apply_to = 'pos'
+                        )
+                    )
                 ORDER BY mp.name ASC
             ", [$visit_purpose_id, $member_type_id, $today_day, $now_time]);
 
@@ -358,6 +365,35 @@ class MasterController extends Controller
     {
         try {
             $data = TerminalModel::where('is_active', true)->get();
+            return response()->json([
+                'code' => 0,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    // GetBannerImageCustomerDisplay: daftar gambar banner/slideshow buat customer display kasir
+    // (channel cd_pos) -- mirror KioskController::GetBannerImageKiosk(), baca mr_image_customer_display
+    // (2026-08-24, plug point buat DisplayCustomerPage.vue yang sebelumnya hardcode 2 gambar
+    // statis). banner_src udah path lokal POS (didownload pas pull, lihat
+    // SetupServices::getMasterImageCustomerDisplay()).
+    public function GetBannerImageCustomerDisplay()
+    {
+        try {
+            $data = DB::select("SELECT
+                    micd.name,
+                    micd.banner_src,
+                    micd.sequence
+                    FROM mr_image_customer_display micd
+                    JOIN mr_image mi ON mi.id = micd.master_image_id
+                    WHERE mi.is_active = 1
+                    ORDER BY micd.sequence ASC");
+
             return response()->json([
                 'code' => 0,
                 'data' => $data,

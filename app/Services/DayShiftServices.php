@@ -38,32 +38,30 @@ class DayShiftServices
     }
   }
 
-  // NettSalesJoinSql: LEFT JOIN nempel ke tr_order buat kolom nett_sales_real per order
-  // ("sub_total dikurangi diskon, YANG BENER"). Beda dari (sub_total - total_discount) lama
-  // -- itu nyampur basis: sub_total udah net-of-tax (dibagi (1+rate) buat inclusive), sedangkan
-  // total_discount masih basis gross (dipotong dari base_price mentah sebelum pajak dilepas,
-  // lihat recomputeDppTax() di orderPage.vue). Nyampur 2 basis itu bikin netsales understated
-  // buat baris inclusive-tax yang kena diskon (diskon "kepotong penuh" padahal cuma porsi
-  // net-nya yang seharusnya kepotong, sisanya porsi pajak).
-  // Di sini dihitung ulang dari base_price/discount_value/tax_rate/flag_inclusive_tax langsung
-  // (bukan dari kolom after_discount/dpp yang tersimpan) supaya konsisten juga buat order lama
-  // yang kolom itu masih NULL.
+  // NettSalesJoinSql: LEFT JOIN nempel ke tr_order buat kolom nett_sales_real per order --
+  // ini net_dpp (dpp SETELAH diskon), dihitung ulang langsung dari price_pos/discount_amount/
+  // tax_rate/flag_inclusive_tax (bukan dari kolom dpp/net_dpp yang tersimpan) supaya konsisten
+  // juga buat order lama yang kolom itu masih NULL/0.
+  // Urutan standar PPN (sama persis recomputeDppTax() di orderPage.vue): pajak dilepas DULU
+  // dari price_pos (dpp), BARU discount_amount dipotong dari situ (net_dpp) -- bukan diskon
+  // dipotong dari price_pos mentah baru pajak dilepas (itu urutan LAMA, salah -- diskon jadi
+  // kepotong dari basis yang masih ada pajak nempel di dalamnya).
   private static function NettSalesJoinSql(): string
   {
     return "
       LEFT JOIN (
         SELECT order_number, SUM(nett) AS nett_sales_real FROM (
           SELECT trod.order_number,
-            trod.qty * (CASE WHEN trod.flag_inclusive_tax = 1
-              THEN (trod.base_price - trod.discount_value) / (1 + trod.tax_rate / 100)
-              ELSE (trod.base_price - trod.discount_value) END) AS nett
+            trod.qty * ((CASE WHEN trod.flag_inclusive_tax = 1
+              THEN trod.price_pos / (1 + trod.tax_rate / 100)
+              ELSE trod.price_pos END) - trod.discount_amount) AS nett
           FROM tr_order_detail trod
           WHERE trod.cancel_at IS NULL
           UNION ALL
           SELECT trod.order_number,
-            (trod.qty * trodp.qty) * (CASE WHEN trodp.flag_inclusive_tax = 1
-              THEN (trodp.base_price - trodp.discount_value) / (1 + trodp.tax_rate / 100)
-              ELSE (trodp.base_price - trodp.discount_value) END) AS nett
+            (trod.qty * trodp.qty) * ((CASE WHEN trodp.flag_inclusive_tax = 1
+              THEN trodp.price_pos / (1 + trodp.tax_rate / 100)
+              ELSE trodp.price_pos END) - trodp.discount_amount) AS nett
           FROM tr_order_detail_package trodp
           JOIN tr_order_detail trod ON trod.ulid = trodp.tr_order_detail_ulid
           WHERE trod.cancel_at IS NULL
@@ -408,17 +406,17 @@ class DayShiftServices
 
       foreach ($order_paid_detail as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += ($opd->tax_value * $opd->qty);
+          $netsales_pb1_total += ($opd->tax_amount * $opd->qty);
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += ($opd->tax_value * $opd->qty);
+          $netsales_vat_total += ($opd->tax_amount * $opd->qty);
         }
       }
 
       foreach ($order_paid_detail_package as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += $opd->tax_value * $opd->qty;
+          $netsales_pb1_total += $opd->tax_amount * $opd->qty;
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += $opd->tax_value * $opd->qty;
+          $netsales_vat_total += $opd->tax_amount * $opd->qty;
         }
       }
 
@@ -444,7 +442,7 @@ class DayShiftServices
         gabungan.menu_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -453,12 +451,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -470,12 +468,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -492,7 +490,7 @@ class DayShiftServices
 				mcc.name as category_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -502,12 +500,12 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -520,12 +518,12 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -776,17 +774,17 @@ class DayShiftServices
 
       foreach ($order_paid_detail as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += ($opd->tax_value * $opd->qty);
+          $netsales_pb1_total += ($opd->tax_amount * $opd->qty);
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += ($opd->tax_value * $opd->qty);
+          $netsales_vat_total += ($opd->tax_amount * $opd->qty);
         }
       }
 
       foreach ($order_paid_detail_package as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += $opd->tax_value * $opd->qty;
+          $netsales_pb1_total += $opd->tax_amount * $opd->qty;
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += $opd->tax_value * $opd->qty;
+          $netsales_vat_total += $opd->tax_amount * $opd->qty;
         }
       }
 
@@ -815,7 +813,7 @@ class DayShiftServices
         gabungan.menu_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -824,12 +822,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -841,12 +839,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -863,7 +861,7 @@ class DayShiftServices
 				mcc.name as category_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -873,12 +871,12 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -891,12 +889,12 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -1129,17 +1127,17 @@ class DayShiftServices
 
       foreach ($order_paid_detail as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += ($opd->tax_value * $opd->qty);
+          $netsales_pb1_total += ($opd->tax_amount * $opd->qty);
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += ($opd->tax_value * $opd->qty);
+          $netsales_vat_total += ($opd->tax_amount * $opd->qty);
         }
       }
 
       foreach ($order_paid_detail_package as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += $opd->tax_value * $opd->qty;
+          $netsales_pb1_total += $opd->tax_amount * $opd->qty;
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += $opd->tax_value * $opd->qty;
+          $netsales_vat_total += $opd->tax_amount * $opd->qty;
         }
       }
 
@@ -1169,7 +1167,7 @@ class DayShiftServices
         gabungan.menu_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -1178,12 +1176,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -1195,12 +1193,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -1217,7 +1215,7 @@ class DayShiftServices
 				mcc.name as category_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -1227,12 +1225,12 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -1245,12 +1243,12 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -1481,17 +1479,17 @@ class DayShiftServices
 
       foreach ($order_paid_detail as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += ($opd->tax_value * $opd->qty);
+          $netsales_pb1_total += ($opd->tax_amount * $opd->qty);
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += ($opd->tax_value * $opd->qty);
+          $netsales_vat_total += ($opd->tax_amount * $opd->qty);
         }
       }
 
       foreach ($order_paid_detail_package as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += $opd->tax_value * $opd->qty;
+          $netsales_pb1_total += $opd->tax_amount * $opd->qty;
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += $opd->tax_value * $opd->qty;
+          $netsales_vat_total += $opd->tax_amount * $opd->qty;
         }
       }
 
@@ -1520,7 +1518,7 @@ class DayShiftServices
         gabungan.menu_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -1529,12 +1527,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -1546,12 +1544,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -1568,7 +1566,7 @@ class DayShiftServices
 				mcc.name as category_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -1578,12 +1576,12 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -1596,12 +1594,12 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -1841,17 +1839,17 @@ class DayShiftServices
 
       foreach ($order_paid_detail as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += ($opd->tax_value * $opd->qty);
+          $netsales_pb1_total += ($opd->tax_amount * $opd->qty);
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += ($opd->tax_value * $opd->qty);
+          $netsales_vat_total += ($opd->tax_amount * $opd->qty);
         }
       }
 
       foreach ($order_paid_detail_package as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += $opd->tax_value * $opd->qty;
+          $netsales_pb1_total += $opd->tax_amount * $opd->qty;
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += $opd->tax_value * $opd->qty;
+          $netsales_vat_total += $opd->tax_amount * $opd->qty;
         }
       }
 
@@ -1880,7 +1878,7 @@ class DayShiftServices
         gabungan.menu_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -1889,12 +1887,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -1906,12 +1904,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -1928,7 +1926,7 @@ class DayShiftServices
 				mcc.name as category_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -1938,12 +1936,12 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -1956,12 +1954,12 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -2195,17 +2193,17 @@ class DayShiftServices
 
       foreach ($order_paid_detail as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += ($opd->tax_value * $opd->qty);
+          $netsales_pb1_total += ($opd->tax_amount * $opd->qty);
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += ($opd->tax_value * $opd->qty);
+          $netsales_vat_total += ($opd->tax_amount * $opd->qty);
         }
       }
 
       foreach ($order_paid_detail_package as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += $opd->tax_value * $opd->qty;
+          $netsales_pb1_total += $opd->tax_amount * $opd->qty;
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += $opd->tax_value * $opd->qty;
+          $netsales_vat_total += $opd->tax_amount * $opd->qty;
         }
       }
 
@@ -2234,7 +2232,7 @@ class DayShiftServices
         gabungan.menu_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -2243,12 +2241,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -2260,12 +2258,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -2282,7 +2280,7 @@ class DayShiftServices
 				mcc.name as category_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -2292,12 +2290,12 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -2310,12 +2308,12 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -2566,17 +2564,17 @@ class DayShiftServices
 
       foreach ($order_paid_detail as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += ($opd->tax_value * $opd->qty);
+          $netsales_pb1_total += ($opd->tax_amount * $opd->qty);
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += ($opd->tax_value * $opd->qty);
+          $netsales_vat_total += ($opd->tax_amount * $opd->qty);
         }
       }
 
       foreach ($order_paid_detail_package as $opd) {
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += $opd->tax_value * $opd->qty;
+          $netsales_pb1_total += $opd->tax_amount * $opd->qty;
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += $opd->tax_value * $opd->qty;
+          $netsales_vat_total += $opd->tax_amount * $opd->qty;
         }
       }
 
@@ -2605,7 +2603,7 @@ class DayShiftServices
         gabungan.menu_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -2614,12 +2612,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -2631,12 +2629,12 @@ class DayShiftServices
         SELECT
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod
@@ -2653,7 +2651,7 @@ class DayShiftServices
 				mcc.name as category_name,
         sum( gabungan.qty ) as qty,
         sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_value ) as discount_value,
+        sum( gabungan.discount_amount ) as discount_amount,
         sum( gabungan.vat_amount ) as vat_amount,
         sum( gabungan.pb1_amount ) as pb1_amount,
         sum( gabungan.grand_total )  as grand_total
@@ -2663,12 +2661,12 @@ class DayShiftServices
 					mi.category_id as category_id,
           mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail tod
@@ -2681,12 +2679,12 @@ class DayShiftServices
           mi.category_id as category_id,
 					mi.NAME AS menu_name,
           tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.base_price / (1 + tod.tax_rate/100) ELSE tod.base_price END) * tod.qty ) AS sub_total,
-          ( tod.discount_value * tod.qty ) AS discount_value,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
         IF
-          ( tod.tax_type = 'vat', tod.tax_value * tod.qty, 0 ) AS vat_amount,
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
         IF
-          ( tod.tax_type = 'pb1', tod.tax_value * tod.qty, 0 ) AS pb1_amount,
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
           tod.total AS grand_total 
         FROM
           tr_order_detail_package tod

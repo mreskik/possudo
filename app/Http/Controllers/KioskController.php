@@ -65,21 +65,22 @@ class KioskController extends Controller
         }
     }
 
-    // GetBannerImageKiosk: daftar gambar banner/slideshow buat layar Kiosk, filter apply_for =
-    // 'cd_kiosk' udah fix di query (bukan parameter client, request gak dipakai) -- urut
-    // sequence. image_src udah path lokal POS (didownload pas pull, lihat
-    // SetupServices::getMasterImageList()), bukan path ERP.
+    // GetBannerImageKiosk: daftar gambar banner/slideshow buat layar Kiosk -- baca langsung
+    // mr_image_kiosk (2026-08-24, ganti dari mr_image_list+apply_for -- channel-nya sekarang
+    // implisit dari tabel ini sendiri, gak perlu filter apply_for lagi), urut sequence.
+    // banner_src udah path lokal POS (didownload pas pull, lihat
+    // SetupServices::getMasterImageKiosk()).
     public function GetBannerImageKiosk(Request $request)
     {
         try {
             $data = DB::select("SELECT
-                    mil.image_src,
-                    mil.sequence
-                    FROM mr_image_list mil
-                    JOIN mr_image mi ON mi.id = mil.master_image_id
-                    JOIN mr_image_list_apply_for milaf ON milaf.master_image_list_id = mil.id
-                    WHERE mi.is_active = 1 AND milaf.apply_for = 'cd_kiosk'
-                    ORDER BY mil.sequence ASC");
+                    mik.name,
+                    mik.banner_src,
+                    mik.sequence
+                    FROM mr_image_kiosk mik
+                    JOIN mr_image mi ON mi.id = mik.master_image_id
+                    WHERE mi.is_active = 1
+                    ORDER BY mik.sequence ASC");
 
             return response()->json([
                 'code' => 0,
@@ -267,9 +268,9 @@ class KioskController extends Controller
                     mri.name as menu_name,
                     trod.qty,
                     trod.notes,
-                    trod.base_price as price,
-                    trod.discount_value,
-                    trod.tax_value,
+                    trod.price_pos as price,
+                    trod.discount_amount,
+                    trod.tax_amount,
                     trod.total
                     FROM tr_order_detail trod
                     JOIN mr_item_conv mric ON mric.id = trod.menu_id
@@ -282,9 +283,9 @@ class KioskController extends Controller
                         mri.name as menu_name,
                         trodp.qty,
                         trodp.notes,
-                        trodp.base_price as price,
-                        trodp.discount_value,
-                        trodp.tax_value,
+                        trodp.price_pos as price,
+                        trodp.discount_amount,
+                        trodp.tax_amount,
                         trodp.total
                         FROM tr_order_detail_package trodp
                         JOIN mr_item_conv mric ON mric.id = trodp.menu_id
@@ -348,7 +349,7 @@ class KioskController extends Controller
                     trod.ulid,
                     trod.qty,
                     trod.total,
-                    trod.discount_value,
+                    trod.discount_amount,
                     trod.notes,
                     mi.name as menu_name,
                     mp.name as promo_name
@@ -933,48 +934,56 @@ class KioskController extends Controller
             $orderDetailPackageRows = [];
             foreach ($listOrder as $item) {
                 $ulid = (string) Str::ulid();
-                $totalItem += (int) ($item['qty'] ?? 0);
+                $qty = (int) ($item['qty'] ?? 0);
+                $totalItem += $qty;
+
+                $calc = $this->recomputeKioskUnit($item);
 
                 $orderDetailRows[] = [
                     'ulid' => $ulid,
                     'order_number' => $order_number,
                     'pricelist_detail_id' => $item['menu_pricelist_id'] ?? null,
                     'menu_id' => $item['menu_id'] ?? null,
-                    'qty' => $item['qty'] ?? null,
+                    'qty' => $qty,
                     'flag_inclusive_tax' => $item['flag_inclusive_tax'] ?? null,
-                    'base_price' => $item['price'] ?? null,
+                    'price_pos' => $item['price'] ?? null,
                     'tax_id' => $item['tax_id'] ?? null,
                     'tax_type' => $item['tax_type'] ?? null,
                     'tax_rate' => $item['tax_rate'] ?? null,
-                    'tax_value' => $item['tax_value'] ?? null,
+                    'tax_amount' => $calc['tax_amount'],
                     'promo_id' => $item['promo_id'] ?? null,
                     'is_free_item_promo' => $item['is_free_item_promo'] ?? false,
-                    'discount_rate' => $item['discount_rate'] ?? null,
-                    'discount_value' => $item['discount_value'] ?? null,
-                    'after_discount' => $item['after_discount'] ?? null,
-                    'dpp' => $item['dpp'] ?? null,
-                    'total' => $item['total'] ?? null,
+                    'discount_percent' => $calc['discount_percent'],
+                    'discount_amount' => $calc['discount_amount'],
+                    'dpp' => $calc['dpp'],
+                    'net_dpp' => $calc['net_dpp'],
+                    'total' => $qty * ($calc['net_dpp'] + $calc['tax_amount']),
                     'notes' => $item['notes'] ?? null,
                     'batch' => 1,
                 ];
 
                 foreach ($item['menu_package_list'] ?? [] as $pkg) {
+                    $pkgQty = (int) ($pkg['qty'] ?? 0);
+                    $pkgCalc = $this->recomputeKioskUnit($pkg);
+
                     $orderDetailPackageRows[] = [
                         'ulid' => (string) Str::ulid(),
                         'tr_order_detail_ulid' => $ulid,
                         'menu_package_id' => $pkg['menu_package_id'] ?? null,
                         'menu_id' => $pkg['menu_id'] ?? null,
-                        'qty' => $pkg['qty'] ?? null,
+                        'qty' => $pkgQty,
                         'flag_inclusive_tax' => $pkg['flag_inclusive_tax'] ?? null,
-                        'base_price' => $pkg['price'] ?? null,
+                        'price_pos' => $pkg['price'] ?? null,
                         'tax_id' => $pkg['tax_id'] ?? null,
                         'tax_type' => $pkg['tax_type'] ?? null,
                         'tax_rate' => $pkg['tax_rate'] ?? null,
-                        'tax_value' => $pkg['tax_value'] ?? null,
+                        'tax_amount' => $pkgCalc['tax_amount'],
                         'promo_id' => $pkg['promo_id'] ?? null,
-                        'discount_rate' => $pkg['discount_rate'] ?? null,
-                        'discount_value' => $pkg['discount_value'] ?? null,
-                        'total' => $pkg['total'] ?? null,
+                        'discount_percent' => $pkgCalc['discount_percent'],
+                        'discount_amount' => $pkgCalc['discount_amount'],
+                        'dpp' => $pkgCalc['dpp'],
+                        'net_dpp' => $pkgCalc['net_dpp'],
+                        'total' => $qty * $pkgQty * ($pkgCalc['net_dpp'] + $pkgCalc['tax_amount']),
                         'notes' => $pkg['notes'] ?? null,
                     ];
                 }
@@ -1014,6 +1023,45 @@ class KioskController extends Controller
         ]);
     }
 
+    // recomputeKioskUnit: hitung ulang dpp/discount_amount/net_dpp/tax_amount (PER UNIT, belum
+    // dikali qty) dari input mentah Kiosk -- BUKAN percaya field turunan yang dikirim Kiosk
+    // (tax_value/after_discount/dpp lama), karena app Kiosk (repo terpisah, di luar sini)
+    // belum tentu ikut diupdate ke rumus baru. Backend jadi otoritas terakhir buat angka
+    // finansial, gak nelen mentah-mentah hasil hitungan client manapun.
+    //
+    // Urutan standar PPN (sama persis recomputeDppTax() di orderPage.vue): pajak dilepas dulu
+    // dari price (dpp) -> diskon dipotong dari dpp (net_dpp) -> pajak final dihitung ulang dari
+    // net_dpp. Diskon PERSEN (discount_rate > 0) dihitung ULANG dari basis dpp di sini --
+    // discount_value yang dikirim Kiosk diabaikan buat kasus ini, soalnya kemungkinan besar
+    // masih basis gross (rumus lama). Diskon NOMINAL (discount_rate == 0 / gak ada promo)
+    // dipercaya apa adanya dari discount_value -- nominal gak ada masalah basis.
+    private function recomputeKioskUnit(array $item): array
+    {
+        $price = (float) ($item['price'] ?? 0);
+        $taxRate = (float) ($item['tax_rate'] ?? 0);
+        $flagInclusiveTax = (bool) ($item['flag_inclusive_tax'] ?? false);
+        $discountRate = (float) ($item['discount_rate'] ?? 0);
+
+        $dpp = $flagInclusiveTax ? $price / (1 + $taxRate / 100) : $price;
+
+        if ($discountRate > 0) {
+            $discountAmount = round($discountRate / 100 * $dpp);
+        } else {
+            $discountAmount = (float) ($item['discount_value'] ?? 0);
+        }
+
+        $netDpp = $dpp - $discountAmount;
+        $taxAmount = $netDpp * ($taxRate / 100);
+
+        return [
+            'dpp' => round($dpp),
+            'discount_percent' => $discountRate,
+            'discount_amount' => round($discountAmount),
+            'net_dpp' => round($netDpp),
+            'tax_amount' => round($taxAmount),
+        ];
+    }
+
     // mapKioskOrderPayload: convert payload save-order (bikin baru) dari snake_case (konvensi
     // Kiosk) ke camelCase yang diharapkan OrderServices::SaveOrder() (dipakai bareng POS, gak
     // diubah). Cuma dipakai buat jalur create -- editExistingOrder() gak lewat sini (gak lewat
@@ -1022,43 +1070,52 @@ class KioskController extends Controller
     {
         $listOrder = [];
         foreach ($data['list_order'] ?? [] as $item) {
+            $qty = (int) ($item['qty'] ?? 0);
+
             $menuPackageList = [];
             foreach ($item['menu_package_list'] ?? [] as $pkg) {
+                $pkgQty = (int) ($pkg['qty'] ?? 0);
+                $pkgCalc = $this->recomputeKioskUnit($pkg);
+
                 $menuPackageList[] = [
                     'menuPackageId' => $pkg['menu_package_id'] ?? null,
                     'menuId' => $pkg['menu_id'] ?? null,
-                    'qty' => $pkg['qty'] ?? null,
+                    'qty' => $pkgQty,
                     'flagInclusiveTax' => $pkg['flag_inclusive_tax'] ?? null,
                     'price' => $pkg['price'] ?? null,
                     'taxId' => $pkg['tax_id'] ?? null,
                     'taxType' => $pkg['tax_type'] ?? null,
                     'taxRate' => $pkg['tax_rate'] ?? null,
-                    'taxValue' => $pkg['tax_value'] ?? null,
+                    'taxAmount' => $pkgCalc['tax_amount'],
                     'promoId' => $pkg['promo_id'] ?? null,
-                    'discountRate' => $pkg['discount_rate'] ?? null,
-                    'discountValue' => $pkg['discount_value'] ?? null,
-                    'total' => $pkg['total'] ?? null,
+                    'discountPercent' => $pkgCalc['discount_percent'],
+                    'discountAmount' => $pkgCalc['discount_amount'],
+                    'dpp' => $pkgCalc['dpp'],
+                    'netDpp' => $pkgCalc['net_dpp'],
+                    'total' => $qty * $pkgQty * ($pkgCalc['net_dpp'] + $pkgCalc['tax_amount']),
                     'notes' => $pkg['notes'] ?? null,
                 ];
             }
 
+            $calc = $this->recomputeKioskUnit($item);
+
             $listOrder[] = [
                 'menuPricelistId' => $item['menu_pricelist_id'] ?? null,
                 'menuId' => $item['menu_id'] ?? null,
-                'qty' => $item['qty'] ?? null,
+                'qty' => $qty,
                 'flagInclusiveTax' => $item['flag_inclusive_tax'] ?? null,
                 'price' => $item['price'] ?? null,
                 'taxId' => $item['tax_id'] ?? null,
                 'taxType' => $item['tax_type'] ?? null,
                 'taxRate' => $item['tax_rate'] ?? null,
-                'taxValue' => $item['tax_value'] ?? null,
+                'taxAmount' => $calc['tax_amount'],
                 'promoId' => $item['promo_id'] ?? null,
                 'isFreeItemPromo' => $item['is_free_item_promo'] ?? false,
-                'discountRate' => $item['discount_rate'] ?? null,
-                'discountValue' => $item['discount_value'] ?? null,
-                'afterDiscount' => $item['after_discount'] ?? null,
-                'dpp' => $item['dpp'] ?? null,
-                'total' => $item['total'] ?? null,
+                'discountPercent' => $calc['discount_percent'],
+                'discountAmount' => $calc['discount_amount'],
+                'dpp' => $calc['dpp'],
+                'netDpp' => $calc['net_dpp'],
+                'total' => $qty * ($calc['net_dpp'] + $calc['tax_amount']),
                 'notes' => $item['notes'] ?? null,
                 'menuPackageList' => $menuPackageList,
             ];

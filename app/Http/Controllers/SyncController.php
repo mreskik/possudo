@@ -470,7 +470,7 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterImageList()
+  public function getMasterImageCustomerDisplay()
   {
     $branch = $this->currentBranch();
     if (!$branch) {
@@ -478,7 +478,7 @@ class SyncController extends Controller
     }
 
     try {
-      $response = $this->setupservices->getMasterImageList('', '', $branch->id, $branch->token);
+      $response = $this->setupservices->getMasterImageCustomerDisplay('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -490,7 +490,7 @@ class SyncController extends Controller
     }
   }
 
-  public function getMasterImageListApplyFor()
+  public function getMasterImageKiosk()
   {
     $branch = $this->currentBranch();
     if (!$branch) {
@@ -498,7 +498,7 @@ class SyncController extends Controller
     }
 
     try {
-      $response = $this->setupservices->getMasterImageListApplyFor('', '', $branch->id, $branch->token);
+      $response = $this->setupservices->getMasterImageKiosk('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -759,6 +759,26 @@ class SyncController extends Controller
 
     try {
       $response = $this->setupservices->getPromoTime('', '', $branch->id, $branch->token);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message'),
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getPromoApplyTo()
+  {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
+    try {
+      $response = $this->setupservices->getPromoApplyTo('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),

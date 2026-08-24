@@ -39,7 +39,7 @@ class PrintServices
     return $fallback === null ? null : (bool) $fallback;
   }
 
-  // GetTaxBreakdownByType: SUM(qty*tax_value) per tax_type (PB1/VAT/dst) buat 1 order_number,
+  // GetTaxBreakdownByType: SUM(qty*tax_amount) per tax_type (PB1/VAT/dst) buat 1 order_number,
   // gabungan tr_order_detail + tr_order_detail_package. Beda dari flag_inclusive_tax,
   // tax_type itu SUMBERNYA per-item (mr_item.tax_type) jadi 1 order bisa campur beberapa
   // tax_type -- dipakai buat breakdown pajak di struk order exclusive-tax.
@@ -47,11 +47,11 @@ class PrintServices
   {
     $rows = DB::select("
       SELECT tax_type, SUM(tax_amount) AS tax_amount FROM (
-        SELECT trod.tax_type, trod.qty * trod.tax_value AS tax_amount
+        SELECT trod.tax_type, trod.qty * trod.tax_amount AS tax_amount
         FROM tr_order_detail trod
         WHERE trod.order_number = ? AND trod.cancel_at IS NULL
         UNION ALL
-        SELECT trodp.tax_type, (trod.qty * trodp.qty) * trodp.tax_value AS tax_amount
+        SELECT trodp.tax_type, (trod.qty * trodp.qty) * trodp.tax_amount AS tax_amount
         FROM tr_order_detail_package trodp
         JOIN tr_order_detail trod ON trod.ulid = trodp.tr_order_detail_ulid
         WHERE trod.order_number = ? AND trod.cancel_at IS NULL
@@ -907,9 +907,12 @@ class PrintServices
       $print->text(self::separator("-", $charPerLine));
       $displaySubtotal = 0;
       foreach ($data_order_detail as $itemmenu) {
-        $displaySubtotal += $itemmenu->total;
+        // Subtotal di struk itu SEBELUM diskon -- pakai dpp (net-of-tax, sebelum diskon) x
+        // (1 + tax_rate) buat balikin harga aslinya, BUKAN $itemmenu->total (yang sekarang udah
+        // net-of-discount sejak restrukturisasi kolom), biar "Subtotal - Discount = Grand Total".
+        $displaySubtotal += $itemmenu->qty * $itemmenu->dpp * (1 + $itemmenu->tax_rate / 100);
         $print->text(self::threeline($itemmenu->qty, $itemmenu->menu_name, number_format($itemmenu->total, 0, ',', '.'), $charPerLine));
-        $totalItemDiscount = $itemmenu->discount_value;
+        $totalItemDiscount = $itemmenu->discount_amount;
 
         $listpackagedetail = DB::select("
         SELECT
@@ -924,9 +927,9 @@ class PrintServices
 
         foreach ($listpackagedetail as $itempackage) {
           if (count($listpackagedetail) > 0) {
-            $displaySubtotal += $itempackage->total;
+            $displaySubtotal += $itemmenu->qty * $itempackage->qty * $itempackage->dpp * (1 + $itempackage->tax_rate / 100);
             $print->text(self::threeline("", " " . $itempackage->qty . " " . $itempackage->menu_name, number_format($itempackage->total, 0, ',', '.'), $charPerLine));
-            $totalItemDiscount += $itempackage->discount_value;
+            $totalItemDiscount += $itempackage->discount_amount;
 
             if ($itempackage->notes != null || $itempackage->notes != '') {
               $print->text(self::threeline("", " *" . $itempackage->notes, '', $charPerLine));
@@ -1110,9 +1113,12 @@ class PrintServices
       $print->text(self::separator("-", $charPerLine));
       $displaySubtotal = 0;
       foreach ($data_order_detail as $itemmenu) {
-        $displaySubtotal += $itemmenu->total;
+        // Subtotal di struk itu SEBELUM diskon -- pakai dpp (net-of-tax, sebelum diskon) x
+        // (1 + tax_rate) buat balikin harga aslinya, BUKAN $itemmenu->total (yang sekarang udah
+        // net-of-discount sejak restrukturisasi kolom), biar "Subtotal - Discount = Grand Total".
+        $displaySubtotal += $itemmenu->qty * $itemmenu->dpp * (1 + $itemmenu->tax_rate / 100);
         $print->text(self::threeline($itemmenu->qty, $itemmenu->menu_name, number_format($itemmenu->total, 0, ',', '.'), $charPerLine));
-        $totalItemDiscount = $itemmenu->discount_value;
+        $totalItemDiscount = $itemmenu->discount_amount;
         $listpackagedetail = DB::select("
         SELECT
           trod.*,
@@ -1127,9 +1133,9 @@ class PrintServices
 
         foreach ($listpackagedetail as $itempackage) {
           if (count($listpackagedetail) > 0) {
-            $displaySubtotal += $itempackage->total;
+            $displaySubtotal += $itemmenu->qty * $itempackage->qty * $itempackage->dpp * (1 + $itempackage->tax_rate / 100);
             $print->text(self::threeline("", " " . $itempackage->qty . " " . $itempackage->menu_name, number_format($itempackage->total, 0, ',', '.'), $charPerLine));
-            $totalItemDiscount += $itempackage->discount_value;
+            $totalItemDiscount += $itempackage->discount_amount;
 
             if ($itempackage->notes != null || $itempackage->notes != '') {
               $print->text(self::threeline("", " *" . $itempackage->notes, '', $charPerLine));

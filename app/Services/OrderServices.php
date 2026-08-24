@@ -161,19 +161,19 @@ class OrderServices
               'menu_id' => $item['menuId'],
               'qty' => $item['qty'],
               'flag_inclusive_tax' => $item['flagInclusiveTax'],
-              'base_price' => $item['price'],
+              'price_pos' => $item['price'],
 
               'tax_id' => $item['taxId'],
               'tax_type' => $item['taxType'],
               'tax_rate' => $item['taxRate'],
-              'tax_value' => $item['taxValue'],
+              'tax_amount' => $item['taxAmount'],
 
               'promo_id' => $item['promoId'],
               'is_free_item_promo' => $item['isFreeItemPromo'] ?? false,
-              'discount_rate' => $item['discountRate'],
-              'discount_value' => $item['discountValue'],
-              'after_discount' => $item['afterDiscount'] ?? null,
+              'discount_percent' => $item['discountPercent'],
+              'discount_amount' => $item['discountAmount'],
               'dpp' => $item['dpp'] ?? null,
+              'net_dpp' => $item['netDpp'] ?? null,
 
               'total' => $item['total'],
 
@@ -192,18 +192,18 @@ class OrderServices
                 'menu_id' => $item_package['menuId'],
                 'qty' => $item_package['qty'],
                 'flag_inclusive_tax' => $item_package['flagInclusiveTax'],
-                'base_price' => $item_package['price'],
+                'price_pos' => $item_package['price'],
 
                 'tax_id' => $item_package['taxId'],
                 'tax_type' => $item_package['taxType'],
                 'tax_rate' => $item_package['taxRate'],
-                'tax_value' => $item_package['taxValue'],
+                'tax_amount' => $item_package['taxAmount'],
 
                 'promo_id' => $item_package['promoId'],
-                'discount_rate' => $item_package['discountRate'],
-                'discount_value' => $item_package['discountValue'],
-                'after_discount' => $item_package['afterDiscount'] ?? null,
+                'discount_percent' => $item_package['discountPercent'],
+                'discount_amount' => $item_package['discountAmount'],
                 'dpp' => $item_package['dpp'] ?? null,
+                'net_dpp' => $item_package['netDpp'] ?? null,
                 'total' => $item_package['total'],
 
                 'notes' => $item_package['notes'],
@@ -299,11 +299,11 @@ class OrderServices
                 'qty'                 => $item['qty'],
                 'promo_id'            => $item['promoId'],
                 'is_free_item_promo'  => $item['isFreeItemPromo'] ?? false,
-                'discount_rate'       => $item['discountRate'],
-                'discount_value'      => $item['discountValue'],
-                'after_discount'      => $item['afterDiscount'] ?? null,
+                'discount_percent'    => $item['discountPercent'],
+                'discount_amount'     => $item['discountAmount'],
                 'dpp'                 => $item['dpp'] ?? null,
-                'tax_value'           => $item['taxValue'],
+                'net_dpp'             => $item['netDpp'] ?? null,
+                'tax_amount'          => $item['taxAmount'],
               ]);
           } else {
             // item baru (belum punya ulid)
@@ -318,19 +318,19 @@ class OrderServices
               'menu_id' => $item['menuId'],
               'qty' => $item['qty'],
               'flag_inclusive_tax' => $item['flagInclusiveTax'],
-              'base_price' => $item['price'],
+              'price_pos' => $item['price'],
 
               'tax_id' => $item['taxId'],
               'tax_type' => $item['taxType'],
               'tax_rate' => $item['taxRate'],
-              'tax_value' => $item['taxValue'],
+              'tax_amount' => $item['taxAmount'],
 
               'promo_id' => $item['promoId'],
               'is_free_item_promo' => $item['isFreeItemPromo'] ?? false,
-              'discount_rate' => $item['discountRate'],
-              'discount_value' => $item['discountValue'],
-              'after_discount' => $item['afterDiscount'] ?? null,
+              'discount_percent' => $item['discountPercent'],
+              'discount_amount' => $item['discountAmount'],
               'dpp' => $item['dpp'] ?? null,
+              'net_dpp' => $item['netDpp'] ?? null,
 
               'total' => $item['total'],
 
@@ -348,18 +348,18 @@ class OrderServices
                 'menu_id' => $item_package['menuId'],
                 'qty' => $item_package['qty'],
                 'flag_inclusive_tax' => $item_package['flagInclusiveTax'],
-                'base_price' => $item_package['price'],
+                'price_pos' => $item_package['price'],
 
                 'tax_id' => $item_package['taxId'],
                 'tax_type' => $item_package['taxType'],
                 'tax_rate' => $item_package['taxRate'],
-                'tax_value' => $item_package['taxValue'],
+                'tax_amount' => $item_package['taxAmount'],
 
                 'promo_id' => $item_package['promoId'],
-                'discount_rate' => $item_package['discountRate'],
-                'discount_value' => $item_package['discountValue'],
-                'after_discount' => $item_package['afterDiscount'] ?? null,
+                'discount_percent' => $item_package['discountPercent'],
+                'discount_amount' => $item_package['discountAmount'],
                 'dpp' => $item_package['dpp'] ?? null,
+                'net_dpp' => $item_package['netDpp'] ?? null,
                 'total' => $item_package['total'],
 
                 'notes' => $item_package['notes'],
@@ -481,18 +481,18 @@ class OrderServices
       trod.qty,
       trod.notes,
       trod.flag_inclusive_tax as flagInclusiveTax,
-      trod.base_price as price,
+      trod.price_pos as price,
       trod.tax_id as taxId,
       trod.tax_type as taxType,
       trod.tax_rate as taxRate,
-      trod.tax_value as taxValue,
+      trod.tax_amount as taxAmount,
       trod.promo_id as promoId,
       mp.name as promoName,
       trod.is_free_item_promo as isFreeItemPromo,
-      trod.discount_rate as discountRate,
-      trod.discount_value as discountValue,
-      trod.after_discount as afterDiscount,
+      trod.discount_percent as discountPercent,
+      trod.discount_amount as discountAmount,
       trod.dpp as dpp,
+      trod.net_dpp as netDpp,
       trod.total,
       trod.cancel_at as cancelAt,
       trod.cancel_notes as cancelNotes,
@@ -520,16 +520,16 @@ class OrderServices
         trodp.qty,
         trodp.notes,
         trodp.flag_inclusive_tax as flagInclusiveTax,
-        trodp.base_price as price,
+        trodp.price_pos as price,
         trodp.tax_id as taxId,
         trodp.tax_type as taxType,
         trodp.tax_rate as taxRate,
-        trodp.tax_value as taxValue,
+        trodp.tax_amount as taxAmount,
         trodp.promo_id as promoId,
-        trodp.discount_rate as discountRate,
-        trodp.discount_value as discountValue,
-        trodp.after_discount as afterDiscount,
+        trodp.discount_percent as discountPercent,
+        trodp.discount_amount as discountAmount,
         trodp.dpp as dpp,
+        trodp.net_dpp as netDpp,
         trodp.total
 
         FROM tr_order_detail_package trodp
@@ -728,13 +728,13 @@ class OrderServices
   private static function RecalculateOrderTotals(string $order_number)
   {
     $order_detail = DB::select("
-      SELECT qty, base_price, tax_rate, tax_value, flag_inclusive_tax, discount_value
+      SELECT qty, price_pos, tax_rate, flag_inclusive_tax, discount_amount
       FROM tr_order_detail
       WHERE order_number = ? AND cancel_at IS NULL
     ", [$order_number]);
 
     $order_detail_package = DB::select("
-      SELECT trodp.qty, trodp.base_price, trodp.tax_rate, trodp.tax_value, trodp.flag_inclusive_tax, trodp.discount_value, trod.qty as parent_qty
+      SELECT trodp.qty, trodp.price_pos, trodp.tax_rate, trodp.flag_inclusive_tax, trodp.discount_amount, trod.qty as parent_qty
       FROM tr_order_detail_package trodp
       JOIN tr_order_detail trod ON trod.ulid = trodp.tr_order_detail_ulid
       WHERE trod.order_number = ? AND trod.cancel_at IS NULL
@@ -746,30 +746,36 @@ class OrderServices
     $total_billing = 0;
     $total_discount = 0;
 
-    // menu_price lama (harga per unit dikurangi pajak) diturunkan langsung dari base_price/tax_rate,
-    // gak lagi kolom tersimpan -- konsisten sama netPrice() di orderPage.vue
+    // dpp (net-of-tax, SEBELUM diskon) diturunkan langsung dari price_pos/tax_rate, gak lagi
+    // kolom tersimpan yang dipercaya mentah-mentah -- konsisten sama netPrice() di orderPage.vue.
+    // Urutan standar PPN: pajak dilepas dulu (dpp) -> diskon dipotong dari dpp (netDpp) -> pajak
+    // final dihitung ulang dari netDpp -- sama persis recomputeDppTax()/hitungTotalFromItemQty().
     $netPrice = fn($row) => $row->flag_inclusive_tax
-      ? $row->base_price / (1 + $row->tax_rate / 100)
-      : $row->base_price;
+      ? $row->price_pos / (1 + $row->tax_rate / 100)
+      : $row->price_pos;
 
     foreach ($order_detail as $row) {
       $total_item += $row->qty;
-      $sub_total += $row->qty * $netPrice($row);
-      $row_tax = $row->qty * $row->tax_value;
-      $total_tax += $row_tax;
-      $row_total = $row->qty * $row->base_price;
-      $total_billing += $row->flag_inclusive_tax ? $row_total : ($row_total + $row_tax);
-      $total_discount += $row->discount_value;
+      $dpp = $netPrice($row);
+      $netDpp = $dpp - $row->discount_amount;
+      $taxAmount = $netDpp * ($row->tax_rate / 100);
+
+      $sub_total += $row->qty * $dpp;
+      $total_tax += $row->qty * $taxAmount;
+      $total_billing += $row->qty * ($netDpp + $taxAmount);
+      $total_discount += $row->discount_amount;
     }
 
     foreach ($order_detail_package as $row) {
       $qty = $row->parent_qty * $row->qty;
-      $sub_total += $qty * $netPrice($row);
-      $row_tax = $qty * $row->tax_value;
-      $total_tax += $row_tax;
-      $row_total = $qty * $row->base_price;
-      $total_billing += $row->flag_inclusive_tax ? $row_total : ($row_total + $row_tax);
-      $total_discount += $row->discount_value;
+      $dpp = $netPrice($row);
+      $netDpp = $dpp - $row->discount_amount;
+      $taxAmount = $netDpp * ($row->tax_rate / 100);
+
+      $sub_total += $qty * $dpp;
+      $total_tax += $qty * $taxAmount;
+      $total_billing += $qty * ($netDpp + $taxAmount);
+      $total_discount += $row->discount_amount;
     }
 
     TrOrderModel::where('order_number', $order_number)->update([

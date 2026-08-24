@@ -5,8 +5,8 @@ namespace App\Services;
 use App\Models\BranchModel;
 use App\Models\CategoryModel;
 use App\Models\MasterBranchOpsSettingModel;
-use App\Models\MasterImageListApplyForModel;
-use App\Models\MasterImageListModel;
+use App\Models\MasterImageCustomerDisplayModel;
+use App\Models\MasterImageKioskModel;
 use App\Models\MasterImageModel;
 use App\Models\MasterBranchVisitPurposeModel;
 use App\Models\MasterItemConvModel;
@@ -229,7 +229,7 @@ class SetupServices
         $list = $response->json("data");
 
         // icon_src/banner_src dari ERP itu path relatif ke server ERP -- didownload dulu ke
-        // lokal (sama pola kayak MasterItemModel::image / MasterImageListModel::image_src),
+        // lokal (sama pola kayak MasterItemModel::image / MasterImageKioskModel::banner_src),
         // biar Kiosk gak gantung koneksi ke ERP tiap kali icon/banner kategori dirender.
         // Subdir beda ('subcategory' vs 'subcategory-banner') -- 2 file berbeda per sub
         // category, sama pola kayak image/icon_src item (subfolder terpisah).
@@ -639,10 +639,12 @@ class SetupServices
     }
   }
 
-  // getMasterImage/getMasterImageList/getMasterImageListApplyFor: 3 endpoint flat terpisah
-  // buat data nested master_image (header -> image_list -> apply_for) di ERP, ngikutin pola
-  // getMasterItemPackage/_Group/_Detail -- upsert-by-id, gak ada penghapusan baris lokal yang
-  // udah gak ada lagi di server (limitasi yang sama & diterima kayak pull lain, lihat SYNC PULL.md).
+  // getMasterImage/getMasterImageCustomerDisplay/getMasterImageKiosk: 3 endpoint flat terpisah
+  // buat data master_image per-channel di ERP (2026-08-24, ganti dari header -> image_list ->
+  // apply_for jadi header -> customer_display / kiosk, 2 tabel eksplisit sejajar), ngikutin
+  // pola getMasterItemPackage/_Group/_Detail -- upsert-by-id, gak ada penghapusan baris lokal
+  // yang udah gak ada lagi di server (limitasi yang sama & diterima kayak pull lain, lihat
+  // SYNC PULL.md).
   public function getMasterImage(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -663,35 +665,36 @@ class SetupServices
     }
   }
 
-  public function getMasterImageList(string $username, string $password, int $branch_id, ?string $token = null)
+  public function getMasterImageCustomerDisplay(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
       $response = $this->syncRequest(
         $username,
         $password,
         $token,
-        $this->endpoint . '/pos/sync/get_master_image_list/' . $branch_id
+        $this->endpoint . '/pos/sync/get_master_image_customer_display/' . $branch_id
       );
 
       if ($response->json('code') == 0) {
         $list = $response->json("data");
 
-        // image_src dari ERP itu path relatif ke server ERP (file fisiknya ada di sana, bukan
+        // banner_src dari ERP itu path relatif ke server ERP (file fisiknya ada di sana, bukan
         // di POS) -- didownload dulu ke lokal (sama pola kayak MasterItemModel::image), biar
-        // Kiosk/POS bisa nampilin tanpa gantung koneksi ke ERP tiap kali gambar di-render.
-        $existingImages = MasterImageListModel::whereIn('id', array_column($list, 'id'))
-          ->pluck('image_src', 'id');
+        // customer display kasir bisa nampilin tanpa gantung koneksi ke ERP tiap kali gambar
+        // di-render.
+        $existingImages = MasterImageCustomerDisplayModel::whereIn('id', array_column($list, 'id'))
+          ->pluck('banner_src', 'id');
 
         foreach ($list as &$item) {
-          $item['image_src'] = $this->downloadImage(
-            $item['image_src'] ?? null,
+          $item['banner_src'] = $this->downloadImage(
+            $item['banner_src'] ?? null,
             'master-image',
             $existingImages[$item['id']] ?? null
           );
         }
         unset($item);
 
-        $this->upsertRows(MasterImageListModel::class, $list);
+        $this->upsertRows(MasterImageCustomerDisplayModel::class, $list);
       }
 
       return $response;
@@ -700,18 +703,32 @@ class SetupServices
     }
   }
 
-  public function getMasterImageListApplyFor(string $username, string $password, int $branch_id, ?string $token = null)
+  public function getMasterImageKiosk(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
       $response = $this->syncRequest(
         $username,
         $password,
         $token,
-        $this->endpoint . '/pos/sync/get_master_image_list_apply_for/' . $branch_id
+        $this->endpoint . '/pos/sync/get_master_image_kiosk/' . $branch_id
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterImageListApplyForModel::class, $response->json('data'));
+        $list = $response->json("data");
+
+        $existingImages = MasterImageKioskModel::whereIn('id', array_column($list, 'id'))
+          ->pluck('banner_src', 'id');
+
+        foreach ($list as &$item) {
+          $item['banner_src'] = $this->downloadImage(
+            $item['banner_src'] ?? null,
+            'master-image',
+            $existingImages[$item['id']] ?? null
+          );
+        }
+        unset($item);
+
+        $this->upsertRows(MasterImageKioskModel::class, $list);
       }
 
       return $response;
@@ -1033,6 +1050,26 @@ class SetupServices
 
       if ($response->json('code') == 0) {
         $this->upsertRows(MasterPromoTimesModel::class, $response->json('data'));
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  public function getPromoApplyTo(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_promo_apply_to/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        $this->upsertRows(MasterPromoApplyToModel::class, $response->json('data'));
       }
 
       return $response;

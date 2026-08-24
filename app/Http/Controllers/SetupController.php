@@ -633,6 +633,24 @@ class SetupController extends Controller
     }
   }
 
+  public function getPromoApplyTo(int $branch_id, Request $request)
+  {
+    $username = $request->input('username', '');
+    $password = $request->input('password', '');
+
+    try {
+      $response = $this->setupservices->getPromoApplyTo($username, $password, $branch_id);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message')
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
   /////
 
   public function getMemberTypeList(int $branch_id, Request $request)

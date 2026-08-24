@@ -23,6 +23,30 @@ Semua field yang berhubungan sama uang, rate (persen pajak/diskon), atau nominal
 
 Field yang termasuk kelompok ini: `sub_total`, `total_tax`, `total_billing`, `total_discount` (level order), dan per item di `list_order[]`/`menu_package_list[]`: `price`, `tax_rate`, `tax_value`, `discount_rate`, `discount_value`, `after_discount`, `dpp`, `total`.
 
+## ⚠️ Backend hitung ulang tax_value/dpp/total server-side (2026-08-20)
+
+Field **nama**-nya gak berubah (kontrak request ini sengaja dipertahankan apa adanya), tapi sejak
+restrukturisasi kolom harga/diskon/pajak, backend **gak lagi percaya mentah-mentah** field
+turunan yang dikirim Kiosk — dihitung ulang sendiri lewat `KioskController::recomputeKioskUnit()`
+per baris `list_order[]`/`menu_package_list[]`:
+
+- **`tax_value`, `after_discount`, `dpp`, `total` yang dikirim client DIABAIKAN** — backend
+  hitung ulang dari `price`/`tax_rate`/`flag_inclusive_tax`/`discount_rate`/`discount_value`.
+  Boleh tetap dikirim (gak dibaca), atau boleh dihilangkan dari payload — sama-sama gak masalah.
+- **`discount_value` cuma dipercaya kalau `discount_rate == 0`** (promo nominal rupiah / gak ada
+  promo). Kalau `discount_rate > 0` (promo persen), `discount_value` yang dikirim **diabaikan**,
+  backend hitung ulang dari basis DPP (`discount_rate% × dpp`, bukan dari `price` gross).
+- Urutan hitung ulangnya: pajak dilepas dulu dari `price` → `dpp`, **baru** diskon dipotong dari
+  `dpp` (bukan dari `price` gross) → `net_dpp`, baru pajak final dihitung dari `net_dpp` →
+  `tax_value` (nama kolom DB-nya `tax_amount`, response tetap kayak biasa). `total` per baris
+  yang beneran kesimpen = `qty × (net_dpp + tax_value)`.
+
+Alasannya: app Kiosk (repo terpisah, di luar `posv1-laravel`) belum tentu ikut diupdate ke rumus
+baru bareng — backend jadi otoritas terakhir buat angka finansial, gak nelen mentah-mentah hasil
+hitungan client manapun. Detail lengkap logic & simulasi angka:
+[PERHITUNGAN PAJAK INCLUSIVE & DISKON.md](../../../posv1-vue/DOKUMENTASI/PERHITUNGAN%20PAJAK%20INCLUSIVE%20%26%20DISKON.md)
+(`posv1-vue`).
+
 Field angka biasa (**tetap number**, bukan uang/rate): `terminal_id`, `visit_purpose_id`, `price_list_id`, `member_id`, `order_pax`, `total_item`, `qty`, `tax_id`, `promo_id`, `menu_pricelist_id`, `menu_id`, `menu_package_id` — ini id/quantity, bukan nominal.
 
 ## Contoh request
@@ -168,10 +192,10 @@ Item di keranjang Kiosk (dari endpoint detail, field-nya udah `snake_case`) ting
 | `tax_id` | `tax_id` |
 | `tax_type` | `tax_type` |
 | `tax_rate` | `tax_rate` |
-| — (dihitung di frontend: `menu_price * tax_rate / 100`) | `tax_value` |
-| — (kosong kalau gak ada promo) | `promo_id`, `discount_rate`, `discount_value` |
+| — (dihitung di frontend, tapi **diabaikan backend** — lihat "Backend hitung ulang" di atas) | `tax_value` |
+| — (kosong kalau gak ada promo) | `promo_id`, `discount_rate`, `discount_value` (`discount_value` cuma dipercaya kalau `discount_rate == 0`) |
 | — | `is_free_item_promo` (opsional, default `false` kalau gak dikirim) |
-| — (dihitung) | `total` |
+| — (dihitung di frontend, tapi **diabaikan backend**) | `total` |
 | — (opsional dari user) | `notes` |
 | `package_list[]` (kalau ada) | `menu_package_list[]` — boleh dikosongin `[]` kalau item gak punya package, server yang isi default kalau field ini gak ada sama sekali |
 

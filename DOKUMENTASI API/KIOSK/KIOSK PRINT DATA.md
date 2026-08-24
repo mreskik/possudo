@@ -50,7 +50,7 @@ Sukses:
       {
         "qty": 1,
         "total": "10000.00",
-        "discount_value": "0.00",
+        "discount_amount": "0.00",
         "notes": null,
         "menu_name": "PAKET BUNDLING SPESIAL",
         "promo_name": null,
@@ -85,6 +85,7 @@ Order belum `paid`:
 - **`tax_breakdown`** — cuma keisi kalau order-nya **exclusive tax** (`is_inclusive_tax === false`). Order `inclusive` (kayak contoh di atas) balikin array kosong `[]` — pajaknya udah "nempel" di harga item, bukan breakdown terpisah (sama perilaku kayak versi print server).
 - **Sengaja gak include** dari `PrintPayment()`: `cashier`, `print_ke`/logic "COPY n" — itu konsep reprint fisik POS (nyatet berapa kali struk yang sama di-print ulang), Kiosk gak punya alur reprint struk yang sama.
 - **`items[].package`** — selalu ada (array, bisa kosong `[]`), isi kalau item itu paket (sama pola kayak [KIOSK ORDER DETAIL.md](./KIOSK%20ORDER%20DETAIL.md)).
+- **⚠️ Perubahan field (2026-08-20)**: `discount_value`→`discount_amount` (rename doang). `total` per-item **nama sama tapi artinya berubah** — sekarang udah termasuk diskon, bukan gross lagi. Sama perubahan kayak [KIOSK ORDER DETAIL.md](./KIOSK%20ORDER%20DETAIL.md), detail lengkap: [PERHITUNGAN PAJAK INCLUSIVE & DISKON.md](../../../posv1-vue/DOKUMENTASI/PERHITUNGAN%20PAJAK%20INCLUSIVE%20%26%20DISKON.md) (`posv1-vue`).
 
 ## Tervalidasi live (2026-08-13)
 

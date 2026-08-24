@@ -42,8 +42,8 @@ Sukses (item biasa + item package):
         "qty": 1,
         "notes": null,
         "price": "10000.00",
-        "discount_value": "0.00",
-        "tax_value": "1100.00",
+        "discount_amount": "0.00",
+        "tax_amount": "1100.00",
         "total": "10000.00",
         "package": [
           {
@@ -52,8 +52,8 @@ Sukses (item biasa + item package):
             "qty": 1,
             "notes": null,
             "price": "6000.00",
-            "discount_value": "0.00",
-            "tax_value": "660.00",
+            "discount_amount": "0.00",
+            "tax_amount": "660.00",
             "total": "6000.00"
           },
           {
@@ -62,8 +62,8 @@ Sukses (item biasa + item package):
             "qty": 1,
             "notes": null,
             "price": "8000.00",
-            "discount_value": "0.00",
-            "tax_value": "880.00",
+            "discount_amount": "0.00",
+            "tax_amount": "880.00",
             "total": "8000.00"
           }
         ]
@@ -74,7 +74,8 @@ Sukses (item biasa + item package):
 ```
 
 - `items[].package` — **selalu ada** (array, bisa kosong `[]`) — isi kalau item itu paket/punya varian (dari `tr_order_detail_package`), kosong kalau item biasa.
-- Field duit (`price`, `discount_value`, `tax_value`, `total`, plus header `sub_total`/`total_tax`/`total_discount`/`total_billing`) balik sebagai **string** — hasil select langsung dari kolom `decimal` MySQL, konsisten sama standar string buat field duit di [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md).
+- Field duit (`price`, `discount_amount`, `tax_amount`, `total`, plus header `sub_total`/`total_tax`/`total_discount`/`total_billing`) balik sebagai **string** — hasil select langsung dari kolom `decimal` MySQL, konsisten sama standar string buat field duit di [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md).
+- **⚠️ Perubahan field (2026-08-20)**: `discount_value`→`discount_amount`, `tax_value`→`tax_amount` (rename doang, arti sama). `total` per-item **nama sama tapi artinya berubah** — sekarang udah termasuk diskon (`qty × (net_dpp + tax_amount)`), sebelumnya gross (`qty × price`, sebelum diskon). Detail lengkap: [PERHITUNGAN PAJAK INCLUSIVE & DISKON.md](../../../posv1-vue/DOKUMENTASI/PERHITUNGAN%20PAJAK%20INCLUSIVE%20%26%20DISKON.md) (`posv1-vue`).
 - `qty`/`total_item` — integer.
 - `status` — apa adanya dari `tr_order.status` (`pending`/`paid`/`cancel`/`expired`/dst, sama kayak [KIOSK ORDER HISTORY.md](./KIOSK%20ORDER%20HISTORY.md)).
 - `customer_phone_number`/`member_name` — `null` kalau order gak diisi nomor HP / gak match member (sama kayak history).
