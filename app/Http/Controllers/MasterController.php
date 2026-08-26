@@ -364,7 +364,11 @@ class MasterController extends Controller
     public function GetTerminalList()
     {
         try {
-            $data = TerminalModel::where('is_active', true)->get();
+            $data = DB::table('mr_terminal as t')
+                ->leftJoin('mr_pos_type as pt', 'pt.id', '=', 't.pos_type_id')
+                ->where('t.is_active', true)
+                ->select('t.*', 'pt.name as pos_type_name', 'pt.device_type as pos_type_device_type')
+                ->get();
             return response()->json([
                 'code' => 0,
                 'data' => $data,

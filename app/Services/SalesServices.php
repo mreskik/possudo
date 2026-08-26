@@ -31,14 +31,14 @@ class SalesServices
       tro.status,
       GROUP_CONCAT(mpm.name SEPARATOR ', ' )as payment_method,
       SUBSTRING_INDEX(tro.payment_at,' ',-1) as payment_time,
-      'JUSE' as payment_by
+      tro.chasier_name as payment_by
 
       FROM tr_order tro
       left JOIN mr_table_section mrts on mrts.id = tro.table_section_id
       left join mr_visit_purpose mvp on mvp.id = tro.visit_purpose_id
       left JOIN tr_order_payment trd on trd.payment_number = tro.payment_number
       left JOIN mr_payment_method mpm on mpm.id = trd.payment_method_id
-      WHERE tro.status != 'pending' AND  tro.status != 'hold' 
+      WHERE tro.status != 'pending' AND  tro.status != 'hold'
       AND tro.order_in >= ?
       GROUP BY payment_number,order_number
 

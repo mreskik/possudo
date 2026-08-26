@@ -12,6 +12,7 @@ use App\Models\MasterBranchVisitPurposeModel;
 use App\Models\MasterItemConvModel;
 use App\Models\MasterItemModel;
 use App\Models\MasterItemPackageDetailModel;
+use App\Models\MasterItemPackageDetailPricelistModel;
 use App\Models\MasterItemPackageGroupModel;
 use App\Models\MasterItemPackageModel;
 use App\Models\MasterMemberModel;
@@ -475,6 +476,30 @@ class SetupServices
     }
   }
 
+  // getMasterItemPackageDetailPricelist: override harga sub-item package per pricelist
+  // (2026-08-26) -- dikonsumsi kalau mr_item_package_detail.flag_all_menu_template = false.
+  // truncate+insert, sama pola & alasan kayak getMasterItemPackageDetail() di atas.
+  public function getMasterItemPackageDetailPricelist(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_item_package_detail_pricelist/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        MasterItemPackageDetailPricelistModel::truncate();
+        MasterItemPackageDetailPricelistModel::insert($response->json('data'));
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
   public function getMasterPricelist(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -599,6 +624,12 @@ class SetupServices
     }
   }
 
+  // getMasterBranchVisitPurpose: truncate+insert (BUKAN upsertRows lagi, 2026-08-26) -- tabel
+  // ini murni config per branch (service_charge/vat/pb1/order_fee/pricelist_id), gak ada kolom
+  // lokal yang perlu dipertahankan antar sync. Kalau pake upsert, visit purpose yang udah
+  // DIHAPUS di ERP gak akan pernah ikut kehapus di lokal (upsert emang gak nge-delete) --
+  // numpuk jadi setting basi selamanya. Gak ada tabel lokal POS yang refer ke
+  // mr_branch_visit_purpose.id (dicek: 0 hasil informasi_schema), jadi aman ganti pola.
   public function getMasterBranchVisitPurpose(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -610,7 +641,8 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterBranchVisitPurposeModel::class, $response->json('data'));
+        MasterBranchVisitPurposeModel::truncate();
+        MasterBranchVisitPurposeModel::insert($response->json('data'));
       }
 
       return $response;

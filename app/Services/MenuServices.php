@@ -56,7 +56,11 @@ class MenuServices
 
 
     //data item package detail
-    $menuPackageDetail = DB::select("SELECT 
+    // flagAllMenuTemplate/defaultItem (2026-08-26): flagAllMenuTemplate dipake nentuin apa
+    // menuPrice di bawah ini dipakai apa adanya atau di-override per pricelist (lihat resolusi
+    // harga di dalam loop per visit purpose, bareng resolusi tax) -- defaultItem passthrough
+    // doang ke FE, gak ada logic tambahan, biar FE tau sub-item mana yang pre-selected.
+    $menuPackageDetail = DB::select("SELECT
   mipd.id as menuPackageId,
   mipd.package_group_id,
   mipd.item_conv_detail_id as itemId,
@@ -64,13 +68,22 @@ class MenuServices
   mipd.price as menuPrice,
   mi.tax_type as taxType,
   mi.bom_id as bomId,
-  mi.icon_src as iconSrc
+  mi.icon_src as iconSrc,
+  mipd.flag_all_menu_template as flagAllMenuTemplate,
+  mipd.default_item as defaultItem
 
 
   FROM mr_item_package_detail mipd
   JOIN mr_item_conv mic on mic.id = mipd.item_conv_detail_id
   JOIN mr_item mi on mi.id = mic.item_id
   ");
+
+    // override harga package per pricelist (2026-08-26) -- ditarik SEKALI di sini (bukan per
+    // visit purpose), dicocokin manual di loop bawah (item_package_detail_id + pricelist_id).
+    // Cuma dipake kalau flagAllMenuTemplate = false; gak ketemu -> fallback ke menuPrice/mipd.price
+    // di atas (keputusan bisnis: mending kepake harga header daripada sub-item gak ada harga
+    // sama sekali).
+    $packageMenuTemplatePrices = DB::select("SELECT item_package_detail_id, pricelist_id, price FROM mr_item_package_detail_pricelist");
 
     foreach ($menuPackageGroup as $sit) {
       $sit->menuPackageList = [];
@@ -197,6 +210,20 @@ class MenuServices
               if ($mpl->bomId == 0) {
                 $mpl->bomId = null;
               }
+
+              // harga package per pricelist (2026-08-26) -- flagAllMenuTemplate=false berarti
+              // menuPrice HARUS diganti pake override yang cocok (item_package_detail_id +
+              // pricelist_id visit purpose ini), kalau gak ketemu overridenya -> DIBIARKAN
+              // (tetep mipd.price dari query awal, fallback sesuai keputusan bisnis).
+              if (!$mpl->flagAllMenuTemplate) {
+                foreach ($packageMenuTemplatePrices as $override) {
+                  if ($override->item_package_detail_id == $mpl->menuPackageId && $override->pricelist_id == $visitPurposeRow->menuPriceListId) {
+                    $mpl->menuPrice = $override->price;
+                    break;
+                  }
+                }
+              }
+              unset($mpl->flagAllMenuTemplate);
             }
 
             $itemConvRow->packageList[] = $cloning_mpg;

@@ -1180,6 +1180,7 @@ class KioskController extends Controller
                     'icon_src' => $mpl->iconSrc ?? null,
                     'tax_id' => $mpl->taxId,
                     'tax_rate' => $mpl->taxRate,
+                    'default_item' => $mpl->defaultItem,
                 ];
             }
             $packageList[] = [

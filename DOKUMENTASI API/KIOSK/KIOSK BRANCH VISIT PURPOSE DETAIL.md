@@ -71,7 +71,8 @@ Response:
                                                 "bom_id": null,
                                                 "icon_src": null,
                                                 "tax_id": 100,
-                                                "tax_rate": "11.00"
+                                                "tax_rate": "11.00",
+                                                "default_item": true
                                             },
                                             {
                                                 "menu_package_id": 211,
@@ -82,7 +83,8 @@ Response:
                                                 "bom_id": null,
                                                 "icon_src": null,
                                                 "tax_id": 100,
-                                                "tax_rate": "11.00"
+                                                "tax_rate": "11.00",
+                                                "default_item": false
                                             }
                                         ]
                                     },
@@ -161,7 +163,7 @@ Pemetaan nama field per level (versi POS camelCase → kiosk snake_case):
 | `separatePrintPackage` | `separate_print_package` |
 | `packageList`          | `package_list`           |
 
-`package_list[]` (kalau item punya package) juga di-snake_case-in: `packageId`→`package_id`, `packageName`→`package_name`, `minQty`→`min_qty`, `maxQty`→`max_qty`, `menuPackageList`→`menu_package_list` (isinya: `menuPackageId`→`menu_package_id`, `itemId`→`item_id`, `menuName`→`menu_name`, `menuPrice`→`menu_price`, `taxType`→`tax_type`, `bomId`→`bom_id`, `iconSrc`→`icon_src`, `taxId`→`tax_id`, `taxRate`→`tax_rate`).
+`package_list[]` (kalau item punya package) juga di-snake_case-in: `packageId`→`package_id`, `packageName`→`package_name`, `minQty`→`min_qty`, `maxQty`→`max_qty`, `menuPackageList`→`menu_package_list` (isinya: `menuPackageId`→`menu_package_id`, `itemId`→`item_id`, `menuName`→`menu_name`, `menuPrice`→`menu_price`, `taxType`→`tax_type`, `bomId`→`bom_id`, `iconSrc`→`icon_src`, `taxId`→`tax_id`, `taxRate`→`tax_rate`, `defaultItem`→`default_item`).
 
 `subcategories[]` juga ada pemetaan sendiri (versi POS `$subcategory` query → kiosk): `subCategoryId`→`subcategory_id`, `SubCategoryName`→`subcategory_name`, `subCategoryIconSrc`→`icon_src`, `subCategoryBannerSrc`→`banner_src`.
 
@@ -188,6 +190,25 @@ Tervalidasi live: set icon test di 2 item real (1 item utama, 1 item yang ada di
 3. **Kiosk** — query `$subcategory` di `MenuServices::GetMasterMenuList()` ditambah `msc.banner_src as subCategoryBannerSrc`, dipetakan ke `banner_src` di `KioskController::GetBranchVisitPurposeDetail()`.
 
 Tervalidasi: bridge query dites langsung ke DB ERP (set `banner_src` test di 1 sub category real yang match ke branch, query balikin nilainya bener, direvert lagi abis test). Kode POS (`SetupServices`/`MenuServices`/`KioskController`) lolos `php -l`, migration udah di-apply & kolom `banner_src` dikonfirmasi ada di `mr_subcategory`. **Belum** dites end-to-end lewat request HTTP asli (butuh server bridge `APIANDORDER` nyala buat proses sync-nya, gak lagi jalan pas sesi ini) — kalau nanti provisioning banner beneran dipakai, disarankan sync manual 1 branch dulu buat mastiin file ke-download bener.
+
+## Update (2026-08-26)
+
+Harga sub-item package (`menu_package_list[].menu_price`) sekarang bisa BEDA per menu template (pricelist), nutup gap yang sebelumnya didokumentasikan sebagai keterbatasan (`mipd.price` selalu dipakai flat, gak peduli visit purpose). Ditambah `default_item` — nandain sub-item mana yang "pre-selected" pas customer/kasir buka package group ini.
+
+Sumbernya dari ERP: kolom baru `master_item_package_detail.flag_all_menu_template`/`default_item` + tabel baru `master_item_package_detail_menu_template` (override harga per menu_template), lihat `MASTER ITEM.md` (`sudocore2`) buat detail skemanya. Ditarik ke lokal POS lewat sync pull baru (`mr_item_package_detail.flag_all_menu_template`/`default_item`, tabel baru `mr_item_package_detail_pricelist` — lihat `SYNC PULL.md`).
+
+**Logic resolusi harga** (di `MenuServices::GetMasterMenuList()`, dalam loop per-visit-purpose, bareng resolusi tax yang udah ada):
+
+- `flag_all_menu_template = true` → `menu_price` dari `mr_item_package_detail.price` apa adanya (behavior lama, gak berubah).
+- `flag_all_menu_template = false` → dicari baris `mr_item_package_detail_pricelist` yang cocok (`item_package_detail_id` + `pricelist_id` = `menu_pricelist_id` visit purpose ini):
+  - ketemu → `menu_price` = harga override.
+  - **gak ketemu → FALLBACK ke `mr_item_package_detail.price`** (keputusan bisnis: mending kepake harga header daripada sub-item gak ada harga sama sekali).
+
+`default_item` murni passthrough (gak ada logic tambahan) — kolom internal `flag_all_menu_template` **TIDAK ikut** di response (di-`unset` sebelum balik, cuma dipakai internal buat nentuin resolusi harga).
+
+Karena satu sumber logic (`GetMasterMenuList()`), perbaikan harga ini otomatis kepakai juga di `/api/master/menu-list` (POS). **`default_item` beda** — endpoint POS otomatis kebawa (gak ada reshape), tapi Kiosk butuh 1 baris tambahan manual di `mapKioskMenuItem()` (whitelist field eksplisit, field yang gak disebut di situ gak ikut kekirim).
+
+Tervalidasi lewat skrip manual (insert override sementara ke DB, panggil `GetMasterMenuList()` langsung, cek `menu_price` ke-resolve bener + `default_item` passthrough bener + fallback ke harga header pas override dihapus) — bukan cuma baca kode. Data test dibersihkan total setelah verifikasi.
 
 ## Catatan performa
 

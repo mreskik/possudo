@@ -61,6 +61,7 @@ Route::prefix('sync_pull')->group(function () {
   Route::get('get_item_package', [SyncController::class, 'getMasterItemPackage']);
   Route::get('get_item_package_group', [SyncController::class, 'getMasterItemPackageGroup']);
   Route::get('get_item_package_detail', [SyncController::class, 'getMasterItemPackageDetail']);
+  Route::get('get_item_package_detail_pricelist', [SyncController::class, 'getMasterItemPackageDetailPricelist']);
   Route::get('get_pricelist', [SyncController::class, 'getMasterPricelist']);
   Route::get('get_pricelist_detail', [SyncController::class, 'getMasterPricelistDetail']);
 
