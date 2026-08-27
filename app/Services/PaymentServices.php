@@ -110,6 +110,15 @@ class PaymentServices
         TrOrderDetailModel::where('order_number', $datajson->order_number)->update([
           "done_print" => true,
         ]);
+
+        // tr_kiosk_order_notif: penanda toast "order kiosk baru" di POS -- SENGAJA di sini
+        // (payment sukses), BUKAN di SaveOrder() -- order kiosk yang dibuat tapi gak jadi
+        // dibayar gak boleh ikut nongol jadi notif. Sama semangatnya kayak mb_order (mobile)
+        // yang cuma nongol pas status='paid'. Lihat OrderNotifServices.
+        DB::table('tr_kiosk_order_notif')->insert([
+          'order_number' => $datajson->order_number,
+          'flag_confirm' => false,
+        ]);
       }
 
       $response->success = true;

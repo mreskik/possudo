@@ -40,6 +40,7 @@ Response:
                                 "item_id_real": 131,
                                 "menu_code": "PM1",
                                 "menu_name": "PAKET MERCON",
+                                "description": null,
                                 "menu_color": "#2563eb",
                                 "image_src": "/img/item/019f6f6b-ac43-7f11-a421-53efae5e0402.jpg",
                                 "icon_src": "/img/item-icon/019f648a-f12e-7252-a76f-aa8fc55679bf.jpg",
@@ -66,6 +67,7 @@ Response:
                                                 "menu_package_id": 210,
                                                 "item_id": 55,
                                                 "menu_name": "NASI PUTIH",
+                                                "description": null,
                                                 "menu_price": "0.00",
                                                 "tax_type": "vat",
                                                 "bom_id": null,
@@ -146,6 +148,7 @@ Pemetaan nama field per level (versi POS camelCase → kiosk snake_case):
 | `itemid_real`          | `item_id_real`           |
 | `menuCode`             | `menu_code`              |
 | `menuName`             | `menu_name`              |
+| `menuDescription`      | `description`            |
 | `menuColor`            | `menu_color`             |
 | `imageSrc`             | `image_src`              |
 | `iconSrc`               | `icon_src`               |
@@ -163,7 +166,7 @@ Pemetaan nama field per level (versi POS camelCase → kiosk snake_case):
 | `separatePrintPackage` | `separate_print_package` |
 | `packageList`          | `package_list`           |
 
-`package_list[]` (kalau item punya package) juga di-snake_case-in: `packageId`→`package_id`, `packageName`→`package_name`, `minQty`→`min_qty`, `maxQty`→`max_qty`, `menuPackageList`→`menu_package_list` (isinya: `menuPackageId`→`menu_package_id`, `itemId`→`item_id`, `menuName`→`menu_name`, `menuPrice`→`menu_price`, `taxType`→`tax_type`, `bomId`→`bom_id`, `iconSrc`→`icon_src`, `taxId`→`tax_id`, `taxRate`→`tax_rate`, `defaultItem`→`default_item`).
+`package_list[]` (kalau item punya package) juga di-snake_case-in: `packageId`→`package_id`, `packageName`→`package_name`, `minQty`→`min_qty`, `maxQty`→`max_qty`, `menuPackageList`→`menu_package_list` (isinya: `menuPackageId`→`menu_package_id`, `itemId`→`item_id`, `menuName`→`menu_name`, `menuDescription`→`description`, `menuPrice`→`menu_price`, `taxType`→`tax_type`, `bomId`→`bom_id`, `iconSrc`→`icon_src`, `taxId`→`tax_id`, `taxRate`→`tax_rate`, `defaultItem`→`default_item`).
 
 `subcategories[]` juga ada pemetaan sendiri (versi POS `$subcategory` query → kiosk): `subCategoryId`→`subcategory_id`, `SubCategoryName`→`subcategory_name`, `subCategoryIconSrc`→`icon_src`, `subCategoryBannerSrc`→`banner_src`.
 
@@ -209,6 +212,16 @@ Sumbernya dari ERP: kolom baru `master_item_package_detail.flag_all_menu_templat
 Karena satu sumber logic (`GetMasterMenuList()`), perbaikan harga ini otomatis kepakai juga di `/api/master/menu-list` (POS). **`default_item` beda** — endpoint POS otomatis kebawa (gak ada reshape), tapi Kiosk butuh 1 baris tambahan manual di `mapKioskMenuItem()` (whitelist field eksplisit, field yang gak disebut di situ gak ikut kekirim).
 
 Tervalidasi lewat skrip manual (insert override sementara ke DB, panggil `GetMasterMenuList()` langsung, cek `menu_price` ke-resolve bener + `default_item` passthrough bener + fallback ke harga header pas override dihapus) — bukan cuma baca kode. Data test dibersihkan total setelah verifikasi.
+
+## Update (2026-08-27)
+
+`description` ditambahin di **level item** — di tiap `items[]` (menu utama) **dan** di tiap `menu_package_list[]` (item di dalam package/varian), sama pola kayak `icon_src` (Update 2026-08-12). Sumbernya dari ERP: `master_item.item_description` (`sudocore2`), ditarik lewat 3 lapisan:
+
+1. **Bridge (`APIANDORDER`)** — `MasterService.GetItem()` ditambah `COALESCE(mi.item_description, '') as description`, `MasterItem` DTO ditambah field `Description`.
+2. **POS** — kolom `description` ditambah ke `mr_item` (migration `2026_08_27_100000_add_description_to_mr_item.php`, nullable, gak perlu kode tambahan di `SetupServices::getMasterItem()` -- `upsertRows()` generic, otomatis kepetakan selama nama kolom cocok). Query `$listmenu` dan `$menuPackageDetail` di `MenuServices::GetMasterMenuList()` ditambah `mi.description as menuDescription`.
+3. **Kiosk** — `menuDescription`→`description` ditambah manual di `mapKioskMenuItem()` (whitelist field eksplisit, sama kayak `default_item` di Update 2026-08-26) -- **POS** (`/api/master/menu-list`) otomatis kebawa (gak ada reshape), gak butuh perubahan tambahan.
+
+Tervalidasi lewat `tinker`: isi `description` test di 1 item real (`mr_item.id=83`, "CARAME MACHIATO") yang beneran ada di pohon menu, panggil `GetMasterMenuList()` langsung → `menuDescription` ke-resolve bener, lalu panggil `mapKioskMenuItem()` (lewat reflection, method-nya `private`) → `description` ke-passthrough bener ke output final. Data test direvert (`NULL`) abis verifikasi. Field `description` di ERP (`master_item.item_description`) & bridge (`APIANDORDER`) query juga udah dites terpisah (lihat `GET VISIT PURPOSE DETAIL.md` di `sudomobile`, sumber datanya sama).
 
 ## Catatan performa
 

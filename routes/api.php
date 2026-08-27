@@ -7,6 +7,7 @@ use App\Http\Controllers\DayShiftController;
 use App\Http\Controllers\KioskController;
 use App\Http\Controllers\MasterController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\OrderNotifController;
 use App\Http\Controllers\OrderlistController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PushDataController;
@@ -127,6 +128,11 @@ Route::prefix('order')->group(function () {
   Route::post('save-move-table', [OrderController::class, 'SaveMoveTable']);
   Route::post('save-move-item', [OrderController::class, 'SaveMoveItem']);
   Route::post('cancel-item', [OrderController::class, 'CancelOrderDetail']);
+});
+
+Route::prefix('order-notif')->group(function () {
+  Route::get('pending', [OrderNotifController::class, 'pendingNotif']);
+  Route::post('confirm', [OrderNotifController::class, 'confirm']);
 });
 
 Route::prefix('orderlist')->group(function () {

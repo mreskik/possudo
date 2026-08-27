@@ -60,6 +60,7 @@ class ComposerStaticInitc57754c93ae34ac3b9b716a0fd2f2149
         array (
             'Whoops\\' => 7,
             'Webmozart\\Assert\\' => 17,
+            'WebSocket\\' => 10,
         ),
         'T' =>
         array (
@@ -221,6 +222,10 @@ class ComposerStaticInitc57754c93ae34ac3b9b716a0fd2f2149
         'Webmozart\\Assert\\' =>
         array (
             0 => __DIR__ . '/..' . '/webmozart/assert/src',
+        ),
+        'WebSocket\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/textalk/websocket/lib',
         ),
         'TijsVerkoyen\\CssToInlineStyles\\' =>
         array (
@@ -603,6 +608,8 @@ class ComposerStaticInitc57754c93ae34ac3b9b716a0fd2f2149
     );
 
     public static $classMap = array (
+        'App\\Console\\Commands\\KioskCheckPendingPayment' => __DIR__ . '/../..' . '/app/Console/Commands/KioskCheckPendingPayment.php',
+        'App\\Console\\Commands\\PullMobileOrder' => __DIR__ . '/../..' . '/app/Console/Commands/PullMobileOrder.php',
         'App\\Http\\Controllers\\AuthController' => __DIR__ . '/../..' . '/app/Http/Controllers/AuthController.php',
         'App\\Http\\Controllers\\BranchController' => __DIR__ . '/../..' . '/app/Http/Controllers/BranchController.php',
         'App\\Http\\Controllers\\BranchMenuController' => __DIR__ . '/../..' . '/app/Http/Controllers/BranchMenuController.php',
@@ -626,10 +633,16 @@ class ComposerStaticInitc57754c93ae34ac3b9b716a0fd2f2149
         'App\\Models\\CategoryModel' => __DIR__ . '/../..' . '/app/Models/CategoryModel.php',
         'App\\Models\\DayShiftDetailModel' => __DIR__ . '/../..' . '/app/Models/DayShiftDetailModel.php',
         'App\\Models\\DaySiftModel' => __DIR__ . '/../..' . '/app/Models/DaySiftModel.php',
+        'App\\Models\\KioskPaymentRequestModel' => __DIR__ . '/../..' . '/app/Models/KioskPaymentRequestModel.php',
+        'App\\Models\\MasterBranchOpsSettingModel' => __DIR__ . '/../..' . '/app/Models/MasterBranchOpsSettingModel.php',
         'App\\Models\\MasterBranchVisitPurposeModel' => __DIR__ . '/../..' . '/app/Models/MasterBranchVisitPurposeModel.php',
+        'App\\Models\\MasterImageCustomerDisplayModel' => __DIR__ . '/../..' . '/app/Models/MasterImageCustomerDisplayModel.php',
+        'App\\Models\\MasterImageKioskModel' => __DIR__ . '/../..' . '/app/Models/MasterImageKioskModel.php',
+        'App\\Models\\MasterImageModel' => __DIR__ . '/../..' . '/app/Models/MasterImageModel.php',
         'App\\Models\\MasterItemConvModel' => __DIR__ . '/../..' . '/app/Models/MasterItemConvModel.php',
         'App\\Models\\MasterItemModel' => __DIR__ . '/../..' . '/app/Models/MasterItemModel.php',
         'App\\Models\\MasterItemPackageDetailModel' => __DIR__ . '/../..' . '/app/Models/MasterItemPackageDetailModel.php',
+        'App\\Models\\MasterItemPackageDetailPricelistModel' => __DIR__ . '/../..' . '/app/Models/MasterItemPackageDetailPricelistModel.php',
         'App\\Models\\MasterItemPackageGroupModel' => __DIR__ . '/../..' . '/app/Models/MasterItemPackageGroupModel.php',
         'App\\Models\\MasterItemPackageModel' => __DIR__ . '/../..' . '/app/Models/MasterItemPackageModel.php',
         'App\\Models\\MasterMemberModel' => __DIR__ . '/../..' . '/app/Models/MasterMemberModel.php',
@@ -641,6 +654,7 @@ class ComposerStaticInitc57754c93ae34ac3b9b716a0fd2f2149
         'App\\Models\\MasterPaymentMethodVisitPurposeModel' => __DIR__ . '/../..' . '/app/Models/MasterPaymentMethodVisitPurposeModel.php',
         'App\\Models\\MasterPricelistDetailModel' => __DIR__ . '/../..' . '/app/Models/MasterPricelistDetailModel.php',
         'App\\Models\\MasterPricelistModel' => __DIR__ . '/../..' . '/app/Models/MasterPricelistModel.php',
+        'App\\Models\\MasterPromoApplyToModel' => __DIR__ . '/../..' . '/app/Models/MasterPromoApplyToModel.php',
         'App\\Models\\MasterPromoBranchesModel' => __DIR__ . '/../..' . '/app/Models/MasterPromoBranchesModel.php',
         'App\\Models\\MasterPromoCategoriesModel' => __DIR__ . '/../..' . '/app/Models/MasterPromoCategoriesModel.php',
         'App\\Models\\MasterPromoDaysModel' => __DIR__ . '/../..' . '/app/Models/MasterPromoDaysModel.php',
@@ -674,7 +688,10 @@ class ComposerStaticInitc57754c93ae34ac3b9b716a0fd2f2149
         'App\\Services\\ConfigService' => __DIR__ . '/../..' . '/app/Services/ConfigService.php',
         'App\\Services\\DayShiftServices' => __DIR__ . '/../..' . '/app/Services/DayShiftServices.php',
         'App\\Services\\GeneralLabel' => __DIR__ . '/../..' . '/app/Services/GeneralLabel.php',
+        'App\\Services\\MemberBalanceServices' => __DIR__ . '/../..' . '/app/Services/MemberBalanceServices.php',
+        'App\\Services\\MemberServices' => __DIR__ . '/../..' . '/app/Services/MemberServices.php',
         'App\\Services\\MenuServices' => __DIR__ . '/../..' . '/app/Services/MenuServices.php',
+        'App\\Services\\MobileOrderPullServices' => __DIR__ . '/../..' . '/app/Services/MobileOrderPullServices.php',
         'App\\Services\\OrderServices' => __DIR__ . '/../..' . '/app/Services/OrderServices.php',
         'App\\Services\\OrderlistServices' => __DIR__ . '/../..' . '/app/Services/OrderlistServices.php',
         'App\\Services\\PaymentGatewayServices' => __DIR__ . '/../..' . '/app/Services/PaymentGatewayServices.php',
@@ -7980,6 +7997,21 @@ class ComposerStaticInitc57754c93ae34ac3b9b716a0fd2f2149
         'TijsVerkoyen\\CssToInlineStyles\\Css\\Rule\\Rule' => __DIR__ . '/..' . '/tijsverkoyen/css-to-inline-styles/src/Css/Rule/Rule.php',
         'UnhandledMatchError' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/UnhandledMatchError.php',
         'ValueError' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/ValueError.php',
+        'WebSocket\\BadOpcodeException' => __DIR__ . '/..' . '/textalk/websocket/lib/BadOpcodeException.php',
+        'WebSocket\\BadUriException' => __DIR__ . '/..' . '/textalk/websocket/lib/BadUriException.php',
+        'WebSocket\\Base' => __DIR__ . '/..' . '/textalk/websocket/lib/Base.php',
+        'WebSocket\\Client' => __DIR__ . '/..' . '/textalk/websocket/lib/Client.php',
+        'WebSocket\\ConnectionException' => __DIR__ . '/..' . '/textalk/websocket/lib/ConnectionException.php',
+        'WebSocket\\Exception' => __DIR__ . '/..' . '/textalk/websocket/lib/Exception.php',
+        'WebSocket\\Message\\Binary' => __DIR__ . '/..' . '/textalk/websocket/lib/Message/Binary.php',
+        'WebSocket\\Message\\Close' => __DIR__ . '/..' . '/textalk/websocket/lib/Message/Close.php',
+        'WebSocket\\Message\\Factory' => __DIR__ . '/..' . '/textalk/websocket/lib/Message/Factory.php',
+        'WebSocket\\Message\\Message' => __DIR__ . '/..' . '/textalk/websocket/lib/Message/Message.php',
+        'WebSocket\\Message\\Ping' => __DIR__ . '/..' . '/textalk/websocket/lib/Message/Ping.php',
+        'WebSocket\\Message\\Pong' => __DIR__ . '/..' . '/textalk/websocket/lib/Message/Pong.php',
+        'WebSocket\\Message\\Text' => __DIR__ . '/..' . '/textalk/websocket/lib/Message/Text.php',
+        'WebSocket\\Server' => __DIR__ . '/..' . '/textalk/websocket/lib/Server.php',
+        'WebSocket\\TimeoutException' => __DIR__ . '/..' . '/textalk/websocket/lib/TimeoutException.php',
         'Webmozart\\Assert\\Assert' => __DIR__ . '/..' . '/webmozart/assert/src/Assert.php',
         'Webmozart\\Assert\\InvalidArgumentException' => __DIR__ . '/..' . '/webmozart/assert/src/InvalidArgumentException.php',
         'Webmozart\\Assert\\Mixin' => __DIR__ . '/..' . '/webmozart/assert/src/Mixin.php',

@@ -3,7 +3,7 @@
         'name' => 'laravel/laravel',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => 'e0455405698003291657cba29e410ccc2e504868',
+        'reference' => 'b3e180e77a4901803457c4f80b64fb33aa9750d8',
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -436,7 +436,7 @@
         'laravel/laravel' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => 'e0455405698003291657cba29e410ccc2e504868',
+            'reference' => 'b3e180e77a4901803457c4f80b64fb33aa9750d8',
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
@@ -1403,6 +1403,15 @@
             'install_path' => __DIR__ . '/../ta-tikoma/phpunit-architecture-test',
             'aliases' => array(),
             'dev_requirement' => true,
+        ),
+        'textalk/websocket' => array(
+            'pretty_version' => '1.5.8',
+            'version' => '1.5.8.0',
+            'reference' => 'd05dbaa97500176447ffb1f1800573f23085ab13',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../textalk/websocket',
+            'aliases' => array(),
+            'dev_requirement' => false,
         ),
         'theseer/tokenizer' => array(
             'pretty_version' => '2.0.1',

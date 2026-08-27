@@ -259,7 +259,7 @@ class PrintServices
 
       // $print->text("Date        : " . $data_order->order_date . "\n");
       $print->text("Date        : " . $order_in . "\n");
-      $print->text("Info        : " . $info . "\n");
+      $print->text("Customer Name: " . $info . "\n");
       $print->text("Table       : " . $table_section->name . ($meja ? " / " . $meja->name : "") . "\n");
       $print->text("Purpose     : " . $visitpurpose_name . "\n");
       $print->text("Queue       : " . $order_queue . "\n");
@@ -429,7 +429,7 @@ class PrintServices
 
       // $print->text("Date        : " . $data_order->order_date . "\n");
       $print->text("Date        : " . $order_in . "\n");
-      $print->text("Info        : " . $info . "\n");
+      $print->text("Customer Name: " . $info . "\n");
       // $print->text("Table       : " . $table_section->name . "\n");
       $print->text("Table       : " . $table_section->name . ($meja ? " / " . $meja->name : "") . "\n");
       $print->text("Purpose     : " . $visitpurpose_name . "\n");
@@ -895,7 +895,7 @@ class PrintServices
       $print->text("Sales No    : " . $data_order->order_number . "\n");
       // $print->text("Date        : " . $data_order->order_date . "\n");
       $print->text("Date        : " . $data_order->order_in . "\n");
-      $print->text("Info        : " . $info . "\n");
+      $print->text("Customer Name: " . $info . "\n");
       // $print->text("Table       : " . $table_section_name . "\n");
       // $print->text("Purpose     : " . $visitpurpose_name . "\n");
       $print->text("Pax         : " . $pax . "\n");
@@ -1095,7 +1095,7 @@ class PrintServices
       // $print->text("Sales No    : ".$salesNo."\n");
       // $print->text("Date        : " . $data_order->order_date . "\n");
       $print->text("Time In     : " . $order_in . "\n");
-      $print->text("Info        : " . $info . "\n");
+      $print->text("Customer Name: " . $info . "\n");
       $print->text("Table       : " . $table_section->name . "\n");
       $print->text("Purpose     : " . $visitpurpose_name . "\n");
       $print->text("Pax         : " . $pax . "\n");
