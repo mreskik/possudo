@@ -4,6 +4,8 @@
 GET /api/kiosk/terminal/{id}
 ```
 
+Buat dapetin `id`-nya duluan (mis. halaman pilih terminal), lihat `KIOSK TERMINAL LIST.md` (`GET /api/kiosk/terminal`, filter `device_type='kiosk'` otomatis).
+
 Gak butuh token. Detail 1 terminal dari `mr_terminal`, **plus join** `pos_type_name` (dari `mr_pos_type`), `branch_name`/`branch_address` (dari `mr_branch`), `table_section_name` (dari `mr_table_section`), nested `receipt_station` (detail lengkap `mr_station`-nya, kalau ada), dan `branch_operational_hours` (jam operasional branch hari ini, dari `mr_branch_ops_setting`).
 
 Response:

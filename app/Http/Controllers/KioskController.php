@@ -114,6 +114,37 @@ class KioskController extends Controller
         }
     }
 
+    // GetTerminalList: daftar terminal ber-type Kiosk (mr_pos_type.device_type = 'kiosk') --
+    // dipakai buat halaman pilih terminal pas kiosk pertama kali setup (lihat TerminalPage.vue),
+    // sebelum tau id-nya buat manggil GetTerminalDetail. Sengaja minimal (id/name/device_type
+    // doang) -- field lengkap (branch/table_section/receipt_station/dst) baru diambil pas user
+    // beneran milih 1 terminal spesifik lewat endpoint Detail.
+    public function GetTerminalList(Request $request)
+    {
+        try {
+            $data = DB::table('mr_terminal as t')
+                ->leftJoin('mr_pos_type as pt', 'pt.id', '=', 't.pos_type_id')
+                ->select(
+                    't.id',
+                    't.name',
+                    'pt.device_type'
+                )
+                ->where('pt.device_type', 'kiosk')
+                ->orderBy('t.name')
+                ->get();
+
+            return response()->json([
+                'code' => 0,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
     // GetTerminalDetail: detail 1 terminal by id, ditambah join pos_type/branch/table_section
     // (nama) + nested receipt_station (detail mr_station-nya, sekalian nama printer_type/
     // printer_connection/printing_mode -- 3 tabel lookup kecil yang emang udah disiapin dari

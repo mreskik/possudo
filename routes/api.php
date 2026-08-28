@@ -26,6 +26,7 @@ Route::prefix('kiosk')->group(function () {
   Route::get('member/check/{phone_number}', [KioskController::class, 'CheckMemberByPhone']);
   Route::get('branch-visit-purpose', [KioskController::class, 'GetBranchVisitPurposeList']);
   Route::get('branch-visit-purpose/{id}', [KioskController::class, 'GetBranchVisitPurposeDetail']);
+  Route::get('terminal', [KioskController::class, 'GetTerminalList']);
   Route::get('terminal/{id}', [KioskController::class, 'GetTerminalDetail']);
   Route::post('save-order', [KioskController::class, 'SaveOrder']);
   Route::get('order/{order_number}', [KioskController::class, 'GetOrderDetail']);
