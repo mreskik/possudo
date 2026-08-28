@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MasterUserModel;
 use App\Services\DayShiftServices;
 use App\Services\MemberBalanceServices;
 use App\Services\MemberServices;
@@ -105,6 +106,40 @@ class KioskController extends Controller
             return response()->json([
                 'code' => 0,
                 'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    // VerifySandi: cek sandi staff buat buka halaman Setting di Kiosk -- murni perbantuan
+    // (sandi valid = boleh buka), BUKAN login (gak bikin session/token kayak
+    // AuthController::login, cuma jawab valid/enggak). Compare langsung ke kolom mr_user.sandi
+    // (plaintext, sama pola dengan AuthController::login -- bukan Hash::check).
+    public function VerifySandi(Request $request)
+    {
+        try {
+            $sandi = $request->input('sandi');
+            $user = MasterUserModel::where('sandi', $sandi)->first();
+
+            if (!$user) {
+                return response()->json([
+                    'code' => 100,
+                    'message' => 'Sandi salah!',
+                ]);
+            }
+
+            return response()->json([
+                'code' => 0,
+                'message' => 'Sandi benar!',
+                'data' => [
+                    'id' => $user->id,
+                    'username' => $user->username,
+                    'fullname' => $user->fullname,
+                ],
             ]);
         } catch (\Throwable $e) {
             return response()->json([
