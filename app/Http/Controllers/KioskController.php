@@ -571,6 +571,7 @@ class KioskController extends Controller
             $phoneNumber = $request->input('phone_number');
             $amount = $request->input('amount');
             $paymentMethodId = $request->input('payment_method_id');
+            $terminalId = $request->input('terminal_id');
 
             if (!$phoneNumber || !$amount || !$paymentMethodId) {
                 return response()->json([
@@ -579,7 +580,7 @@ class KioskController extends Controller
                 ]);
             }
 
-            $data = (new MemberBalanceServices())->TopupBalance($phoneNumber, (float) $amount, (int) $paymentMethodId, 'kiosk');
+            $data = (new MemberBalanceServices())->TopupBalance($phoneNumber, (float) $amount, (int) $paymentMethodId, 'kiosk', $terminalId ? (int) $terminalId : null);
 
             return response()->json([
                 'code' => 0,
@@ -595,10 +596,22 @@ class KioskController extends Controller
 
     // CheckTopupStatus: polling status topup gateway -- dipanggil Kiosk sambil nunggu customer
     // scan QR (mirip CheckPaymentStatus, tapi buat topup saldo bukan bayar order).
+    //
+    // Begitu status "paid" -- trigger print struk (server-side, mirror pola PaymentServices.php
+    // buat order: skip kalau flag_printer_frontend=true, device kiosk sendiri yang render/print
+    // browser). Endpoint ini di-poll berkali-kali sampai paid, jadi WAJIB dedupe (tr_member_topup_print_log)
+    // biar gak nyetak dobel tiap polling lanjut abis kebayar. Data struk (amount/member_name/
+    // payment_gateway_code/paid_at/terminal_id) ditarik LIVE dari response APIANDORDER (stateless,
+    // Laravel gak nyimpen ulang data topup apapun) -- payment_method_name doang yang diresolve
+    // lokal dari mr_payment_method (sama arah kebalikan resolusi payment_gateway_code di TopupBalance()).
     public function CheckTopupStatus(Request $request, string $reference_number)
     {
         try {
             $data = (new MemberBalanceServices())->CheckTopupStatus($reference_number);
+
+            if (($data['status'] ?? null) === 'paid') {
+                $this->TriggerTopupPrintIfNeeded($reference_number, $data);
+            }
 
             return response()->json([
                 'code' => 0,
@@ -610,6 +623,60 @@ class KioskController extends Controller
                 'message' => $e->getMessage(),
             ]);
         }
+    }
+
+    // TriggerTopupPrintIfNeeded: dedupe guard + trigger print struk top-up. Dipanggil dari
+    // CheckTopupStatus() begitu status "paid" kedeteksi -- lihat komentar di sana.
+    private function TriggerTopupPrintIfNeeded(string $reference_number, array $data): void
+    {
+        $alreadyPrinted = DB::table('tr_member_topup_print_log')
+            ->where('reference_number', $reference_number)
+            ->whereNotNull('printed_at')
+            ->exists();
+        if ($alreadyPrinted) {
+            return;
+        }
+
+        DB::table('tr_member_topup_print_log')->updateOrInsert(
+            ['reference_number' => $reference_number],
+            ['created_at' => now()]
+        );
+
+        $terminal = !empty($data['terminal_id'])
+            ? DB::table('mr_terminal')->where('id', $data['terminal_id'])->first()
+            : null;
+
+        $paymentMethodName = null;
+        if (!empty($data['payment_gateway_code'])) {
+            $paymentMethod = DB::table('mr_payment_method')->where('payment_gateway_code', $data['payment_gateway_code'])->first();
+            $paymentMethodName = $paymentMethod->name ?? null;
+        }
+
+        $topupData = [
+            'reference_number' => $reference_number,
+            'amount' => $data['amount'] ?? '0',
+            'member_name' => $data['member_name'] ?? '',
+            'phone_number' => $data['member_phone_number'] ?? '',
+            'payment_method_name' => $paymentMethodName ?? '-',
+            'balance_after' => $data['balance_after'] ?? '0',
+            'paid_at' => $data['paid_at'] ?? now()->toDateTimeString(),
+        ];
+
+        // flag_printer_frontend=true -- device kiosk sendiri yang render/print browser, backend
+        // gak nge-print server-side (sama pola persis PaymentServices.php buat struk order).
+        // Kalau terminal gak ketemu (mis. terminal_id gak dikirim) -- default print server-side.
+        if ($terminal && $terminal->flag_printer_frontend) {
+            DB::table('tr_member_topup_print_log')
+                ->where('reference_number', $reference_number)
+                ->update(['printed_at' => now()]);
+            return;
+        }
+
+        PrintServices::PrintTopup($topupData);
+
+        DB::table('tr_member_topup_print_log')
+            ->where('reference_number', $reference_number)
+            ->update(['printed_at' => now()]);
     }
 
     // CancelPayment: cancel QR/attempt payment yang lagi aktif TANPA nyentuh status order (order

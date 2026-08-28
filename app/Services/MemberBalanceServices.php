@@ -25,8 +25,10 @@ class MemberBalanceServices
 
   // TopupBalance: amount wajib > 0. payment_method_id WAJIB dan wajib py payment_gateway_code
   // keisi -- SAMA PERSIS validasi RequestPayment() (gak ada fallback diam-diam ke tunai kalau
-  // gateway_code-nya kosong, langsung ditolak).
-  public function TopupBalance(string $phone_number, float $amount, ?int $payment_method_id, string $source): array
+  // gateway_code-nya kosong, langsung ditolak). terminal_id diterusin apa adanya ke APIANDORDER
+  // (disimpen ke member_topup_online.terminal_id + member_balance_ledger.terminal_id di sana,
+  // di-echo balik pas CheckTopupStatus buat resolve receipt_station pas print struk).
+  public function TopupBalance(string $phone_number, float $amount, ?int $payment_method_id, string $source, ?int $terminal_id): array
   {
     if ($amount <= 0) {
       throw new \Exception('amount wajib lebih dari 0');
@@ -55,6 +57,7 @@ class MemberBalanceServices
         'amount' => $amount,
         'source' => $source,
         'payment_gateway_code' => $paymentGatewayCode,
+        'terminal_id' => $terminal_id,
       ]);
 
     if ($response->json('code') !== 0) {

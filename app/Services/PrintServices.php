@@ -1019,6 +1019,84 @@ class PrintServices
     }
   }
 
+  // PrintTopup: struk top-up saldo member (dompet digital) -- Kiosk. Mirror pola PrintPayment()
+  // (station dari SettingModel::first()->default_station, SAMA persis, BUKAN dari
+  // mr_terminal.receipt_station_id -- field itu ada di skema tapi gak dipakai buat routing print
+  // manapun di sistem ini, konsisten sama semua struk customer lain). $topupData: array asosiatif
+  // reference_number, amount, member_name, phone_number, payment_method_name, balance_after,
+  // paid_at (semua string, udah diformat pemanggil). Disepakati 2026-08-28.
+  public static function PrintTopup(array $topupData)
+  {
+    try {
+      $settingan = SettingModel::first();
+      $data_station = StationModel::where('id', $settingan->default_station)->first();
+      if (!$data_station) {
+        return;
+      }
+
+      $konektor = new WindowsPrintConnector($data_station->printer_name);
+      $print = new Printer($konektor);
+      $branch = BranchModel::first();
+
+      $textHeader = $branch->printing_header;
+      $textFooter = $branch->printing_footer;
+      $charPerLine = $data_station->line_character;
+
+      $print->setJustification(Printer::JUSTIFY_CENTER);
+
+      $logoSrc = !empty($branch->logo_header_src)
+        ? public_path(ltrim($branch->logo_header_src, '/'))
+        : public_path('logo_resize.png');
+      if (file_exists($logoSrc)) {
+        self::resizeGambar($logoSrc, 180, public_path('logo_resize.png'));
+        $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
+        $print->bitImage($imageLogo);
+        $print->text("\n");
+      }
+
+      $print->setEmphasis(true);
+      $print->text("$textHeader\n");
+      $print->setEmphasis(false);
+
+      $print->setTextSize(1, 2);
+      $print->text("TOP UP SALDO MEMBER\n");
+      $print->setTextSize(1, 1);
+
+      $print->setJustification(Printer::JUSTIFY_LEFT);
+      $print->text(self::separator("-", $charPerLine));
+      $print->text("No. Referensi : " . $topupData['reference_number'] . "\n");
+      $print->text("Tanggal       : " . $topupData['paid_at'] . "\n");
+      $print->text("Member        : " . $topupData['member_name'] . "\n");
+      $print->text("No. HP        : " . $topupData['phone_number'] . "\n");
+      $print->text("Metode Bayar  : " . $topupData['payment_method_name'] . "\n");
+      $print->text(self::separator("-", $charPerLine));
+
+      $print->setJustification(Printer::JUSTIFY_RIGHT);
+      $print->text(self::threeline2("", "Nominal Top Up :", number_format((float) $topupData['amount'], 0, ',', '.'), $charPerLine));
+      $print->text(self::threeline2("", "Saldo Sekarang :", number_format((float) $topupData['balance_after'], 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+
+      $print->setJustification(Printer::JUSTIFY_CENTER);
+      $print->text($textFooter);
+
+      if (!empty($branch->image_footer_src)) {
+        $footerSrc = public_path(ltrim($branch->image_footer_src, '/'));
+        if (file_exists($footerSrc)) {
+          self::resizeGambar($footerSrc, 150, public_path('footer_resize.png'));
+          $imageFooter = EscposImage::load(public_path('footer_resize.png'), false);
+          $print->text("\n");
+          $print->bitImage($imageFooter);
+        }
+      }
+
+      $print->feed(2);
+      $print->cut();
+      $print->close();
+    } catch (\Throwable $e) {
+      Log::info($e);
+    }
+  }
+
   public static function PrintBill(string $order_number)
   {
     try {
