@@ -24,11 +24,11 @@ Body:
 - **`phone_number`** — wajib. **BUKAN** `member_id` — sama alasan kayak `SaveOrder()` (`resolveMemberIdByPhone()`): `member_id` itu identitas internal, gak boleh dipercaya langsung dari client (resiko nambah saldo ke akun member lain kalau di-tamper). Server (APIANDORDER) yang resolve `phone_number → member_id` sendiri, query langsung ke `master_member` — Laravel/Kiosk gak pernah pegang `member_id` sama sekali di alur ini.
 - **`amount`** — wajib, nominal top-up (> 0).
 - **`payment_method_id`** — **wajib**, dan wajib payment method yang punya `payment_gateway_code` keisi — validasinya **SAMA PERSIS** `RequestPayment()` (`App\Services\MemberBalanceServices::TopupBalance()`, mirror `PaymentGatewayServices::RequestPayment()`): kalau `payment_method_id` gak dikirim, atau ditemuin tapi `payment_gateway_code`-nya kosong, langsung ditolak — **tidak ada fallback diam-diam ke tunai**.
-- **`terminal_id`** — opsional (ditambahkan 2026-08-28), ID terminal Kiosk yang dipakai top-up (`mr_terminal.id`, device udah tau ID-nya sendiri, sama pola `SaveOrder()`). Diterusin apa adanya ke APIANDORDER, disimpan ke `member_topup_online.terminal_id` **dan** `member_balance_ledger.terminal_id` (sejajar `branch_id` yang udah ada di situ) buat traceability "top-up ini dari terminal mana" — di-echo balik lagi di response Check Status, dipakai buat trigger print struk (lihat section Print Struk di bawah).
+- **`terminal_id`** — **wajib** (ditambahkan 2026-08-28), ID terminal Kiosk yang dipakai top-up (`mr_terminal.id`, device udah tau ID-nya sendiri, sama pola `SaveOrder()`). Diterusin apa adanya ke APIANDORDER, disimpan ke `member_topup_online.terminal_id` **dan** `member_balance_ledger.terminal_id` (sejajar `branch_id` yang udah ada di situ) buat traceability "top-up ini dari terminal mana" — di-echo balik lagi di response Check Status, dipakai buat trigger print struk (lihat section Print Struk di bawah). Ditolak (`code:100`) kalau gak dikirim, sama validasi ketatnya kayak `phone_number`/`amount`/`payment_method_id`.
 
-Ditolak kalau `payment_method_id` kosong:
+Ditolak kalau `phone_number`/`amount`/`payment_method_id`/`terminal_id` ada yang kosong:
 ```json
-{ "code": 100, "message": "phone_number, amount, dan payment_method_id wajib diisi" }
+{ "code": 100, "message": "phone_number, amount, payment_method_id, dan terminal_id wajib diisi" }
 ```
 
 Ditolak kalau payment method ditemuin tapi gak punya `payment_gateway_code`:
@@ -106,14 +106,41 @@ Karena endpoint ini di-poll berkali-kali sambil nunggu QR di-scan, dan bakal ter
 
 Tabel ini **cuma** nyimpen dedupe flag — **gak** nyimpen ulang data topup apapun (`amount`, `member_id`, dst). Semua data buat isi struk ditarik LIVE dari response APIANDORDER tiap kali (lihat field enrichment di response `paid` di atas) — Laravel di alur ini murni stateless soal data topup, sama filosofinya kayak `CheckTopupStatus()` yang cuma passthrough.
 
+**`PrintServices::ResolveTopupPrintData(string $reference_number): ?array`** — satu-satunya tempat narik data struk top-up, dari `reference_number` doang (manggil `MemberBalanceServices::CheckTopupStatus()` ke APIANDORDER + resolve `payment_method_name` lokal dari `mr_payment_method`). Return `null` kalau status-nya bukan `paid` (belum ada struk). Dipakai BARENG sama 2 titik di bawah, biar angka struk selalu konsisten di kedua jalur.
+
+**`PrintServices::PrintTopup(string $reference_number, int $station_id)`** — server-side ESC/POS. Standar 2 parameter: `reference_number` (buat narik data via `ResolveTopupPrintData()`) + `station_id` (buat resolve `printer_name`/`line_character`). Station-nya no-op diem-diem (gak print, gak error) kalau `station_id`-nya gak match baris `mr_station` manapun.
+
+**Soal station/printer — BEDA dari struk order** (disepakati 2026-08-28): struk top-up pakai `mr_terminal.receipt_station_id` (per-terminal, dari `terminal_id` yang udah wajib dikirim pas Create), **BUKAN** `SettingModel::first()->default_station` (1 station global) kayak `PrintPayment()`/`PrintBill()` struk order. `$terminal` row-nya udah kepanggil di `TriggerTopupPrintIfNeeded()` buat cek `flag_printer_frontend` — `receipt_station_id` tinggal dibaca dari row yang sama, gak nambah query. Kalau terminal gak ketemu atau `receipt_station_id`-nya `null` → `station_id=0` dikirim ke `PrintTopup()`, otomatis no-op (gak match `mr_station` manapun) — diverifikasi live: terminal yang emang punya `receipt_station_id` valid (nunjuk ke printer network beneran) sukses nyoba connect ke printer itu (gagal cuma karena dev machine gak punya akses ke printer fisiknya, errornya ke-catch rapi & ke-log, gak break response).
+
+**`GET /api/kiosk/member/topup/print-data/{reference_number}`** (`KioskController::GetTopupPrintData`) — varian JSON buat Kiosk `flag_printer_frontend=true` (device sendiri yang render/print browser), mirror persis `GET print-data/{order_number}` buat struk order. Manggil `ResolveTopupPrintData()` yang SAMA, plus nambahin `branch` (header/footer/logo). Response:
+```json
+{
+  "code": 0,
+  "data": {
+    "reference_number": "TUJKT202508140002",
+    "terminal_id": 4,
+    "amount": "100000.00",
+    "member_name": "Budi Santoso",
+    "phone_number": "081234567890",
+    "payment_method_name": "QRIS",
+    "balance_after": "250000.00",
+    "paid_at": "2026-08-28T16:05:00+07:00",
+    "branch": {
+      "logo_header_src": "/img/branch/...",
+      "printing_header": "HEADER",
+      "printing_footer": "FOOTER",
+      "image_footer_src": null
+    }
+  }
+}
+```
+Kalau topup belum `paid`: `{ "code": 100, "message": "topup belum dibayar, belum ada struk buat ini" }`.
+
 Alur di `KioskController::CheckTopupStatus()` → `TriggerTopupPrintIfNeeded()`:
 1. Cek `tr_member_topup_print_log` — kalau `printed_at` udah keisi buat `reference_number` ini, skip semuanya (udah pernah diproses).
 2. Insert/update baris dedupe (`created_at`, belum `printed_at`).
-3. Resolve `mr_terminal` by `data.terminal_id` (dari response APIANDORDER) — dipakai buat cek `flag_printer_frontend`, **BUKAN** buat nentuin printer/station (lihat poin 5).
-4. Resolve `payment_method_name` lokal dari `mr_payment_method` by `data.payment_gateway_code` (arah kebalik dari resolusi `payment_gateway_code` di `TopupBalance()`).
-5. Kalau `mr_terminal.flag_printer_frontend == true` → **gak** print server-side (device kiosk sendiri yang tanggung jawab render/print browser, sama pola struk order) — cuma tandain dedupe `printed_at`. Kalau `false` (atau terminal gak ketemu) → panggil `PrintServices::PrintTopup($topupData)` server-side (ESC/POS), baru tandain `printed_at`.
-
-**Penting soal station/printer**: `PrintServices::PrintTopup()` **mirror persis** `PrintPayment()` (struk order) — sumber printer-nya `SettingModel::first()->default_station` (1 station default buat SELURUH POS), **BUKAN** `mr_terminal.receipt_station_id`. Field `receipt_station_id` di `mr_terminal` (lihat `KIOSK TERMINAL DETAIL.md`) itu ada di skema & diekspos API, tapi **gak dipakai buat routing print manapun** di sistem ini saat ini — konsisten sama semua struk customer lain (order/bill), jadi struk top-up ngikutin pola yang sama, bukan bikin mekanisme routing baru.
+3. Resolve `mr_terminal` by `data.terminal_id` (dari response APIANDORDER) — dipakai buat cek `flag_printer_frontend`.
+4. Kalau `mr_terminal.flag_printer_frontend == true` → **gak** print server-side (device kiosk sendiri yang tanggung jawab manggil `GET .../print-data/{reference_number}` lalu render/print browser, sama pola struk order) — cuma tandain dedupe `printed_at`. Kalau `false` (atau terminal gak ketemu) → panggil `PrintServices::PrintTopup($reference_number, $settingan->default_station)` server-side (ESC/POS), baru tandain `printed_at`.
 
 Format struk (`PrintServices::PrintTopup()`, `app/Services/PrintServices.php`):
 ```

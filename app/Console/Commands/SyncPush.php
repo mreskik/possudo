@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\JobHealthReporter;
 use App\Services\PushDataServices;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -39,25 +40,38 @@ class SyncPush extends Command
             // situ, walau gak ada FK constraint keras di server, sama urutan yang dipakai
             // DayShiftServices::EndDay(). 1 fungsi gagal (try/catch per panggilan) gak nahan
             // fungsi lain di putaran yang sama.
-            $this->pushOne('dayshift', fn() => $pushService->pushDataDayShift());
-            $this->pushOne('dayshift_detail', fn() => $pushService->pushDataDayShiftDetail());
-            $this->pushOne('order', fn() => $pushService->pushDataOrder());
-            $this->pushOne('order_detail', fn() => $pushService->pushDataOrderDetail());
-            $this->pushOne('order_detail_package', fn() => $pushService->pushDataOrderDetailPackage());
-            $this->pushOne('order_payment', fn() => $pushService->pushDataOrderPayment());
+            $lastError = $this->pushOne('dayshift', fn() => $pushService->pushDataDayShift());
+            $lastError = $this->pushOne('dayshift_detail', fn() => $pushService->pushDataDayShiftDetail()) ?? $lastError;
+            $lastError = $this->pushOne('order', fn() => $pushService->pushDataOrder()) ?? $lastError;
+            $lastError = $this->pushOne('order_detail', fn() => $pushService->pushDataOrderDetail()) ?? $lastError;
+            $lastError = $this->pushOne('order_detail_package', fn() => $pushService->pushDataOrderDetailPackage()) ?? $lastError;
+            $lastError = $this->pushOne('order_payment', fn() => $pushService->pushDataOrderPayment()) ?? $lastError;
+
+            // Putaran ini dianggap sukses cuma kalau SEMUA 6 fungsi lolos -- kalau ada 1 aja yang
+            // gagal, JobHealthReporter::failed() (bukan success()) biar kelihatan di jobs-health,
+            // walau 5 fungsi lain berhasil (lihat GET /api/system/jobs-health).
+            if ($lastError === null) {
+                JobHealthReporter::success('sync:push');
+            } else {
+                JobHealthReporter::failed('sync:push', $lastError);
+            }
 
             sleep($intervalSeconds);
         }
     }
 
-    private function pushOne(string $label, callable $fn): void
+    // pushOne: balikin pesan error (string) kalau $fn() gagal, null kalau sukses -- dipakai
+    // caller buat nentuin status putaran ini di sys_job_health tanpa nge-throw lagi ke luar.
+    private function pushOne(string $label, callable $fn): ?string
     {
         try {
             $fn();
             $this->line("[{$label}] push ok.");
+            return null;
         } catch (\Throwable $e) {
-            Log::error("sync:push gagal push {$label}: {$e->getMessage()}");
+            Log::channel('jobs')->error("sync:push gagal push {$label}: {$e->getMessage()}");
             $this->error("[{$label}] gagal: {$e->getMessage()}");
+            return "{$label}: {$e->getMessage()}";
         }
     }
 }

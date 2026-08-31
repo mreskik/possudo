@@ -15,6 +15,7 @@ use App\Http\Controllers\SalesController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\SyncController;
+use App\Http\Controllers\SystemController;
 use Illuminate\Support\Facades\Route;
 
 // Route::apiResource('order', OrderController::class);
@@ -38,6 +39,7 @@ Route::prefix('kiosk')->group(function () {
   Route::post('payment/cancel', [KioskController::class, 'CancelPayment']);
   Route::post('member/topup', [KioskController::class, 'TopupBalance']);
   Route::get('member/topup/check-status/{reference_number}', [KioskController::class, 'CheckTopupStatus']);
+  Route::get('member/topup/print-data/{reference_number}', [KioskController::class, 'GetTopupPrintData']);
   Route::get('print-data/{order_number}', [KioskController::class, 'GetPrintData']);
   Route::post('cancel-order', [KioskController::class, 'CancelOrder']);
 });
@@ -193,6 +195,11 @@ Route::prefix('branch-menu')->group(function () {
   Route::get('load', [BranchMenuController::class, 'load']);
   Route::post('save-soldout', [BranchMenuController::class, 'saveSoldout']);
   Route::post('save-stokqty', [BranchMenuController::class, 'saveStokQTY']);
+});
+
+
+Route::prefix('system')->group(function () {
+  Route::get('jobs-health', [SystemController::class, 'JobsHealth']);
 });
 
 

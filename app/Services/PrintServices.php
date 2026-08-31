@@ -1019,17 +1019,54 @@ class PrintServices
     }
   }
 
-  // PrintTopup: struk top-up saldo member (dompet digital) -- Kiosk. Mirror pola PrintPayment()
-  // (station dari SettingModel::first()->default_station, SAMA persis, BUKAN dari
-  // mr_terminal.receipt_station_id -- field itu ada di skema tapi gak dipakai buat routing print
-  // manapun di sistem ini, konsisten sama semua struk customer lain). $topupData: array asosiatif
-  // reference_number, amount, member_name, phone_number, payment_method_name, balance_after,
-  // paid_at (semua string, udah diformat pemanggil). Disepakati 2026-08-28.
-  public static function PrintTopup(array $topupData)
+  // ResolveTopupPrintData: satu-satunya tempat narik data buat struk top-up, dari reference_number
+  // doang -- dipakai BARENG sama PrintTopup() (server-side ESC/POS) dan
+  // KioskController::GetTopupPrintData() (varian JSON buat flag_printer_frontend=true), pola sama
+  // persis PrintServices::ResolveFlagInclusiveTax()/GetTaxBreakdownByType() yang direuse
+  // GetPrintData() buat struk order. Data topup ditarik LIVE dari APIANDORDER (CheckTopupStatus,
+  // stateless, Laravel gak nyimpen ulang) -- payment_method_name doang yang diresolve lokal dari
+  // mr_payment_method. Return null kalau topup belum "paid" (belum ada struk buat itu).
+  public static function ResolveTopupPrintData(string $reference_number): ?array
+  {
+    $data = (new MemberBalanceServices())->CheckTopupStatus($reference_number);
+    if (($data['status'] ?? null) !== 'paid') {
+      return null;
+    }
+
+    $paymentMethodName = null;
+    if (!empty($data['payment_gateway_code'])) {
+      $paymentMethod = DB::table('mr_payment_method')->where('payment_gateway_code', $data['payment_gateway_code'])->first();
+      $paymentMethodName = $paymentMethod->name ?? null;
+    }
+
+    return [
+      'reference_number' => $reference_number,
+      'terminal_id' => $data['terminal_id'] ?? null,
+      'amount' => $data['amount'] ?? '0',
+      'member_name' => $data['member_name'] ?? '',
+      'phone_number' => $data['member_phone_number'] ?? '',
+      'payment_method_name' => $paymentMethodName ?? '-',
+      'balance_after' => $data['balance_after'] ?? '0',
+      'paid_at' => $data['paid_at'] ?? now()->toDateTimeString(),
+    ];
+  }
+
+  // PrintTopup: struk top-up saldo member (dompet digital) -- Kiosk. Cuma butuh reference_number
+  // (buat narik data via ResolveTopupPrintData()) + station_id (dari mana printer_name/line_character
+  // diresolve) -- pemanggil (KioskController) yang nentuin station_id-nya (biasanya
+  // SettingModel::first()->default_station, SAMA pola PrintPayment() struk order -- BUKAN
+  // mr_terminal.receipt_station_id, field itu ada di skema tapi gak dipakai buat routing print
+  // manapun di sistem ini). Disepakati 2026-08-28, direvisi jadi 2-param standar (reference_number
+  // + station_id) biar konsisten & gampang dipanggil ulang (reprint) dari mana aja.
+  public static function PrintTopup(string $reference_number, int $station_id)
   {
     try {
-      $settingan = SettingModel::first();
-      $data_station = StationModel::where('id', $settingan->default_station)->first();
+      $topupData = self::ResolveTopupPrintData($reference_number);
+      if (!$topupData) {
+        return;
+      }
+
+      $data_station = StationModel::where('id', $station_id)->first();
       if (!$data_station) {
         return;
       }

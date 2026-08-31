@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\BranchModel;
 use App\Models\DaySiftModel;
+use App\Services\JobHealthReporter;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -39,7 +40,8 @@ class SendHeartbeat extends Command
             try {
                 $this->tick();
             } catch (\Throwable $e) {
-                Log::error("heartbeat:send: {$e->getMessage()}");
+                Log::channel('jobs')->error("heartbeat:send: {$e->getMessage()}");
+                JobHealthReporter::failed('heartbeat:send', $e->getMessage());
                 $this->error("Gagal: {$e->getMessage()}");
             }
 
@@ -52,12 +54,14 @@ class SendHeartbeat extends Command
         $branch = BranchModel::first();
         if (!$branch || empty($branch->token)) {
             $this->error('Branch/token lokal belum ke-setup, skip.');
+            JobHealthReporter::success('heartbeat:send'); // skip yang disengaja, bukan error
             return;
         }
 
         $dayshiftOpen = DaySiftModel::whereNull('dayout_time')->exists();
         if (!$dayshiftOpen) {
             $this->line('Dayshift belum/gak lagi kebuka, skip kirim heartbeat.');
+            JobHealthReporter::success('heartbeat:send'); // skip yang disengaja, bukan error
             return;
         }
 
@@ -65,17 +69,20 @@ class SendHeartbeat extends Command
             $response = Http::withToken($branch->token)
                 ->post(env('SERVER_ENDPOINT') . "/pos/heartbeat/{$branch->id}");
         } catch (\Throwable $e) {
-            Log::error("heartbeat:send: gagal koneksi ke APIANDORDER: {$e->getMessage()}");
+            Log::channel('jobs')->error("heartbeat:send: gagal koneksi ke APIANDORDER: {$e->getMessage()}");
+            JobHealthReporter::failed('heartbeat:send', "gagal koneksi ke APIANDORDER: {$e->getMessage()}");
             $this->error("Gagal koneksi: {$e->getMessage()}");
             return;
         }
 
         if ($response->json('code') !== 0) {
-            Log::error('heartbeat:send: gagal', ['response' => $response->json()]);
+            Log::channel('jobs')->error('heartbeat:send: gagal', ['response' => $response->json()]);
+            JobHealthReporter::failed('heartbeat:send', 'ditolak server: ' . json_encode($response->json()));
             $this->error('Heartbeat ditolak server: ' . json_encode($response->json()));
             return;
         }
 
+        JobHealthReporter::success('heartbeat:send');
         $this->line('Heartbeat terkirim.');
     }
 }

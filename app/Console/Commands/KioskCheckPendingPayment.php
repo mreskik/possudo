@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\JobHealthReporter;
 use App\Services\PaymentGatewayServices;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -51,14 +52,24 @@ class KioskCheckPendingPayment extends Command
                 })
                 ->pluck('o.order_number');
 
+            $lastError = null;
             foreach ($orderNumbers as $orderNumber) {
                 try {
                     $result = (new PaymentGatewayServices())->CheckStatus($orderNumber);
                     $this->line("[{$orderNumber}] status: {$result['status']}");
                 } catch (\Throwable $e) {
-                    Log::error("kiosk:check-pending-payment gagal cek {$orderNumber}: {$e->getMessage()}");
+                    Log::channel('jobs')->error("kiosk:check-pending-payment gagal cek {$orderNumber}: {$e->getMessage()}");
                     $this->error("[{$orderNumber}] gagal: {$e->getMessage()}");
+                    $lastError = "{$orderNumber}: {$e->getMessage()}";
                 }
+            }
+
+            // Putaran ini sukses kalau gak ada 1 pun order yang gagal dicek (termasuk kalau
+            // $orderNumbers kosong -- gak ada kandidat itu normal, bukan error).
+            if ($lastError === null) {
+                JobHealthReporter::success('kiosk:check-pending-payment');
+            } else {
+                JobHealthReporter::failed('kiosk:check-pending-payment', $lastError);
             }
 
             sleep(60);

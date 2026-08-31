@@ -123,6 +123,18 @@ return [
             'handler' => NullHandler::class,
         ],
 
+        // 'jobs': channel khusus buat background job (App\Console\Commands) -- dipisah dari
+        // laravel.log biar gampang di-grep/tail sendiri (gak campur log HTTP request), dan
+        // dipaksa 1 baris per entry lewat SingleLineFormatter (lihat app/Logging/). Lihat
+        // DOKUMENTASI BACKGROUND JOB/POLA UMUM.md.
+        'jobs' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/jobs.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'replace_placeholders' => true,
+            'tap' => [App\Logging\SingleLineFormatter::class],
+        ],
+
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
         ],

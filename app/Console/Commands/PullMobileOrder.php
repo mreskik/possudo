@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\BranchModel;
+use App\Services\JobHealthReporter;
 use App\Services\MobileOrderPullServices;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -49,6 +50,7 @@ class PullMobileOrder extends Command
 
                 if ($terminals->isEmpty()) {
                     Log::warning('mobile-order:pull: belum ada terminal aktif bertipe Worker Mobile Customer, retry.');
+                    JobHealthReporter::failed('mobile-order:pull', 'belum ada terminal aktif bertipe Worker Mobile Customer');
                     $this->error('Belum ada terminal aktif bertipe Worker Mobile Customer.');
                     sleep(self::RECONNECT_DELAY_SECONDS);
                     continue;
@@ -57,6 +59,7 @@ class PullMobileOrder extends Command
 
                 if (empty($terminal->table_section_id)) {
                     Log::warning("mobile-order:pull: terminal worker '{$terminal->name}' (id={$terminal->id}) belum di-assign table_section_id, retry.");
+                    JobHealthReporter::failed('mobile-order:pull', "terminal worker '{$terminal->name}' belum di-assign table_section_id");
                     $this->error("Terminal worker '{$terminal->name}' belum di-assign table_section_id (lewat Setting > Terminal).");
                     sleep(self::RECONNECT_DELAY_SECONDS);
                     continue;
@@ -65,6 +68,7 @@ class PullMobileOrder extends Command
                 $branch = BranchModel::first();
                 if (!$branch || empty($branch->token)) {
                     Log::warning('mobile-order:pull: branch/token lokal belum ke-setup, retry.');
+                    JobHealthReporter::failed('mobile-order:pull', 'branch/token lokal belum ke-setup');
                     $this->error('Branch/token lokal belum ke-setup.');
                     sleep(self::RECONNECT_DELAY_SECONDS);
                     continue;
@@ -72,7 +76,8 @@ class PullMobileOrder extends Command
 
                 $this->listenWebSocket($service, $terminal, $branch->token);
             } catch (\Throwable $e) {
-                Log::error("mobile-order:pull: {$e->getMessage()}");
+                Log::channel('jobs')->error("mobile-order:pull: {$e->getMessage()}");
+                JobHealthReporter::failed('mobile-order:pull', $e->getMessage());
                 $this->error("Gagal: {$e->getMessage()}");
                 sleep(self::RECONNECT_DELAY_SECONDS);
             }
@@ -110,10 +115,14 @@ class PullMobileOrder extends Command
             } catch (TimeoutException $e) {
                 // idle timeout -- koneksi socket MASIH HIDUP (textalk/websocket gak nutup socket
                 // buat timeout, cuma exception buat balikin kontrol ke sini), lanjut nunggu lagi.
-                // BUKAN error, gak perlu di-log/reconnect.
+                // BUKAN error, gak perlu di-log/reconnect. TAPI tetap dianggap "sehat" (WS masih
+                // konek nunggu sinyal) buat jobs-health, biar last_tick_at gak keliatan stale
+                // cuma gara-gara lagi sepi order.
+                JobHealthReporter::success('mobile-order:pull');
                 continue;
             } catch (ConnectionException $e) {
-                Log::warning("mobile-order:pull: koneksi WS putus: {$e->getMessage()}, reconnect " . self::RECONNECT_DELAY_SECONDS . " detik lagi.");
+                Log::channel('jobs')->error("mobile-order:pull: koneksi WS putus: {$e->getMessage()}, reconnect " . self::RECONNECT_DELAY_SECONDS . " detik lagi.");
+                JobHealthReporter::failed('mobile-order:pull', "koneksi WS putus: {$e->getMessage()}");
                 $this->error("WS putus: {$e->getMessage()}");
                 sleep(self::RECONNECT_DELAY_SECONDS);
                 return;
@@ -126,11 +135,13 @@ class PullMobileOrder extends Command
         $orders = $service->fetchPending($terminal->branch_id, $branchToken);
 
         if (count($orders) === 0) {
+            JobHealthReporter::success('mobile-order:pull'); // fetch jalan normal, cuma kosong
             return;
         }
 
         $this->line(count($orders) . ' order mobile baru ditemukan.');
 
+        $lastError = null;
         foreach ($orders as $order) {
             try {
                 $service->processOrder($order, $terminal);
@@ -140,9 +151,16 @@ class PullMobileOrder extends Command
                 // sengaja LANJUT ke order berikutnya (bukan break) -- 1 order gagal (mis. dayshift
                 // belum dibuka) gak boleh nahan order lain yang valid. ackOrder() SENGAJA gak
                 // dipanggil di sini -- order ini masih harus nongol lagi di cycle berikutnya.
-                Log::error("mobile-order:pull: gagal proses order {$order['order_number']}: {$e->getMessage()}");
+                Log::channel('jobs')->error("mobile-order:pull: gagal proses order {$order['order_number']}: {$e->getMessage()}");
                 $this->error("Gagal proses order {$order['order_number']}: {$e->getMessage()}");
+                $lastError = "{$order['order_number']}: {$e->getMessage()}";
             }
+        }
+
+        if ($lastError === null) {
+            JobHealthReporter::success('mobile-order:pull');
+        } else {
+            JobHealthReporter::failed('mobile-order:pull', $lastError);
         }
     }
 }
