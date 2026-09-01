@@ -19,8 +19,14 @@ class PaymentGatewayServices
 
   // RequestPayment: validasi payment_method_id dulu (harus punya payment_gateway_code keisi,
   // sama kayak filter di KioskController::GetPaymentMethodList()) sebelum minta QR ke service
-  // payment gateway (terpisah dari APIANDORDER, lihat dev/payment/). amount diambil dari
-  // tr_order.total_billing (server-side), bukan dari client.
+  // payment gateway (terpisah dari APIANDORDER, lihat dev/payment/).
+  //
+  // $amount OPSIONAL -- null (default, dipakai Kiosk yang selalu bayar penuh) berarti dihitung
+  // dari tr_order.total_billing (server-side, sama kayak sebelumnya). Diisi eksplisit dipakai
+  // POS (kasir) buat dukung split-payment (misal outstanding tersisa gara-gara sebagian udah
+  // kebayar cash, kasir minta QRIS cuma buat SISANYA, bukan total tagihan penuh). Disepakati
+  // 2026-08-31 -- lihat PaymentGatewayController (endpoint kasir) vs KioskController (endpoint
+  // self-service Kiosk, gak kirim amount, selalu default ke total_billing).
   //
   // Retry-aware: kalau order_number ini masih punya attempt 'pending' di tr_kiosk_payment_request
   // (mis. QR expired/customer minta ulang), attempt lama itu di-cancel dulu (ke Midtrans lewat
@@ -29,7 +35,7 @@ class PaymentGatewayServices
   // dipakai ulang). tr_kiosk_payment_request nyimpen jejak tiap attempt (termasuk
   // payment_method_id-nya) buat dipakai lagi nanti pas payment_check_status confirm ke
   // PaymentServices::SavePayment().
-  public function RequestPayment(string $order_number, int $payment_method_id): array
+  public function RequestPayment(string $order_number, int $payment_method_id, ?int $amount = null): array
   {
     $paymentMethod = DB::table('mr_payment_method')->where('id', $payment_method_id)->first();
     if (!$paymentMethod) {
@@ -52,7 +58,18 @@ class PaymentGatewayServices
     }
 
     $branch = BranchModel::first();
-    $amount = (int) $order->total_billing;
+    $amount = $amount ?? (int) $order->total_billing;
+    if ($amount <= 0) {
+      throw new \Exception('nominal payment tidak valid');
+    }
+    // Sanity bound -- backend gak independen tau "udah kebayar berapa" pas split-payment
+    // (payment_detail sisi cash/card masih murni state frontend, belum ke-persist sampai
+    // SavePayment() beneran dipanggil), jadi cek paling kuat yang bisa dipastiin di sini cuma
+    // "amount gak boleh lebih dari total tagihan order", bukan "gak boleh lebih dari outstanding
+    // yang tersisa" -- itu dipercaya dari client, sama level trust-nya kayak payment_amount cash.
+    if ($amount > (int) $order->total_billing) {
+      throw new \Exception('nominal payment melebihi total tagihan order');
+    }
 
     // cancel attempt lama yang masih pending buat order ini (kalau ada)
     $pendingAttempt = KioskPaymentRequestModel::where('order_number', $order_number)
@@ -164,10 +181,16 @@ class PaymentGatewayServices
       $status = 'expired';
     }
 
-    // order yang QR-nya kadaluarsa di Midtrans (gak pernah di-scan) -- samain tr_order.status
-    // jadi 'expired' juga, biar gak nyangkut 'pending' selamanya. Guard status = 'pending' di
-    // where() ini murni jaga-jaga (idempotency guard di atas udah nutup kasus order paid duluan).
-    if ($status === 'expired') {
+    // order Kiosk yang QR-nya kadaluarsa (gak pernah di-scan) -- samain tr_order.status jadi
+    // 'expired' juga, biar gak nyangkut 'pending' selamanya (customer Kiosk emang udah
+    // ninggalin device, order ini beneran mati -- ini yang dibaca Kiosk order-history/-detail).
+    // CUMA buat order_source='kiosk' (disepakati 2026-08-31) -- order POS SENGAJA JANGAN ikut
+    // kesenggol: kasir yang minta QRIS masih berdiri di situ, bisa langsung retry
+    // (payment-gateway/request lagi), order-nya harus tetap 'pending'/'hold' apa adanya biar
+    // gak ilang dari tampilan meja/order-list POS cuma gara-gara 1 attempt QR timeout. Pola ini
+    // konsisten sama KioskController::CancelPayment() (cancel manual) yang emang dari awal
+    // SENGAJA gak nyentuh status order sama sekali.
+    if ($status === 'expired' && $order->order_source === 'kiosk') {
       TrOrderModel::where('order_number', $order_number)
         ->where('status', 'pending')
         ->update(['status' => 'expired']);

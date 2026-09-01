@@ -34,7 +34,7 @@ class DayShiftController extends Controller
             $start_cash = $request->input("start_cash");
             //belum filter
 
-            $data = DayShiftServices::StartDay($start_cash);
+            $data = DayShiftServices::StartDay($start_cash, $request);
 
             return response()->json([
                 "code" => 0,

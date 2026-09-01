@@ -7,7 +7,6 @@ use App\Models\CategoryModel;
 use App\Models\MasterBranchOpsSettingModel;
 use App\Models\MasterImageCustomerDisplayModel;
 use App\Models\MasterImageKioskModel;
-use App\Models\MasterImageModel;
 use App\Models\MasterBranchVisitPurposeModel;
 use App\Models\MasterItemConvModel;
 use App\Models\MasterItemModel;
@@ -69,8 +68,10 @@ class SetupServices
   // dihapus (beda dari pola truncate+insert lama) -- data yang dihapus/dinonaktifkan di server
   // bakal tetap nyangkut di lokal sampai ditangani terpisah (belum diminta/digarap).
   // Pengecualian yang TETAP truncate+insert (replace): getMasterUser (data akses login/user,
-  // harus selalu cerminan pasti dari server) dan getTableSectionPrintCategorySetting (id dari
-  // server gak reliable buat dedup, lihat catatan di fungsi itu).
+  // harus selalu cerminan pasti dari server), getTableSectionPrintCategorySetting (id dari
+  // server gak reliable buat dedup, lihat catatan di fungsi itu), getMasterBranchVisitPurpose,
+  // dan getMasterPaymentMethodVisitPurpose (2026-08-31, sama alasan: baris yang link/config-nya
+  // DIHAPUS di ERP gak akan pernah ikut kehapus di lokal kalau upsert).
   private function upsertRows(string $modelClass, array $rows, string $uniqueBy = 'id'): void
   {
     if (empty($rows)) {
@@ -604,6 +605,14 @@ class SetupServices
     }
   }
 
+  // getMasterPaymentMethodVisitPurpose: truncate+insert (BUKAN upsertRows lagi, disepakati
+  // 2026-08-31) -- pola SAMA kayak getMasterBranchVisitPurpose() (lihat catatan di situ, 2026-08-26)
+  // dan alasannya SAMA PERSIS: link yang udah DIHAPUS di ERP gak akan pernah ikut kehapus di
+  // lokal kalau pakai upsert (upsert emang gak nge-delete) -- ketemu langsung kasusnya: baris
+  // CASH->TAKEAWAY yang udah lama dihapus di ERP tetep nyangkut di mr_payment_method_visit_purposes
+  // lokal, bikin dobel muncul di GET /api/master/payment-method/{visit_purpose_id} pas ERP-nya
+  // diisi ulang. Gak ada tabel lokal POS yang refer ke mr_payment_method_visit_purposes.id
+  // (dicek information_schema, 0 hasil), jadi aman ganti pola.
   public function getMasterPaymentMethodVisitPurpose(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -615,7 +624,8 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPaymentMethodVisitPurposeModel::class, $response->json('data'));
+        MasterPaymentMethodVisitPurposeModel::truncate();
+        MasterPaymentMethodVisitPurposeModel::insert($response->json('data'));
       }
 
       return $response;
@@ -671,32 +681,18 @@ class SetupServices
     }
   }
 
-  // getMasterImage/getMasterImageCustomerDisplay/getMasterImageKiosk: 3 endpoint flat terpisah
-  // buat data master_image per-channel di ERP (2026-08-24, ganti dari header -> image_list ->
-  // apply_for jadi header -> customer_display / kiosk, 2 tabel eksplisit sejajar), ngikutin
-  // pola getMasterItemPackage/_Group/_Detail -- upsert-by-id, gak ada penghapusan baris lokal
-  // yang udah gak ada lagi di server (limitasi yang sama & diterima kayak pull lain, lihat
+  // getMasterImageCustomerDisplay/getMasterImageKiosk: 2 endpoint flat per-channel buat data
+  // master_image di ERP (2026-08-24, ganti dari header -> image_list -> apply_for jadi
+  // header -> customer_display / kiosk, 2 tabel eksplisit sejajar), ngikutin pola
+  // getMasterItemPackage/_Group/_Detail -- upsert-by-id, gak ada penghapusan baris lokal yang
+  // udah gak ada lagi di server (limitasi yang sama & diterima kayak pull lain, lihat
   // SYNC PULL.md).
-  public function getMasterImage(string $username, string $password, int $branch_id, ?string $token = null)
-  {
-    try {
-      $response = $this->syncRequest(
-        $username,
-        $password,
-        $token,
-        $this->endpoint . '/pos/sync/get_master_image/' . $branch_id
-      );
-
-      if ($response->json('code') == 0) {
-        $this->upsertRows(MasterImageModel::class, $response->json('data'));
-      }
-
-      return $response;
-    } catch (\Throwable $e) {
-      throw $e;
-    }
-  }
-
+  //
+  // getMasterImage() (endpoint generic pra-restrukturisasi, tabel mr_master_image) DIHAPUS
+  // 2026-08-31 -- gak download gambar-nya (beda dari 2 fungsi di bawah, yang manggil
+  // downloadImage()) DAN gak ada satupun komponen frontend yang render dari tabel itu lagi,
+  // udah kegantiin total sama 2 channel di bawah. Sync-nya sia-sia (nyimpen path mentah ERP
+  // yang gak pernah dipakai), dicabut dari install sequence (Navbar.vue/SetupPage.vue) juga.
   public function getMasterImageCustomerDisplay(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {

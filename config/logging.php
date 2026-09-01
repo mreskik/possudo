@@ -125,12 +125,16 @@ return [
 
         // 'jobs': channel khusus buat background job (App\Console\Commands) -- dipisah dari
         // laravel.log biar gampang di-grep/tail sendiri (gak campur log HTTP request), dan
-        // dipaksa 1 baris per entry lewat SingleLineFormatter (lihat app/Logging/). Lihat
-        // DOKUMENTASI BACKGROUND JOB/POLA UMUM.md.
+        // dipaksa 1 baris per entry lewat SingleLineFormatter (lihat app/Logging/). Driver
+        // 'daily' (BUKAN 'single') -- file baru per tanggal (jobs-2026-08-31.log, dst) + otomatis
+        // hapus file yang lebih tua dari LOG_JOBS_RETENTION_DAYS, semua dikerjain proses PHP
+        // sendiri (Monolog) pas nulis, GAK ada resiko lock-conflict kayak coba nge-truncate file
+        // yang lagi dipegang proses lain (lihat DOKUMENTASI BACKGROUND JOB/POLA UMUM.md).
         'jobs' => [
-            'driver' => 'single',
+            'driver' => 'daily',
             'path' => storage_path('logs/jobs.log'),
             'level' => env('LOG_LEVEL', 'debug'),
+            'days' => env('LOG_JOBS_RETENTION_DAYS', 3),
             'replace_placeholders' => true,
             'tap' => [App\Logging\SingleLineFormatter::class],
         ],

@@ -165,7 +165,7 @@ class DayShiftServices
     ];
   }
 
-  public static function StartDay($start_cash)
+  public static function StartDay($start_cash, $request = null)
   {
     try {
       // lockForUpdate di row branch -- dijadiin "kunci" biar 2 request StartDay yang nembak
@@ -173,7 +173,7 @@ class DayShiftServices
       // salah satu sempat insert). Tanpa ini ada celah race condition kecil yang bisa bikin
       // 2 dayshift aktif sekaligus -- MySQL gak dukung partial unique index (WHERE dayout_time
       // IS NULL) kayak Postgres, jadi diamanin lewat transaction + row lock di sini.
-      return DB::transaction(function () use ($start_cash) {
+      return DB::transaction(function () use ($start_cash, $request) {
         $datetimenow = now();
         $branch = BranchModel::lockForUpdate()->first();
         $current_dayshift = self::GetDayShift();
@@ -196,7 +196,7 @@ class DayShiftServices
           "branch_id" => $branch->id,
           "dayin_time" => $datetimenow,
           "dayin_total" => $start_cash,
-          "dayin_user_id" => 1,
+          "dayin_user_id" => self::getLoggedInUserId($request) ?? 1,
         ]);
 
         return "success";
@@ -968,7 +968,20 @@ class DayShiftServices
   public static function GetDayshiftList()
   {
     try {
-      $dayshift_list = DaySiftModel::orderBy('ulid', 'desc')->get();
+      // Join mr_user 2x (alias beda) buat dapetin NAMA yang mulai/nutup shift, bukan cuma
+      // dayin_user_id/dayout_user_id mentah -- dipakai kolom "Started By"/"Ended By" di
+      // ShiftLogPage.vue (posv1-vue). dayout_user_id null selama shift masih kebuka, LEFT JOIN
+      // biar baris shift yang belum ditutup tetap muncul (dayout_user_name null).
+      $dayshift_list = DB::select("
+      SELECT
+      td.*,
+      uin.fullname as dayin_user_name,
+      uout.fullname as dayout_user_name
+      FROM tr_dayshift td
+      LEFT JOIN mr_user uin on uin.id = td.dayin_user_id
+      LEFT JOIN mr_user uout on uout.id = td.dayout_user_id
+      ORDER BY td.ulid DESC
+      ");
       return $dayshift_list;
     } catch (\Throwable $e) {
       throw $e;

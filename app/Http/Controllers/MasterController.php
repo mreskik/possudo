@@ -93,21 +93,36 @@ class MasterController extends Controller
         }
     }
 
+    // GetPaymentMethod: payment method yang valid buat 1 visit purpose, di-nest 3 level --
+    // Type (CASH/CARD/VOUCHER/OTHER) -> Group (nama bank buat CARD, "OTHER" generic buat yang
+    // lain -- lihat mr_payment_method_group, disepakati 2026-08-31) -> Method. mpm.type_id/
+    // group_payment_id itu 2 FK INDEPENDEN (bukan group nge-refer ke type), jadi nesting-nya
+    // dibentuk manual di PHP abis fetch flat, bukan dari struktur FK bertingkat di DB.
     public function GetPaymentMethod(Request $request)
     {
 
         $visit_purpose_id = $request->route("visit_purpose_id");
 
         try {
-            $data = DB::select("
+            $rows = DB::select("
             SELECT
-                mpm.* 
+                mpm.*,
+                mpmt.id as payment_method_type_id,
+                mpmt.name as payment_method_type_name,
+                mpmg.id as payment_method_group_id,
+                mpmg.name as payment_method_group_name
             FROM
                 mr_payment_method_visit_purposes mpmvp
-                JOIN mr_payment_method mpm ON mpm.id = mpmvp.payment_method_id 
+                JOIN mr_payment_method mpm ON mpm.id = mpmvp.payment_method_id
+                LEFT JOIN mr_payment_method_type mpmt ON mpmt.id = mpm.payment_method_type_id
+                LEFT JOIN mr_payment_method_group mpmg ON mpmg.id = mpm.group_payment_id
             WHERE
                 mpmvp.visit_purpose_id = ?
+            ORDER BY mpmt.id, mpmg.id, mpm.id
             ", [$visit_purpose_id]);
+
+            $data = self::GroupPaymentMethodTree($rows);
+
             return response()->json([
                 'code' => 0,
                 'data' => $data
@@ -118,6 +133,55 @@ class MasterController extends Controller
                 'message' => $e->getMessage()
             ]);
         }
+    }
+
+    // GroupPaymentMethodTree: flat rows (1 baris = 1 payment method, udah bawa nama type/group
+    // dari JOIN) -> tree [ {type, groups: [ {group, payment_methods: [...] } ]} ]. ORDER BY di
+    // query jamin baris type/group yang sama nempel bersebelahan, jadi cukup 1x loop (bukan
+    // groupBy() Laravel yang butuh collection).
+    private static function GroupPaymentMethodTree(array $rows): array
+    {
+        $tree = [];
+        $typeIndex = [];
+        $groupIndex = [];
+
+        foreach ($rows as $row) {
+            $typeId = $row->payment_method_type_id;
+            $groupId = $row->payment_method_group_id;
+
+            if (!isset($typeIndex[$typeId])) {
+                $typeIndex[$typeId] = count($tree);
+                $tree[] = [
+                    'payment_method_type_id' => $typeId,
+                    'payment_method_type_name' => $row->payment_method_type_name,
+                    'groups' => [],
+                ];
+            }
+            $typePos = $typeIndex[$typeId];
+
+            $groupKey = $typeId . ':' . $groupId;
+            if (!isset($groupIndex[$groupKey])) {
+                $groupIndex[$groupKey] = count($tree[$typePos]['groups']);
+                $tree[$typePos]['groups'][] = [
+                    'payment_method_group_id' => $groupId,
+                    'payment_method_group_name' => $row->payment_method_group_name,
+                    'payment_methods' => [],
+                ];
+            }
+            $groupPos = $groupIndex[$groupKey];
+
+            // Kolom bantu (nama type/group) dibuang dari objek method-nya sendiri -- udah
+            // kepindah jadi header type/group di tree, gak perlu dobel di tiap method.
+            unset(
+                $row->payment_method_type_id,
+                $row->payment_method_type_name,
+                $row->payment_method_group_id,
+                $row->payment_method_group_name
+            );
+            $tree[$typePos]['groups'][$groupPos]['payment_methods'][] = $row;
+        }
+
+        return $tree;
     }
 
     public function GetBranchDetail()

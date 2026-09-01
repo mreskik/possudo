@@ -24,4 +24,20 @@ class OrderlistController extends Controller
             ]);
         }
     }
+
+    public function getAllPendingOrders(Request $request)
+    {
+        try {
+            $data = OrderlistServices::getAllPendingOrders();
+            return response()->json([
+                "code" => 0,
+                "data" => $data
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 100,
+                "data" => $e->getMessage()
+            ]);
+        }
+    }
 }

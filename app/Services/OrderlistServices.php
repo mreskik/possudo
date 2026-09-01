@@ -40,4 +40,22 @@ class OrderlistServices
       return $e;
     }
   }
+
+  // getAllPendingOrders: SEMUA order pending/hold lintas table section -- BEDA dari
+  // getOrderList() di atas (yang WAJIB scoped ke 1 table_section_id). Dipakai lock screen
+  // (LockscreenPage.vue) biar staff bisa liat sekilas order yang lagi nyangkut TANPA perlu
+  // login/pilih table section dulu -- disepakati 2026-08-31, sebelumnya lock screen malah
+  // nyalin utuh UI table-section-tabs dari listTablePage.vue yang gak relevan buat konteks
+  // pra-login.
+  public static function getAllPendingOrders()
+  {
+    try {
+      return TrOrderModel::where('order_source', 'pos')
+        ->whereIn('status', ['pending', 'hold'])
+        ->orderBy('created_at', 'desc')
+        ->get();
+    } catch (\Throwable $e) {
+      return $e;
+    }
+  }
 }

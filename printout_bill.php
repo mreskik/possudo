@@ -151,7 +151,7 @@ try {
     $print->text("Table       : " . $table . "\n");
     $print->text("Purpose     : " . $visitPurpose . "\n");
     $print->text("Pax         : " . $pax . "\n");
-    $print->text("Chasier     : " . $cashier . "\n");
+    $print->text("Cashier     : " . $cashier . "\n");
 
     $print->text("Status      : ");
     $print->setEmphasis(true);

@@ -73,6 +73,9 @@ class PaymentServices
           'payment_number' => $payment_number,
           'payment_method_id' => $item['payment_method_id'],
           'payment_amount' => $item['payment_amount'],
+          // change_amount: kembalian tunai, cuma keisi kalau frontend ngirim (CASH), default 0
+          // buat method lain -- lihat migration change_amount di tr_order_payment.
+          'change_amount' => $item['change_amount'] ?? 0,
           'card_number' => $item['card_number'],
           'bank_name' => $item['bank_name'],
           'verification_code' => $item['verification_code'],
@@ -164,6 +167,7 @@ class PaymentServices
           'payment_number' => $dataorder->payment_number,
           'payment_method_id' => $item['payment_method_id'],
           'payment_amount' => $item['payment_amount'],
+          'change_amount' => $item['change_amount'] ?? 0,
           'card_number' => $item['card_number'],
           'bank_name' => $item['bank_name'],
           'verification_code' => $item['verification_code'],
@@ -200,7 +204,9 @@ class PaymentServices
         "total_payment" => $dataorder->total_billing,
         "item_voucher" => 0,
         "total_amount_voucher" => 0,
-        "total_change" => 0,
+        // total_change: jumlah change_amount semua payment_detail (biasanya cuma 1 baris CASH
+        // yang keisi, tapi dijumlah semua jaga-jaga split payment ada >1 baris CASH).
+        "total_change" => $datapaymentdetail->sum('change_amount'),
         "payment_detail" => $datapaymentdetail,
         "member_id" => $dataorder->member_id,
         "member_name" => $member->name ?? null,

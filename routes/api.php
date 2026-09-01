@@ -10,11 +10,13 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderNotifController;
 use App\Http\Controllers\OrderlistController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PaymentGatewayController;
 use App\Http\Controllers\PushDataController;
 use App\Http\Controllers\SalesController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\SyncController;
+use App\Http\Controllers\SyncGroupController;
 use App\Http\Controllers\SystemController;
 use Illuminate\Support\Facades\Route;
 
@@ -76,7 +78,6 @@ Route::prefix('sync_pull')->group(function () {
   Route::get('get_payment_method_visit_purpose', [SyncController::class, 'getMasterPaymentMethodVisitPurpose']);
   Route::get('get_branch_visit_purpose', [SyncController::class, 'getMasterBranchVisitPurpose']);
   Route::get('get_branch_ops_setting', [SyncController::class, 'getMasterBranchOpsSetting']);
-  Route::get('get_master_image', [SyncController::class, 'getMasterImage']);
   Route::get('get_master_image_customer_display', [SyncController::class, 'getMasterImageCustomerDisplay']);
   Route::get('get_master_image_kiosk', [SyncController::class, 'getMasterImageKiosk']);
   Route::get('get_visit_purpose', [SyncController::class, 'getMasterVisitPurpose']);
@@ -97,6 +98,21 @@ Route::prefix('sync_pull')->group(function () {
 
   Route::get('get_member_type_list', [SyncController::class, 'getMemberTypeList']);
   Route::get('get_member_list', [SyncController::class, 'getMemberList']);
+});
+
+// sync-group: kelompok endpoint BARU (2026-08-31) buat UI checkbox-per-kategori di
+// SettingPage.vue -- rangkuman dari endpoint sync_pull individual di atas (SyncController,
+// TETAP ADA apa adanya, gak dihapus). "sales" beda arah (push ke ERP, bukan pull) -- lihat
+// SyncGroupController.
+Route::prefix('sync-group')->group(function () {
+  Route::get('table', [SyncGroupController::class, 'syncTable']);
+  Route::get('promotion', [SyncGroupController::class, 'syncPromotion']);
+  Route::get('member', [SyncGroupController::class, 'syncMember']);
+  Route::get('user', [SyncGroupController::class, 'syncUser']);
+  Route::get('menu', [SyncGroupController::class, 'syncMenu']);
+  Route::get('branch-setting', [SyncGroupController::class, 'syncBranchSetting']);
+  Route::get('master-setting', [SyncGroupController::class, 'syncMasterSetting']);
+  Route::get('sales', [SyncGroupController::class, 'syncSales']);
 });
 
 Route::prefix('master')->group(function () {
@@ -141,6 +157,7 @@ Route::prefix('order-notif')->group(function () {
 
 Route::prefix('orderlist')->group(function () {
   Route::any('by-tablesection/{tablesection_id}', [OrderlistController::class, 'getOrderlist']);
+  Route::get('all-pending', [OrderlistController::class, 'getAllPendingOrders']);
 });
 Route::prefix("sales")->group(function () {
   Route::get('get-sales-list', [SalesController::class, 'GetSalesList']);
@@ -153,6 +170,16 @@ Route::prefix('payment')->group(function () {
   Route::post('save-payment', [PaymentController::class, 'savePayment']);
   Route::post('edit-payment', [PaymentController::class, 'editPayment']);
   Route::get('view-payment/{order_number}', [PaymentController::class, 'viewPayment']);
+});
+
+// payment-gateway: jalur KASIR (POS) buat payment method yang punya payment_gateway_code
+// (QRIS dst) -- reuse App\Services\PaymentGatewayServices yang sama kayak dipakai
+// KioskController (lihat /kiosk/payment/*), cuma beda controller/prefix biar jelas ini
+// dipanggil dari device kasir, bukan Kiosk self-service.
+Route::prefix('payment-gateway')->group(function () {
+  Route::post('request', [PaymentGatewayController::class, 'RequestPayment']);
+  Route::get('check-status/{order_number}', [PaymentGatewayController::class, 'CheckStatus']);
+  Route::post('cancel', [PaymentGatewayController::class, 'CancelPayment']);
 });
 Route::prefix('setting')->group(function () {
   Route::post('save', [SettingController::class, 'save']);

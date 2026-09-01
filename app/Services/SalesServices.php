@@ -25,6 +25,7 @@ class SalesServices
       tro.payment_number,
       tro.order_date,
       tro.order_name,
+      tro.order_source,
       mrts.name as table_name,
       mvp.name as visit_purpose_name,
       tro.total_billing,
@@ -70,6 +71,10 @@ class SalesServices
       WHERE
         trp.payment_number = ?
       ", [$data_order->payment_number]);
+
+      // total_change: jumlah change_amount semua baris payment_detail -- biasanya cuma 1 baris
+      // CASH yang keisi, dijumlah semua jaga-jaga split payment ada >1 baris CASH.
+      $data_order->total_change = array_sum(array_column($data_order->payment_detail, 'change_amount'));
 
       $data_order_detail = DB::select("
       SELECT
