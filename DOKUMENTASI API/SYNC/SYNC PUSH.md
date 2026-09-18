@@ -51,6 +51,21 @@ Tervalidasi end-to-end: `StartDay` → `EndShift` (sukses, `shift_number=1` keca
 
 `PushDataPosOrderDetail` (`pushdata_handler.go`) di jalur suksesnya lupa `.SetCode(0)` — beda dari handler saudaranya yang eksplisit set. Karena `Response.Code` itu `*int` (default `nil` kalau gak di-set), respons sukses balikin `"code": null`. Kebetulan gak kerasa dampaknya karena Laravel ngecek `$response->json('code') == 0` (loose comparison, `null == 0` itu `true` di PHP) — tapi tetep rapuh buat consumer lain. Sudah ditambahin `.SetCode(0)`.
 
+## Remove Item Before Save (2026-09-18)
+
+`tr_remove_item_before_save` (+ `_package`) — audit trail item yang dihapus kasir dari cart lokal SEBELUM order pernah tersimpan (dicatat lewat `OrderServices::RecordRemoveItemBeforeSave()`, dipanggil dari `removeItemOrder()` di `orderPage.vue`). Jalur push-nya dibangun lengkap end-to-end, ngikutin pola 6 fungsi push yang udah ada di atas persis:
+
+| Data | Route lokal | Service function | Model lokal | Kirim ke (server) |
+| --- | --- | --- | --- | --- |
+| Remove item before save (header) | `GET /api/push/data-remove-item-before-save` | `pushDataRemoveItemBeforeSave()` | `TrRemoveItemBeforeSaveModel` → `tr_remove_item_before_save` | `POST {endpoint}/pos/push/data_remove_item_before_save` |
+| Remove item before save package | `GET /api/push/data-remove-item-before-save-package` | `pushDataRemoveItemBeforeSavePackage()` | `TrRemoveItemBeforeSavePackageModel` → `tr_remove_item_before_save_package` | `POST {endpoint}/pos/push/data_remove_item_before_save_package` |
+
+Endpoint terima di APIANDORDER (`pushdata_handler.go` — `PushDataPosRemoveItemBeforeSave`/`...Package`) nulis ke `pos_remove_item_before_save`/`pos_remove_item_before_save_package` di ERP (`sudocore2` migration `213`/`214`). `company_id` di-resolve di APIANDORDER dari `branch_id` baris pertama — sama pola kayak `PushPOSOrder` (header py `branch_id` sendiri, detail/package ikut header tanpa `company_id` sendiri).
+
+Sudah ditambahkan ke `usePushData.ts` (`PushDataRemoveItemBeforeSave`/`PushDataRemoveItemBeforeSavePackage`) dan `PushAll()`, ditaruh setelah `data_order_payment` — tabel ini gak punya dependency FK keras ke `tr_order`/`tr_dayshift` (`order_number`/`dayshift_ulid` nullable), jadi urutannya gak sekritikal grup order.
+
+**Bug ketemu & dibenerin (2026-09-18, audit sebelum dianggap selesai)**: migration awal `tr_remove_item_before_save` (`2026_09_18_100000_*.php`) **gak punya kolom `branch_id`** — beda dari `tr_order`/`tr_dayshift` yang keduanya punya. Efeknya sama pola bug `customer_phone_number`/`chasier_name` di atas: `PosRemoveItemBeforeSaveModel.BranchID` (APIANDORDER) selalu ke-default `0` (zero-value Go, bukan pointer), `PushPOSRemoveItemBeforeSave()` query `SELECT ... FROM master_branch WHERE id = 0` gagal (`sql.ErrNoRows`), push header **selalu gagal**, dan push package ikut gagal (FK constraint `REFERENCES pos_remove_item_before_save(ulid)`, baris header-nya gak pernah ke-commit). Dibenerin: migration baru `2026_09_18_110000_add_branch_id_to_tr_remove_item_before_save.php` (kolom `branch_id` nullable) + `OrderServices::RecordRemoveItemBeforeSave()` diisi `$branch->id` (`BranchModel::first()`, sama pola `pushDataOrder()`'s payload). Sekalian ditambahin guard `item_conv_id <= 0` (skip insert, gak ada gunanya nyatet baris yang gak nunjuk ke item manapun). Sisi APIANDORDER/`sudocore2` **gak perlu diubah** — kolom `branch_id`/`company_id` udah disiapin dari awal di `pos_remove_item_before_save`, cuma nunggu payload-nya beneran bawa `branch_id` yang valid.
+
 ## Trigger saat ini: manual, dan ada skeleton auto-push yang dimatiin
 
 Frontend (`posv1-vue`):

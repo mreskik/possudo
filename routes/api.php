@@ -148,6 +148,7 @@ Route::prefix('order')->group(function () {
   Route::post('save-move-table', [OrderController::class, 'SaveMoveTable']);
   Route::post('save-move-item', [OrderController::class, 'SaveMoveItem']);
   Route::post('cancel-item', [OrderController::class, 'CancelOrderDetail']);
+  Route::post('remove-item-before-save', [OrderController::class, 'RemoveItemBeforeSave']);
 });
 
 Route::prefix('order-notif')->group(function () {
@@ -238,4 +239,6 @@ Route::prefix('push')->group(function () {
   Route::get('data-order-payment', [PushDataController::class, 'PushDataOrderPayment']);
   Route::get('data-dayshift', [PushDataController::class, 'PushDataDayShift']);
   Route::get('data-dayshift-detail', [PushDataController::class, 'PushDataDayShiftDetail']);
+  Route::get('data-remove-item-before-save', [PushDataController::class, 'PushDataRemoveItemBeforeSave']);
+  Route::get('data-remove-item-before-save-package', [PushDataController::class, 'PushDataRemoveItemBeforeSavePackage']);
 });

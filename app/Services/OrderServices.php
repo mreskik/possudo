@@ -13,6 +13,8 @@ use App\Models\TerminalModel;
 use App\Models\TrOrderDetailModel;
 use App\Models\TrOrderDetailPackageModel;
 use App\Models\TrOrderModel;
+use App\Models\TrRemoveItemBeforeSaveModel;
+use App\Models\TrRemoveItemBeforeSavePackageModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1111,6 +1113,66 @@ class OrderServices
       return $user->fullname ?? $user->username ?? null;
     } catch (\Throwable $e) {
       return null;
+    }
+  }
+
+  private static function getLoggedInUserId($request): ?int
+  {
+    try {
+      $token = $request?->bearerToken();
+      if (!$token) return null;
+      $session = SessionModel::where('session_id', $token)->first();
+      if (!$session) return null;
+      $user = json_decode($session->data);
+      return $user->id ?? null;
+    } catch (\Throwable $e) {
+      return null;
+    }
+  }
+
+  // RecordRemoveItemBeforeSave: audit trail item yang dihapus kasir dari cart lokal SEBELUM
+  // order pernah tersimpan ke server sama sekali (removeItemOrder() di orderPage.vue -- tombol
+  // Trash2, cuma muncul kalau item belum punya `ulid`). order_number SELALU null di skenario ini
+  // (order belum pernah dibuat). dayshift_ulid diresolve dari shift harian yang aktif SEKARANG
+  // (DaySiftModel dayout_time masih null) -- null kalau kebetulan gak ada shift aktif pas
+  // kejadian ini terjadi (harusnya jarang, tapi jangan sampai malah gagal nyimpen audit-nya).
+  // branch_id (2026-09-18, susulan audit) -- sama pola kayak tr_order/tr_dayshift, WAJIB diisi
+  // karena APIANDORDER resolve company_id dari kolom ini pas push (PushPOSRemoveItemBeforeSave()).
+  // $packages opsional -- sub-item package yang ikut lenyap bareng item HEAD ini.
+  public static function RecordRemoveItemBeforeSave(Request $request, int $item_conv_id, $qty, array $packages = []): void
+  {
+    // guard: item_conv_id 0/kosong (request malformed/frontend ngirim nilai falsy) gak usah
+    // dicatat -- baris audit yang gak nunjuk ke item manapun gak ada gunanya.
+    if ($item_conv_id <= 0) {
+      return;
+    }
+
+    try {
+      $branch = BranchModel::first();
+      $dayshift = DaySiftModel::where('dayout_time', null)->orderBy('ulid', 'desc')->first();
+      $created_by = self::getLoggedInUserId($request);
+
+      $header = TrRemoveItemBeforeSaveModel::create([
+        'branch_id' => $branch->id ?? null,
+        'order_number' => null,
+        'dayshift_ulid' => $dayshift->ulid ?? null,
+        'item_conv_id' => $item_conv_id,
+        'qty' => $qty,
+        'created_at' => now(),
+        'created_by' => $created_by,
+      ]);
+
+      foreach ($packages as $package) {
+        TrRemoveItemBeforeSavePackageModel::create([
+          'tr_remove_item_before_save_ulid' => $header->ulid,
+          'item_conv_id' => $package['item_conv_id'] ?? null,
+          'qty' => $package['qty'] ?? 0,
+        ]);
+      }
+    } catch (\Throwable $e) {
+      // sengaja gak dilempar -- ini audit trail, bukan jalur kritikal transaksi. Kalau gagal
+      // nyimpen (mis. request malformed), jangan sampai bikin kasir keliatan error, cukup dicatat.
+      Log::info($e);
     }
   }
 }

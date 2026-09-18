@@ -192,6 +192,25 @@ class OrderController extends Controller
         }
     }
 
+    // RemoveItemBeforeSave: audit trail item yang dihapus kasir dari cart lokal SEBELUM order
+    // pernah tersimpan (beda dari CancelOrderDetail di atas, yang buat item yang UDAH tersimpan).
+    // Sengaja SELALU balikin code 0 -- ini murni pencatatan audit, bukan jalur kritikal, gagal
+    // nyimpen (ditangani di OrderServices::RecordRemoveItemBeforeSave) gak boleh keliatan sebagai
+    // error di sisi kasir.
+    public function RemoveItemBeforeSave(Request $request)
+    {
+        $item_conv_id = (int) $request->input("item_conv_id");
+        $qty = $request->input("qty");
+        $packages = $request->input("packages", []);
+
+        OrderServices::RecordRemoveItemBeforeSave($request, $item_conv_id, $qty, $packages);
+
+        return response()->json([
+            'code' => 0,
+            'message' => 'recorded'
+        ]);
+    }
+
     public function SaveMoveItem(Request $request)
     {
         try {

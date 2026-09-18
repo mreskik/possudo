@@ -129,4 +129,42 @@ class PushDataController extends Controller
             ]);
         }
     }
+
+    function PushDataRemoveItemBeforeSave(Request $request)
+    {
+        try {
+            $services = new PushDataServices;
+
+            $result = $services->pushDataRemoveItemBeforeSave();
+
+            return response()->json([
+                "code" => 0,
+                "data" => $result
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 100,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
+
+    function PushDataRemoveItemBeforeSavePackage(Request $request)
+    {
+        try {
+            $services = new PushDataServices;
+
+            $result = $services->pushDataRemoveItemBeforeSavePackage();
+
+            return response()->json([
+                "code" => 0,
+                "data" => $result
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 100,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
 }

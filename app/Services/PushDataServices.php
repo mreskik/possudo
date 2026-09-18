@@ -8,6 +8,8 @@ use App\Models\TrOrderDetailModel;
 use App\Models\TrOrderDetailPackageModel;
 use App\Models\TrOrderModel;
 use App\Models\TrOrderPaymentModel;
+use App\Models\TrRemoveItemBeforeSaveModel;
+use App\Models\TrRemoveItemBeforeSavePackageModel;
 use Carbon\Carbon;
 use DateTime;
 use Illuminate\Support\Facades\DB;
@@ -343,6 +345,82 @@ class PushDataServices
         DB::beginTransaction();
         foreach ($list_data_dayshift_detail as $item) {
           DayShiftDetailModel::where("ulid", $item->ulid)->update([
+            "sync_at" => $datetime
+          ]);
+        }
+        DB::commit();
+        return 'success';
+      } else {
+        throw new \Exception($response->json('message'));
+      }
+    } catch (\Throwable $e) {
+      if (DB::transactionLevel() > 0) {
+        DB::rollBack();
+      }
+      throw $e;
+    }
+  }
+
+  // pushDataRemoveItemBeforeSave/Package (2026-09-18): sama pola persis fungsi push di atas --
+  // endpoint terima di APIANDORDER udah ada (pushdata_handler.go PushDataPosRemoveItemBeforeSave
+  // /...Package), nulis ke pos_remove_item_before_save(_package) di sudocore2 (migration 213/214).
+  function pushDataRemoveItemBeforeSave()
+  {
+    $datetime = now()->toISOString(true);
+    try {
+      $list_data = TrRemoveItemBeforeSaveModel::where('sync_at', null)->get();
+
+      foreach ($list_data as $item) {
+        if ($item->created_at != null) {
+          $item->created_at = $this->formatedDateTimeToTimeTime($item->created_at);
+        }
+        $item->sync_at = $datetime;
+      }
+
+      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_remove_item_before_save", [
+        "list_remove_item_before_save" => $list_data
+      ]);
+
+      if ($response->json('code') == 0) {
+        DB::beginTransaction();
+        foreach ($list_data as $item) {
+          TrRemoveItemBeforeSaveModel::where("ulid", $item->ulid)->update([
+            "sync_at" => $datetime
+          ]);
+        }
+        DB::commit();
+        return 'success';
+      } else {
+        throw new \Exception($response->json('message'));
+      }
+    } catch (\Throwable $e) {
+      if (DB::transactionLevel() > 0) {
+        DB::rollBack();
+      }
+      throw $e;
+    }
+  }
+
+  function pushDataRemoveItemBeforeSavePackage()
+  {
+    $datetime = now()->toISOString(true);
+    try {
+      $list_data = TrRemoveItemBeforeSavePackageModel::where('sync_at', null)->get();
+
+      foreach ($list_data as $item) {
+        if ($item->sync_at == null) {
+          $item->sync_at = $datetime;
+        }
+      }
+
+      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_remove_item_before_save_package", [
+        "list_remove_item_before_save_package" => $list_data
+      ]);
+
+      if ($response->json('code') == 0) {
+        DB::beginTransaction();
+        foreach ($list_data as $item) {
+          TrRemoveItemBeforeSavePackageModel::where("ulid", $item->ulid)->update([
             "sync_at" => $datetime
           ]);
         }
