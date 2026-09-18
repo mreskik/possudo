@@ -907,11 +907,14 @@ class PrintServices
       $print->text(self::separator("-", $charPerLine));
       $displaySubtotal = 0;
       foreach ($data_order_detail as $itemmenu) {
-        // Subtotal di struk itu SEBELUM diskon -- pakai dpp (net-of-tax, sebelum diskon) x
-        // (1 + tax_rate) buat balikin harga aslinya, BUKAN $itemmenu->total (yang sekarang udah
-        // net-of-discount sejak restrukturisasi kolom), biar "Subtotal - Discount = Grand Total".
-        $displaySubtotal += $itemmenu->qty * $itemmenu->dpp * (1 + $itemmenu->tax_rate / 100);
-        $print->text(self::threeline($itemmenu->qty, $itemmenu->menu_name, number_format($itemmenu->total, 0, ',', '.'), $charPerLine));
+        // Harga per-baris item (dan Subtotal di bawah) itu SEBELUM diskon -- pakai dpp
+        // (net-of-tax, sebelum diskon) x (1 + tax_rate) buat balikin harga aslinya, BUKAN
+        // $itemmenu->total (yang sekarang udah net-of-discount sejak restrukturisasi kolom),
+        // soalnya diskonnya sendiri udah dicetak kePisah di baris "% Promo" di bawah tiap item --
+        // kalau pakai ->total di sini, diskon jadi keitung dobel secara visual.
+        $displayItemPrice = $itemmenu->qty * $itemmenu->dpp * (1 + $itemmenu->tax_rate / 100);
+        $displaySubtotal += $displayItemPrice;
+        $print->text(self::threeline($itemmenu->qty, $itemmenu->menu_name, number_format($displayItemPrice, 0, ',', '.'), $charPerLine));
         $totalItemDiscount = $itemmenu->discount_amount;
 
         $listpackagedetail = DB::select("
@@ -927,8 +930,9 @@ class PrintServices
 
         foreach ($listpackagedetail as $itempackage) {
           if (count($listpackagedetail) > 0) {
-            $displaySubtotal += $itemmenu->qty * $itempackage->qty * $itempackage->dpp * (1 + $itempackage->tax_rate / 100);
-            $print->text(self::threeline("", " " . $itempackage->qty . " " . $itempackage->menu_name, number_format($itempackage->total, 0, ',', '.'), $charPerLine));
+            $displayPackagePrice = $itemmenu->qty * $itempackage->qty * $itempackage->dpp * (1 + $itempackage->tax_rate / 100);
+            $displaySubtotal += $displayPackagePrice;
+            $print->text(self::threeline("", " " . $itempackage->qty . " " . $itempackage->menu_name, number_format($displayPackagePrice, 0, ',', '.'), $charPerLine));
             $totalItemDiscount += $itempackage->discount_amount;
 
             if ($itempackage->notes != null || $itempackage->notes != '') {
@@ -1228,11 +1232,14 @@ class PrintServices
       $print->text(self::separator("-", $charPerLine));
       $displaySubtotal = 0;
       foreach ($data_order_detail as $itemmenu) {
-        // Subtotal di struk itu SEBELUM diskon -- pakai dpp (net-of-tax, sebelum diskon) x
-        // (1 + tax_rate) buat balikin harga aslinya, BUKAN $itemmenu->total (yang sekarang udah
-        // net-of-discount sejak restrukturisasi kolom), biar "Subtotal - Discount = Grand Total".
-        $displaySubtotal += $itemmenu->qty * $itemmenu->dpp * (1 + $itemmenu->tax_rate / 100);
-        $print->text(self::threeline($itemmenu->qty, $itemmenu->menu_name, number_format($itemmenu->total, 0, ',', '.'), $charPerLine));
+        // Harga per-baris item (dan Subtotal di bawah) itu SEBELUM diskon -- pakai dpp
+        // (net-of-tax, sebelum diskon) x (1 + tax_rate) buat balikin harga aslinya, BUKAN
+        // $itemmenu->total (yang sekarang udah net-of-discount sejak restrukturisasi kolom),
+        // soalnya diskonnya sendiri udah dicetak kePisah di baris "% Promo" di bawah tiap item --
+        // kalau pakai ->total di sini, diskon jadi keitung dobel secara visual.
+        $displayItemPrice = $itemmenu->qty * $itemmenu->dpp * (1 + $itemmenu->tax_rate / 100);
+        $displaySubtotal += $displayItemPrice;
+        $print->text(self::threeline($itemmenu->qty, $itemmenu->menu_name, number_format($displayItemPrice, 0, ',', '.'), $charPerLine));
         $totalItemDiscount = $itemmenu->discount_amount;
         $listpackagedetail = DB::select("
         SELECT
@@ -1248,8 +1255,9 @@ class PrintServices
 
         foreach ($listpackagedetail as $itempackage) {
           if (count($listpackagedetail) > 0) {
-            $displaySubtotal += $itemmenu->qty * $itempackage->qty * $itempackage->dpp * (1 + $itempackage->tax_rate / 100);
-            $print->text(self::threeline("", " " . $itempackage->qty . " " . $itempackage->menu_name, number_format($itempackage->total, 0, ',', '.'), $charPerLine));
+            $displayPackagePrice = $itemmenu->qty * $itempackage->qty * $itempackage->dpp * (1 + $itempackage->tax_rate / 100);
+            $displaySubtotal += $displayPackagePrice;
+            $print->text(self::threeline("", " " . $itempackage->qty . " " . $itempackage->menu_name, number_format($displayPackagePrice, 0, ',', '.'), $charPerLine));
             $totalItemDiscount += $itempackage->discount_amount;
 
             if ($itempackage->notes != null || $itempackage->notes != '') {
@@ -2314,6 +2322,18 @@ class PrintServices
   //   $print->close();
   // }
 
+  // numberRuler: pola "1234567890" diulang lalu dipotong PAS sepanjang $length -- pattern test
+  // print standar buat ngecek visual apa char/line yang keprint beneran cocok sama setting-nya
+  // (garis angka yang ke-print penuh/kepotong lebih cepat/lambat dari yang diharapkan langsung
+  // ketauan dari mata, gak perlu ngitung manual).
+  private static function numberRuler(int $length): string
+  {
+    if ($length <= 0) {
+      return '';
+    }
+    return substr(str_repeat('1234567890', (int) ceil($length / 10)), 0, $length);
+  }
+
   public static function PrintTest(int $station_id): string
   {
     $data_station = StationModel::where('id', $station_id)->first();
@@ -2340,6 +2360,7 @@ class PrintServices
         $print->text("Printer   : " . $data_station->printer_name . "\n");
         $print->text("Char/Line : " . $charPerLine . "\n");
         $print->text("Time      : " . now() . "\n");
+        $print->text(self::numberRuler($charPerLine) . "\n");
         $print->text(self::separator("=", $charPerLine));
         $print->setJustification(Printer::JUSTIFY_CENTER);
         $print->text("Printer OK\n");
@@ -2347,11 +2368,17 @@ class PrintServices
         $print->cut();
         $print->close();
       } else if ($data_station->printer_type == 2) {
+        // SENGAJA cuma 2 baris (2026-09-18, disederhanain lagi atas permintaan) -- ruler angka
+        // (line_character, sama pola kayak versi thermal di atas) + "Printer OK" doang, gak
+        // ngikutin Station/Printer/Time-nya thermal. Label fisiknya kecil (lihat SIZE di
+        // GeneralLabel::sikat()), lebih kepake buat ngecek visual char width-nya doang.
+        $charPerLine = $data_station->line_character ?: 40;
 
         $ngeprintasek = new GeneralLabel;
         $ngeprintasek->setMargin(0, 2);
         $ngeprintasek->setNamePrinter($data_station->printer_name);
-        $ngeprintasek->setText("Print OK!");
+        $ngeprintasek->setText(self::numberRuler($charPerLine));
+        $ngeprintasek->setText("Printer OK");
         $ngeprintasek->sikat();
       } else {
         return 'ERR';

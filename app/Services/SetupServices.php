@@ -56,12 +56,17 @@ class SetupServices
     $this->endpoint = config('services.server_endpoint', '');
   }
 
+  // connectTimeout(5): kalau internet mati, koneksi TCP ke server ERP gak akan pernah kebentuk --
+  // gagal cepat (5 detik) daripada gantung lama nungguin OS-level TCP timeout (bisa >1 menit).
+  // timeout(15): batas keseluruhan request (connect + tunggu response) kalau koneksi kebentuk
+  // tapi server lambat/gak respon. Sebelum ini gak ada timeout sama sekali di request sync ke
+  // ERP, jadi tombol Sync di frontend bisa "ngegantung" lama kalau internet mati.
   private function syncRequest(string $username, string $password, ?string $token, string $url): \Illuminate\Http\Client\Response
   {
     if ($token) {
-      return Http::withToken($token)->withOptions(['verify' => config('services.http_verify_ssl')])->get($url);
+      return Http::withToken($token)->connectTimeout(5)->timeout(15)->withOptions(['verify' => config('services.http_verify_ssl')])->get($url);
     }
-    return Http::withOptions(['verify' => config('services.http_verify_ssl')])->post($url, ['username' => $username, 'password' => $password]);
+    return Http::connectTimeout(5)->timeout(15)->withOptions(['verify' => config('services.http_verify_ssl')])->post($url, ['username' => $username, 'password' => $password]);
   }
 
   // upsertRows: dipakai buat sebagian besar sync master data -- baris yang id-nya udah ada

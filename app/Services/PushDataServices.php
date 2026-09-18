@@ -13,6 +13,11 @@ use DateTime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
+// connectTimeout(5)/timeout(30) dipasang di semua request Http:: push di bawah (2026-09-18) --
+// sebelumnya gak ada timeout sama sekali, jadi kalau internet mati pas tombol Sync/Install
+// dipencet, request bisa gantung lama nungguin OS-level TCP timeout tanpa cara buat user
+// ngebatalin. timeout-nya lebih longgar dari SetupServices::syncRequest() (15s) karena payload
+// push bisa lebih besar (banyak order/dayshift sekaligus dalam 1 request).
 class PushDataServices
 {
   protected string $endpoint = '';
@@ -89,7 +94,7 @@ class PushDataServices
       // return $list_data_order;
 
 
-      $response = Http::asJson()->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order", [
+      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order", [
         "list_order" => $list_data_order
       ]);
 
@@ -147,7 +152,7 @@ class PushDataServices
       // return $list_data_order_detail;
 
 
-      $response = Http::asJson()->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_detail", [
+      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_detail", [
         "list_order_detail" => $list_data_order_detail
       ]);
       if ($response->json('code') == 0) {
@@ -198,7 +203,7 @@ class PushDataServices
       // return $list_data_order_detail_package;
 
 
-      $response = Http::asJson()->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_detail_package", [
+      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_detail_package", [
         "list_order_detail_package" => $list_data_order_detail_package
       ]);
       if ($response->json('code') == 0) {
@@ -248,7 +253,7 @@ class PushDataServices
       // return $list_data_order_detail_package;
 
 
-      $response = Http::asJson()->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_payment", [
+      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_payment", [
         "list_order_payment" => $list_data_order_payment
       ]);
       if ($response->json('code') == 0) {
@@ -292,7 +297,7 @@ class PushDataServices
         $item->sync_at = $datetime;
       }
 
-      $response = Http::asJson()->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_dayshift", [
+      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_dayshift", [
         "list_dayshift" => $list_data_dayshift
       ]);
 
@@ -330,7 +335,7 @@ class PushDataServices
         $item->sync_at = $datetime;
       }
 
-      $response = Http::asJson()->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_dayshift_detail", [
+      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_dayshift_detail", [
         "list_dayshift_detail" => $list_data_dayshift_detail
       ]);
 
