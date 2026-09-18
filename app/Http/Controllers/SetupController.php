@@ -25,10 +25,11 @@ class SetupController extends Controller
     $username = $request->input('username', '');
     $password = $request->input('password', '');
 
-    $response = Http::post($this->server_endpoint . '/pos/setup/get_branch_list', [
-      "username" => $username,
-      "password" => $password
-    ]);
+    $response = Http::withOptions(['verify' => config('services.http_verify_ssl')])
+      ->post($this->server_endpoint . '/pos/setup/get_branch_list', [
+        "username" => $username,
+        "password" => $password
+      ]);
 
     return $response;
   }

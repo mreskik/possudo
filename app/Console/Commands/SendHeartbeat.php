@@ -28,9 +28,9 @@ class SendHeartbeat extends Command
 {
     protected $signature = 'heartbeat:send';
 
-    protected $description = 'Kirim heartbeat branch ke ERP (lewat APIANDORDER) tiap 30 detik, kalau dayshift lagi kebuka';
+    protected $description = 'Kirim heartbeat branch ke ERP (lewat APIANDORDER) tiap 5 detik, kalau dayshift lagi kebuka';
 
-    private const INTERVAL_SECONDS = 30;
+    private const INTERVAL_SECONDS = 5;
 
     public function handle(): void
     {
@@ -67,6 +67,7 @@ class SendHeartbeat extends Command
 
         try {
             $response = Http::withToken($branch->token)
+                ->withOptions(['verify' => config('services.http_verify_ssl')])
                 ->post(env('SERVER_ENDPOINT') . "/pos/heartbeat/{$branch->id}");
         } catch (\Throwable $e) {
             Log::channel('jobs')->error("heartbeat:send: gagal koneksi ke APIANDORDER: {$e->getMessage()}");

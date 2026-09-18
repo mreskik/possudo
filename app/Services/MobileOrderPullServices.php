@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\DaySiftModel;
 use App\Models\TableSectionModel;
 use App\Models\TrOrderDetailModel;
 use App\Models\TrOrderDetailPackageModel;
@@ -55,7 +54,9 @@ class MobileOrderPullServices
     {
         $endpoint = env('SERVER_ENDPOINT');
         try {
-            $response = Http::withToken($branchToken)->get($endpoint . "/pos/mobile-order/get_pending/{$branchId}");
+            $response = Http::withToken($branchToken)
+                ->withOptions(['verify' => config('services.http_verify_ssl')])
+                ->get($endpoint . "/pos/mobile-order/get_pending/{$branchId}");
         } catch (\Throwable $e) {
             Log::error("mobile-order:pull: gagal koneksi ke APIANDORDER (get_pending): {$e->getMessage()}");
             return [];
@@ -78,7 +79,9 @@ class MobileOrderPullServices
     {
         $endpoint = env('SERVER_ENDPOINT');
         try {
-            $response = Http::withToken($branchToken)->post($endpoint . "/pos/mobile-order/ack/{$orderNumber}");
+            $response = Http::withToken($branchToken)
+                ->withOptions(['verify' => config('services.http_verify_ssl')])
+                ->post($endpoint . "/pos/mobile-order/ack/{$orderNumber}");
         } catch (\Throwable $e) {
             Log::error("mobile-order:pull: gagal koneksi ke APIANDORDER (ack) order {$orderNumber}: {$e->getMessage()}");
             return;
@@ -116,7 +119,15 @@ class MobileOrderPullServices
             throw new \Exception("table_section_id {$terminal->table_section_id} (dari terminal worker) tidak ditemukan");
         }
 
-        $dayshift = DaySiftModel::where('dayout_time', null)->first();
+        // Reuse DayShiftServices::GetDayShift() (2026-09-18, fix) -- SEBELUMNYA query manual di
+        // sini (`DaySiftModel::where('dayout_time', null)->first()`, TANPA `orderBy`), beda dari
+        // cara resolve dayshift aktif di SELURUH tempat lain (GetDayShift() eksplisit
+        // `orderBy("ulid", "desc")`). Codebase ini SENDIRI ngakuin "2 dayshift aktif sekaligus"
+        // bisa kejadian (MySQL gak dukung partial unique index, lihat komentar
+        // DayShiftServices::StartDay()) -- tanpa orderBy, `->first()` gak dijamin konsisten milih
+        // baris yang sama kayak GetDayShift()/EndDay(), order mobile bisa nempel ke dayshift_ulid
+        // yang beda dari yang dipakai proses lain, salah kelompok pas jurnal endday.
+        $dayshift = DayShiftServices::GetDayShift();
         if (!$dayshift) {
             throw new \Exception('belum ada dayshift aktif (dayin) di branch ini');
         }
@@ -144,12 +155,20 @@ class MobileOrderPullServices
                 'dayshift_ulid' => $dayshift->ulid,
                 'branch_id' => $terminal->branch_id,
                 'terminal_id' => $terminal->id,
-                // member_name di-JOIN live ke master_member di APIANDORDER (get_pending),
-                // BUKAN denormalisasi ke mb_order -- selalu fresh, gak gantung POS udah sinkron
-                // member itu apa belum. Kosong string kalau order dari guest/member ke-hapus.
-                'order_name' => $order['member_name'] ?? '',
+                // order_name: order QR (order_source='qr') isi mb_order.order_name langsung
+                // (identitas tamu, wajib diisi Create) -- order member app (order_source='mobile')
+                // mb_order.order_name SELALU NULL, jatuh ke member_name yang di-JOIN live ke
+                // master_member di APIANDORDER (get_pending), BUKAN denormalisasi ke mb_order --
+                // selalu fresh, gak gantung POS udah sinkron member itu apa belum. 2 sumber ini
+                // gak pernah keisi bareng (migration sudocore2 210+211, 2026-09-17); string kosong
+                // cuma kalau dua-duanya kosong (member ke-hapus, dsb).
+                'order_name' => $order['order_name'] ?? $order['member_name'] ?? '',
                 'customer_phone_number' => $order['customer_phone_number'] ?? null,
-                'order_source' => 'mobile',
+                // order_source: 'mobile' (member app) atau 'qr' (QR Order, belum ada endpoint
+                // Create-nya per 2026-09-17, migration sudocore2 209) -- dibaca dari payload
+                // mb_order.order_source (get_pending APIANDORDER), fallback 'mobile' buat payload
+                // lama/APIANDORDER yang belum di-refresh (belum ngirim field ini).
+                'order_source' => $order['order_source'] ?? 'mobile',
                 'order_type' => $tableSection->type,
                 'table_section_id' => $tableSection->id,
                 'table_id' => null,

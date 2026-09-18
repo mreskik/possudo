@@ -27,6 +27,7 @@ class MemberServices
     }
 
     $response = Http::withToken($branch->token)
+      ->withOptions(['verify' => config('services.http_verify_ssl')])
       ->get($this->endpoint . '/pos/member/' . $branch->id . '/by-phone/' . $phone_number);
 
     if ($response->json('code') !== 0) {

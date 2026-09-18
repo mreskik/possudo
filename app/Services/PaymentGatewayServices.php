@@ -96,7 +96,7 @@ class PaymentGatewayServices
     // nanti nyusul rutenya kalau providernya udah dibikin. company_id SENGAJA gak dikirim --
     // service payment resolve sendiri dari branch_id (lihat catatan di CreateQrisPayment),
     // company_id lokal POS bisa aja basi/gak akurat.
-    $response = Http::post($this->endpoint . '/payment-gateway/qris', [
+    $response = Http::withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . '/payment-gateway/qris', [
       'order_id' => $orderId,
       'payment_gateway_code' => $paymentMethod->payment_gateway_code,
       'amount' => $amount,
@@ -156,7 +156,7 @@ class PaymentGatewayServices
       throw new \Exception('belum pernah ada request pembayaran buat order ini');
     }
 
-    $response = Http::get($this->endpoint . '/payment-gateway/' . $attempt->order_id);
+    $response = Http::withOptions(['verify' => config('services.http_verify_ssl')])->get($this->endpoint . '/payment-gateway/' . $attempt->order_id);
     if ($response->json('code') !== 0) {
       throw new \Exception($response->json('message'));
     }
@@ -262,7 +262,7 @@ class PaymentGatewayServices
       return ['cancelled' => false, 'settled' => false];
     }
 
-    $response = Http::get($this->endpoint . '/payment-gateway/' . $pendingAttempt->order_id);
+    $response = Http::withOptions(['verify' => config('services.http_verify_ssl')])->get($this->endpoint . '/payment-gateway/' . $pendingAttempt->order_id);
     $liveStatus = $response->json('code') === 0 ? $response->json('data.status') : null;
 
     if ($liveStatus === 'settlement') {
@@ -298,7 +298,7 @@ class PaymentGatewayServices
   private function cancelAttempt(KioskPaymentRequestModel $attempt): void
   {
     try {
-      Http::post($this->endpoint . '/payment-gateway/' . $attempt->order_id . '/cancel');
+      Http::withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . '/payment-gateway/' . $attempt->order_id . '/cancel');
     } catch (\Throwable) {
       // network/timeout dkk -- diabaikan, lihat catatan di atas.
     }

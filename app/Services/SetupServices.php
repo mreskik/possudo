@@ -27,6 +27,7 @@ use App\Models\MasterPromoBranchesModel;
 use App\Models\MasterPromoCategoriesModel;
 use App\Models\MasterPromoDaysModel;
 use App\Models\MasterPromoItemsModel;
+use App\Models\MasterPromoApplyToModel;
 use App\Models\MasterPromoModel;
 use App\Models\MasterPromoSubCategoriesModel;
 use App\Models\MasterPromoTimesModel;
@@ -58,9 +59,9 @@ class SetupServices
   private function syncRequest(string $username, string $password, ?string $token, string $url): \Illuminate\Http\Client\Response
   {
     if ($token) {
-      return Http::withToken($token)->get($url);
+      return Http::withToken($token)->withOptions(['verify' => config('services.http_verify_ssl')])->get($url);
     }
-    return Http::post($url, ['username' => $username, 'password' => $password]);
+    return Http::withOptions(['verify' => config('services.http_verify_ssl')])->post($url, ['username' => $username, 'password' => $password]);
   }
 
   // upsertRows: dipakai buat sebagian besar sync master data -- baris yang id-nya udah ada
@@ -78,7 +79,21 @@ class SetupServices
       return;
     }
 
-    $modelClass::upsert($rows, [$uniqueBy]);
+    $modelClass::upsert($this->normalizeInsertRows($rows), [$uniqueBy]);
+  }
+
+  // insertRows: truncate()+insert() punya masalah yang SAMA persis kayak upsertRows() (dipakai
+  // buat semua fungsi truncate+insert di bawah) -- Model::insert() juga 1 statement SQL dari
+  // kolom baris pertama, jadi rawan "column count doesn't match value count" kalau ada baris
+  // yang key-nya beda (lihat normalizeInsertRows()). Helper ini biar semua call site truncate+
+  // insert otomatis ke-normalize juga, gak ketinggalan kayak upsertRows() sebelumnya.
+  private function insertRows(string $modelClass, array $rows): void
+  {
+    if (empty($rows)) {
+      return;
+    }
+
+    $modelClass::insert($this->normalizeInsertRows($rows));
   }
 
   public function getDatabranch(string $username, string $password, string $branch_id, ?string $token = null)
@@ -90,6 +105,14 @@ class SetupServices
       $response = $this->syncRequest($username, $password, $token, $url);
 
       if ($response->json('code') == 0) {
+        // company_id/token itu identitas inti branch (dipakai buat semua request sync
+        // berikutnya) DAN kolomnya NOT NULL di lokal -- kalau ERP somehow gak ngirim salah
+        // satunya, mending gagal jelas di sini (pesan yang nunjuk akar masalahnya) daripada
+        // BranchModel::create() di bawah gagal samar dengan Integrity constraint violation.
+        if ($response->json('data.CompanyId') === null || $response->json('data.Token') === null) {
+          throw new \Exception('Respons get_data_branch dari ERP gak lengkap (CompanyId/Token kosong) -- branch: ' . $branch_id);
+        }
+
         // ambil dulu sebelum truncate -- dipakai fallback kalau download gambar gagal (bukan
         // di-null-in, lihat catatan di downloadImage()).
         $existing = BranchModel::first();
@@ -135,7 +158,7 @@ class SetupServices
 
     try {
       $imageUrl = $this->endpoint . $remotePath;
-      $imageResponse = Http::get($imageUrl);
+      $imageResponse = Http::withOptions(['verify' => config('services.http_verify_ssl')])->get($imageUrl);
 
       if (!$imageResponse->successful()) {
         Log::warning('Gagal download image, remote status ' . $imageResponse->status() . ': ' . $imageUrl);
@@ -447,7 +470,7 @@ class SetupServices
 
       if ($response->json('code') == 0) {
         MasterItemPackageGroupModel::truncate();
-        MasterItemPackageGroupModel::insert($response->json('data'));
+        $this->insertRows(MasterItemPackageGroupModel::class, $response->json('data'));
       }
 
       return $response;
@@ -468,7 +491,7 @@ class SetupServices
 
       if ($response->json('code') == 0) {
         MasterItemPackageDetailModel::truncate();
-        MasterItemPackageDetailModel::insert($response->json('data'));
+        $this->insertRows(MasterItemPackageDetailModel::class, $response->json('data'));
       }
 
       return $response;
@@ -492,7 +515,7 @@ class SetupServices
 
       if ($response->json('code') == 0) {
         MasterItemPackageDetailPricelistModel::truncate();
-        MasterItemPackageDetailPricelistModel::insert($response->json('data'));
+        $this->insertRows(MasterItemPackageDetailPricelistModel::class, $response->json('data'));
       }
 
       return $response;
@@ -625,7 +648,7 @@ class SetupServices
 
       if ($response->json('code') == 0) {
         MasterPaymentMethodVisitPurposeModel::truncate();
-        MasterPaymentMethodVisitPurposeModel::insert($response->json('data'));
+        $this->insertRows(MasterPaymentMethodVisitPurposeModel::class, $response->json('data'));
       }
 
       return $response;
@@ -652,7 +675,7 @@ class SetupServices
 
       if ($response->json('code') == 0) {
         MasterBranchVisitPurposeModel::truncate();
-        MasterBranchVisitPurposeModel::insert($response->json('data'));
+        $this->insertRows(MasterBranchVisitPurposeModel::class, $response->json('data'));
       }
 
       return $response;
@@ -683,10 +706,16 @@ class SetupServices
 
   // getMasterImageCustomerDisplay/getMasterImageKiosk: 2 endpoint flat per-channel buat data
   // master_image di ERP (2026-08-24, ganti dari header -> image_list -> apply_for jadi
-  // header -> customer_display / kiosk, 2 tabel eksplisit sejajar), ngikutin pola
-  // getMasterItemPackage/_Group/_Detail -- upsert-by-id, gak ada penghapusan baris lokal yang
-  // udah gak ada lagi di server (limitasi yang sama & diterima kayak pull lain, lihat
-  // SYNC PULL.md).
+  // header -> customer_display / kiosk, 2 tabel eksplisit sejajar).
+  //
+  // truncate+insert (BUKAN upsertRows lagi, 2026-09-04) -- awalnya ngikutin pola
+  // getMasterItemPackage/_Group/_Detail (upsert-by-id), tapi beda kasus: banner campaign yang
+  // dihapus/dinonaktifkan di ERP gak akan pernah ikut kehapus di lokal kalau upsert (upsert
+  // emang gak nge-delete) -- sama alasan persis kayak getMasterBranchVisitPurpose()/
+  // getMasterPaymentMethodVisitPurpose() (lihat catatan di situ). Gak ada tabel lokal POS yang
+  // refer ke mr_image_kiosk.id/mr_image_customer_display.id, jadi aman ganti pola. Gambar fisik
+  // yang udah kedownload di public/img/master-image/ buat banner yang kehapus TETAP nyangkut
+  // di disk (orphan file, bukan masalah correctness, cuma sisa disk -- belum ada cleanup-nya).
   //
   // getMasterImage() (endpoint generic pra-restrukturisasi, tabel mr_master_image) DIHAPUS
   // 2026-08-31 -- gak download gambar-nya (beda dari 2 fungsi di bawah, yang manggil
@@ -722,7 +751,8 @@ class SetupServices
         }
         unset($item);
 
-        $this->upsertRows(MasterImageCustomerDisplayModel::class, $list);
+        MasterImageCustomerDisplayModel::truncate();
+        $this->insertRows(MasterImageCustomerDisplayModel::class, $list);
       }
 
       return $response;
@@ -756,7 +786,8 @@ class SetupServices
         }
         unset($item);
 
-        $this->upsertRows(MasterImageKioskModel::class, $list);
+        MasterImageKioskModel::truncate();
+        $this->insertRows(MasterImageKioskModel::class, $list);
       }
 
       return $response;
@@ -800,7 +831,7 @@ class SetupServices
 
       if ($response->json('code') == 0) {
         MasterUserModel::truncate();
-        MasterUserModel::insert($response->json('data'));
+        $this->insertRows(MasterUserModel::class, $response->json('data'));
       }
 
       return $response;
@@ -876,7 +907,7 @@ class SetupServices
         })->all();
 
         MasterTableSectionPrintCategorySettingModel::truncate();
-        MasterTableSectionPrintCategorySettingModel::insert($data);
+        $this->insertRows(MasterTableSectionPrintCategorySettingModel::class, $data);
       }
 
       return $response;
@@ -917,7 +948,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPromoModel::class, $this->normalizeInsertRows($response->json('data')));
+        $this->upsertRows(MasterPromoModel::class, $response->json('data'));
       }
 
       return $response;
@@ -1119,7 +1150,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterMemberTypeModel::class, $this->normalizeInsertRows($response->json('data')));
+        $this->upsertRows(MasterMemberTypeModel::class, $response->json('data'));
       }
 
       return $response;
@@ -1139,7 +1170,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterMemberModel::class, $this->normalizeInsertRows($response->json('data')));
+        $this->upsertRows(MasterMemberModel::class, $response->json('data'));
       }
 
       return $response;

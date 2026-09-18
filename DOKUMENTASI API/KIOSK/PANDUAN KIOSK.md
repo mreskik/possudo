@@ -6,7 +6,7 @@
 - Route dikelompokkan pakai `Route::prefix('kiosk')` di `routes/api.php`.
 - Controller: `App\Http\Controllers\KioskController` (baru, terpisah dari `OrderController`/`MasterController`).
 - Device dianggap kiosk kalau `localStorage.terminal_type == '3'` (`mr_pos_type.device_type = "kiosk"`) — redirect ke bundle `/kiosk` diatur di `posv1-vue/src/router/index.js`.
-- Endpoint kiosk **gak pakai token** — cukup dilindungi middleware `CheckAllowedIp` yang udah jalan global di semua `/api/*` (cek `POS_ALLOWED_IPS`).
+- Endpoint kiosk **gak pakai token**. Middleware `CheckAllowedIp` (IP whitelist global, dulu satu-satunya gerbang di sini) **udah dihapus** (2026-09-03) — sumber 403 "IP tidak diizinkan mengakses" yang flaky/gak konsisten di kiosk, ternyata `.env` lokal vs `.env.prod` gak sinkron (`.env` udah `USE_PROTECT_IP=false`, tapi `.env.prod` masih `true` dengan whitelist cuma `127.0.0.1`), dan fiturnya sendiri emang udah gak dipakai (`false`). Efeknya: **endpoint kiosk sekarang TANPA proteksi sama sekali** (termasuk `save-order`/`payment/request`/`payment/cancel`/`member/topup`) — sementara dibiarin gitu (keputusan sadar), asumsinya API ini cuma reachable dari jaringan internal. Kalau nanti API-nya publicly exposed, endpoint ini butuh gerbang pengganti (mis. API key statis khusus device kiosk) sebelum aman dipakai.
 - Semua field response pakai `snake_case` (beda dari endpoint lama di `/api/master/*` yang masih `camelCase`).
 
 ## Endpoint

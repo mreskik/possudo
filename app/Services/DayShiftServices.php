@@ -279,7 +279,9 @@ class DayShiftServices
       // wajib juga buat /pos/endday/* (lihat middleware.BranchTokenAuth di APIANDORDER dan
       // midleware.BranchTokenAuth di sudocore2, keduanya validasi token yang sama).
       $branch = BranchModel::first();
-      $resc = Http::withToken($branch->token)->get(env('SERVER_ENDPOINT') . "/pos/endday/jurnal/" . $branch->id . "/" . $dayshift_ulid);
+      $resc = Http::withToken($branch->token)
+        ->withOptions(['verify' => config('services.http_verify_ssl')])
+        ->get(env('SERVER_ENDPOINT') . "/pos/endday/jurnal/" . $branch->id . "/" . $dayshift_ulid);
       if ($resc->json('code') !== 0) {
         // sengaja gak throw -- dayout tetap harus sukses di lokal walau jurnal ERP gagal
         // (bisa di-retry manual lewat modul Dayshift Jurnal di ERP), tapi kegagalannya dicatat

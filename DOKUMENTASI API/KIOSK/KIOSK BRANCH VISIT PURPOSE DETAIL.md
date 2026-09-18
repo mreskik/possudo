@@ -139,6 +139,8 @@ Kalau `id` gak ketemu:
 
 Reuse `MenuServices::GetMasterMenuList()` apa adanya (tax resolution & package handling-nya sama persis kayak versi POS existing, `/api/master/menu-list`) — cuma difilter ke 1 `visit_purpose_id` dan field-nya di-reshape ke `snake_case`. Kalau nanti ada bug/perubahan logic tax atau package di versi POS, ikut kepakai di sini juga (satu sumber logic).
 
+**Filter item mana yang boleh muncul** (`$listmenu` query di `GetMasterMenuList()`): `mr_pricelist_detail.pricelist_id = <menu_pricelist_id visit purpose ini>` **DAN** `mr_pricelist_detail.qr_order = true` (2026-09-18, sebelumnya `pos = true`, lihat "Update 2026-09-18" di bawah). Category & subcategory query **TIDAK** ikut difilter channel apa pun (cuma `pricelist_id`) — kalau semua item di 1 subcategory kebetulan `qr_order = false` semua, subcategory-nya tetap muncul dengan `items: []` kosong, bukan ikut hilang. `flag_soldout`/`stok_qty` juga cuma info tampilan, item sold-out tetap muncul di list, gak disembunyiin.
+
 Pemetaan nama field per level (versi POS camelCase → kiosk snake_case):
 
 | POS (`menuList[]`)     | Kiosk (`items[]`)        |
@@ -222,6 +224,18 @@ Tervalidasi lewat skrip manual (insert override sementara ke DB, panggil `GetMas
 3. **Kiosk** — `menuDescription`→`description` ditambah manual di `mapKioskMenuItem()` (whitelist field eksplisit, sama kayak `default_item` di Update 2026-08-26) -- **POS** (`/api/master/menu-list`) otomatis kebawa (gak ada reshape), gak butuh perubahan tambahan.
 
 Tervalidasi lewat `tinker`: isi `description` test di 1 item real (`mr_item.id=83`, "CARAME MACHIATO") yang beneran ada di pohon menu, panggil `GetMasterMenuList()` langsung → `menuDescription` ke-resolve bener, lalu panggil `mapKioskMenuItem()` (lewat reflection, method-nya `private`) → `description` ke-passthrough bener ke output final. Data test direvert (`NULL`) abis verifikasi. Field `description` di ERP (`master_item.item_description`) & bridge (`APIANDORDER`) query juga udah dites terpisah (lihat `GET VISIT PURPOSE DETAIL.md` di `sudomobile`, sumber datanya sama).
+
+## Update (2026-09-18)
+
+**Filter channel item Kiosk PINDAH dari `pos` ke `qr_order`** (keputusan bisnis: Kiosk = terminal self-service di outlet, semantiknya lebih deket ke customer self-service — sama kayak QR Order (HP customer sendiri) — daripada ke POS staff/kasir). Gak ada flag "kiosk" sendiri di skema manapun (dicek langsung ke ERP `master_pricelist_detail`: cuma ada `pos`/`qr_order`/`is_deleted`), jadi Kiosk numpang salah satu dari 2 yang udah ada.
+
+`MenuServices::GetMasterMenuList()` sekarang nerima parameter `string $channel = 'pos'` — `MasterController::GetMasterMenuList()` (`/api/master/menu-list`, POS staff) manggil eksplisit `GetMasterMenuList('pos')` (gak berubah perilakunya), `KioskController::GetBranchVisitPurposeDetail()` manggil `GetMasterMenuList('kiosk')` → filter item-nya jadi `mpd.qr_order = true`. Cuma item-level query (`$listmenu`) yang kena; category/subcategory query TETAP gak difilter channel (lihat catatan di "Sumber & pemetaan" di atas, gak diubah bareng ini).
+
+**Tervalidasi live** (bukan cuma `php -l`, request HTTP asli + query langsung ke `mr_pricelist_detail`):
+- Item `id=51` (pricelist `5`, `pos=0`/`qr_order=1`, "NASI LEMAK NUSANTARA") → **absen** di `/api/master/menu-list`, **muncul** di Kiosk (`visit_purpose_id=1`).
+- Item `id=101/102/103` (pricelist `7`, `pos=1`/`qr_order=0`, AMERICANO/CAPPUCCINO/ESPRESSO) → **muncul** di `/api/master/menu-list`, **absen** di Kiosk (`visit_purpose_id=8`).
+
+Dua arah kebukti bener — bukan kebetulan satu channel kebetulan superset yang lain di data test ini.
 
 ## Catatan performa
 

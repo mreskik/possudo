@@ -99,6 +99,16 @@ class PullMobileOrder extends Command
             // dalam N detik, itu NORMAL/gak berarti putus, lihat catch TimeoutException di
             // bawah), BUKAN batas waktu tunggu koneksi awal.
             'timeout' => 60,
+            // stream context buat koneksi wss:// (SERVER_ENDPOINT https -> $wsUrl otomatis jadi
+            // wss di atas) -- sama toggle HTTP_VERIFY_SSL yang dipakai Http:: client biasa (lihat
+            // config/services.php), biar konsisten kalau endpoint-nya https/wss dengan
+            // certificate self-signed/internal.
+            'context' => stream_context_create([
+                'ssl' => [
+                    'verify_peer' => config('services.http_verify_ssl'),
+                    'verify_peer_name' => config('services.http_verify_ssl'),
+                ],
+            ]),
         ]);
 
         $this->line("Connect WS ke branch {$terminal->branch_id}...");

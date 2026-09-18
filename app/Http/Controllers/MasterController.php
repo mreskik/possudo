@@ -80,7 +80,7 @@ class MasterController extends Controller
     public function GetMasterMenuList(Request $request)
     {
         try {
-            $data = MenuServices::GetMasterMenuList();
+            $data = MenuServices::GetMasterMenuList('pos');
             return response()->json([
                 'code' => 0,
                 'data' => $data
@@ -450,6 +450,11 @@ class MasterController extends Controller
     // (2026-08-24, plug point buat DisplayCustomerPage.vue yang sebelumnya hardcode 2 gambar
     // statis). banner_src udah path lokal POS (didownload pas pull, lihat
     // SetupServices::getMasterImageCustomerDisplay()).
+    //
+    // TANPA JOIN ke mr_image (2026-09-04, dicabut) -- sama alasan persis kayak
+    // KioskController::GetBannerImageKiosk(), lihat catatan di situ: filter is_active udah
+    // dilakuin di ERP sebelum data dikirim, JOIN lokal ke mr_image (tabel yang gak pernah
+    // disinkronin) malah bug -- bisa nyaringin campaign valid yang harusnya tampil.
     public function GetBannerImageCustomerDisplay()
     {
         try {
@@ -458,8 +463,6 @@ class MasterController extends Controller
                     micd.banner_src,
                     micd.sequence
                     FROM mr_image_customer_display micd
-                    JOIN mr_image mi ON mi.id = micd.master_image_id
-                    WHERE mi.is_active = 1
                     ORDER BY micd.sequence ASC");
 
             return response()->json([

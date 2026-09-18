@@ -89,7 +89,7 @@ class PushDataServices
       // return $list_data_order;
 
 
-      $response = Http::asJson()->post($this->endpoint . "/pos/push/data_order", [
+      $response = Http::asJson()->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order", [
         "list_order" => $list_data_order
       ]);
 
@@ -147,7 +147,7 @@ class PushDataServices
       // return $list_data_order_detail;
 
 
-      $response = Http::asJson()->post($this->endpoint . "/pos/push/data_order_detail", [
+      $response = Http::asJson()->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_detail", [
         "list_order_detail" => $list_data_order_detail
       ]);
       if ($response->json('code') == 0) {
@@ -198,7 +198,7 @@ class PushDataServices
       // return $list_data_order_detail_package;
 
 
-      $response = Http::asJson()->post($this->endpoint . "/pos/push/data_order_detail_package", [
+      $response = Http::asJson()->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_detail_package", [
         "list_order_detail_package" => $list_data_order_detail_package
       ]);
       if ($response->json('code') == 0) {
@@ -248,7 +248,7 @@ class PushDataServices
       // return $list_data_order_detail_package;
 
 
-      $response = Http::asJson()->post($this->endpoint . "/pos/push/data_order_payment", [
+      $response = Http::asJson()->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_payment", [
         "list_order_payment" => $list_data_order_payment
       ]);
       if ($response->json('code') == 0) {
@@ -292,7 +292,7 @@ class PushDataServices
         $item->sync_at = $datetime;
       }
 
-      $response = Http::asJson()->post($this->endpoint . "/pos/push/data_dayshift", [
+      $response = Http::asJson()->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_dayshift", [
         "list_dayshift" => $list_data_dayshift
       ]);
 
@@ -330,7 +330,7 @@ class PushDataServices
         $item->sync_at = $datetime;
       }
 
-      $response = Http::asJson()->post($this->endpoint . "/pos/push/data_dayshift_detail", [
+      $response = Http::asJson()->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_dayshift_detail", [
         "list_dayshift_detail" => $list_data_dayshift_detail
       ]);
 

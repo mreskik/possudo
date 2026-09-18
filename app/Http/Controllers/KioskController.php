@@ -71,6 +71,16 @@ class KioskController extends Controller
     // implisit dari tabel ini sendiri, gak perlu filter apply_for lagi), urut sequence.
     // banner_src udah path lokal POS (didownload pas pull, lihat
     // SetupServices::getMasterImageKiosk()).
+    //
+    // TANPA JOIN ke mr_image (2026-09-04, dicabut) -- filter is_active/flag_all_branches udah
+    // dilakuin di ERP (APIANDORDER MasterService::GetMasterImageKiosk()) SEBELUM data dikirim ke
+    // POS, jadi apapun yang ada di mr_image_kiosk lokal udah pasti campaign yang aktif+berlaku
+    // buat branch ini -- gak perlu re-filter lokal. JOIN ke mr_image sebelumnya malah BUG: gak
+    // ada satupun sync function yang ngisi tabel mr_image lokal, jadi campaign baru/valid bisa
+    // "ilang" dari respons ini kalau master_image_id-nya gak kebetulan match baris basi yang
+    // nyangkut di mr_image. Sekarang mr_image_kiosk sendiri udah full-replace tiap sync (lihat
+    // SetupServices::getMasterImageKiosk(), truncate+insert), jadi udah representasi paling
+    // akurat tanpa perlu tabel header lokal sama sekali.
     public function GetBannerImageKiosk(Request $request)
     {
         try {
@@ -79,8 +89,6 @@ class KioskController extends Controller
                     mik.banner_src,
                     mik.sequence
                     FROM mr_image_kiosk mik
-                    JOIN mr_image mi ON mi.id = mik.master_image_id
-                    WHERE mi.is_active = 1
                     ORDER BY mik.sequence ASC");
 
             return response()->json([
@@ -893,10 +901,13 @@ class KioskController extends Controller
     // item) buat visit purpose itu. Reuse MenuServices::GetMasterMenuList() apa adanya (tax
     // resolution & package handling-nya rumit, lebih aman reuse daripada ditulis ulang) --
     // filter satu baris sesuai $id, terus reshape ke snake_case.
+    // channel 'kiosk' (2026-09-18, sebelumnya default 'pos') -- item-level filter-nya sekarang
+    // mpd.qr_order = true, BUKAN mpd.pos lagi. Kiosk = terminal self-service outlet, diputusin
+    // lebih deket semantiknya ke channel QR Order (customer self-service) daripada ke POS staff.
     public function GetBranchVisitPurposeDetail(Request $request, int $id)
     {
         try {
-            $allVisitPurpose = MenuServices::GetMasterMenuList();
+            $allVisitPurpose = MenuServices::GetMasterMenuList('kiosk');
 
             $vp = null;
             foreach ($allVisitPurpose as $row) {
@@ -920,6 +931,13 @@ class KioskController extends Controller
                 ->whereIn('id', [$vp->serviceCharge, $vp->vat, $vp->pb1])
                 ->pluck('rate', 'id');
 
+            // Subcategory/category kosong DIBUANG (2026-09-18) -- category/subcategory query di
+            // GetMasterMenuList() gak difilter channel (cuma pricelist_id), jadi sebelum ini
+            // subcategory yang SEMUA item-nya kefilter qr_order=false tetap nongol di response
+            // dengan items:[] kosong (folder menu yang keliatan ada tapi begitu dibuka gak ada
+            // isinya). Sengaja cuma dibenerin di Kiosk (bukan di GetMasterMenuList() yang
+            // dipakai bareng POS) -- POS staff mungkin masih perlu liat struktur kategori
+            // lengkap apa adanya, ini murni soal UX Kiosk customer-facing.
             $categories = [];
             foreach ($vp->menuPriceList as $cat) {
                 $subcategories = [];
@@ -928,6 +946,9 @@ class KioskController extends Controller
                     foreach ($sub->menuList as $item) {
                         $items[] = $this->mapKioskMenuItem($item);
                     }
+                    if (count($items) === 0) {
+                        continue;
+                    }
                     $subcategories[] = [
                         'subcategory_id' => $sub->subCategoryId,
                         'subcategory_name' => $sub->SubCategoryName,
@@ -935,6 +956,9 @@ class KioskController extends Controller
                         'banner_src' => $sub->subCategoryBannerSrc,
                         'items' => $items,
                     ];
+                }
+                if (count($subcategories) === 0) {
+                    continue;
                 }
                 $categories[] = [
                     'category_id' => $cat->categoryId,

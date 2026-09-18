@@ -20,6 +20,14 @@ return [
     // sendiri di folder dev/payment/, defaultnya port 98 (APIANDORDER pakai 99).
     'payment_gateway_endpoint' => env('PAYMENT_GATEWAY_ENDPOINT', ''),
 
+    // dipakai semua call Http:: ke SERVER_ENDPOINT/PAYMENT_GATEWAY_ENDPOINT (lihat withOptions
+    // di masing-masing call site) -- default true (verify normal). Set HTTP_VERIFY_SSL=false
+    // di .env KALAU endpoint-nya https tapi certificate-nya self-signed/internal (bukan dari CA
+    // publik), biar curl gak error "SSL certificate problem". JANGAN dimatiin kalau endpoint-nya
+    // beneran diakses lewat internet publik pakai certificate biasa -- verify=false artinya MITM
+    // gak kedeteksi sama sekali.
+    'http_verify_ssl' => filter_var(env('HTTP_VERIFY_SSL', true), FILTER_VALIDATE_BOOLEAN),
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],

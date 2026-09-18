@@ -15,9 +15,31 @@ class MenuServices
    * `tr_order_detail.menu_id` column) — `mr_item_conv` itself has no name, so display fields
    * (menuName, menuCode, menuColor, ...) are always pulled from the parent `mr_item` row instead.
    * `itemid_real` below is the actual `mr_item.id`, used only internally to look up `mr_item_package`.
+   *
+   * TRIPLICATED LOGIC WARNING (2026-09-11): this pricing/tax/package resolution formula has been
+   * reimplemented from scratch, on purpose, in 2 other separate Go repos that read the same ERP
+   * database (db_sudocore_dev) but do NOT share code with this PHP app or with each other:
+   *   - sudomobile/backend/pricing/pricing.go (customer mobile ordering)
+   *   - sudobarber/backend/modules/admin/barberservice/ (barber service list)
+   * There is no shared library / single source of truth across the three -- if you fix a bug or
+   * change a rule HERE (tax resolution, inclusive-price math, package price override, etc.), you
+   * must manually go re-check/re-apply the same change in both Go repos, they will NOT pick it up
+   * automatically.
+   *
+   * $channel (2026-09-18): mr_pricelist_detail punya 2 flag channel independen, `pos` dan
+   * `qr_order` (gak ada flag "kiosk" sendiri sama sekali, dicek langsung ke ERP
+   * master_pricelist_detail -- cuma 2 kolom itu). Item-level query ($listmenu) di-filter salah
+   * satunya tergantung siapa yang manggil: MasterController (POS staff, /api/master/menu-list)
+   * pakai 'pos', KioskController (terminal self-service di outlet) pakai 'qr_order' -- Kiosk
+   * SEBELUMNYA numpang 'pos' (sama kayak POS staff), diputusin pindah ke 'qr_order' karena
+   * Kiosk itu customer self-service, lebih deket semantiknya ke QR Order (HP customer) daripada
+   * ke kasir. category/subcategory query TETAP gak difilter channel apa pun (cuma pricelist_id)
+   * -- keputusan lama, gak diubah bareng ini.
    */
-  public static function GetMasterMenuList()
+  public static function GetMasterMenuList(string $channel = 'pos')
   {
+    $channelColumn = $channel === 'kiosk' ? 'qr_order' : 'pos';
+
     $branch_visit_purpose =  DB::select("SELECT
     bvp.visit_purpose_id as id,
     mvp.name as nameVisitPurpose,
@@ -156,10 +178,10 @@ class MenuServices
 
         FROM mr_pricelist_detail mpd
         JOIN mr_pricelist mp on mp.id = mpd.pricelist_id
-        JOIN mr_item_conv mic on mic.id = mpd.item_conv_detail_id 
+        JOIN mr_item_conv mic on mic.id = mpd.item_conv_detail_id
         JOIN mr_item mi on mi.id = mic.item_id
 
-        WHERE mpd.pricelist_id = ? and mpd.pos = true
+        WHERE mpd.pricelist_id = ? and mpd.{$channelColumn} = true
       ", [$visitPurposeRow->menuPriceListId]);
 
 
