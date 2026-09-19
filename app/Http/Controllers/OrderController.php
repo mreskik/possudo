@@ -201,9 +201,10 @@ class OrderController extends Controller
     {
         $item_conv_id = (int) $request->input("item_conv_id");
         $qty = $request->input("qty");
+        $order_number = $request->input("order_number");
         $packages = $request->input("packages", []);
 
-        OrderServices::RecordRemoveItemBeforeSave($request, $item_conv_id, $qty, $packages);
+        OrderServices::RecordRemoveItemBeforeSave($request, $item_conv_id, $qty, $order_number, $packages);
 
         return response()->json([
             'code' => 0,

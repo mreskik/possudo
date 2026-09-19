@@ -1132,14 +1132,19 @@ class OrderServices
 
   // RecordRemoveItemBeforeSave: audit trail item yang dihapus kasir dari cart lokal SEBELUM
   // order pernah tersimpan ke server sama sekali (removeItemOrder() di orderPage.vue -- tombol
-  // Trash2, cuma muncul kalau item belum punya `ulid`). order_number SELALU null di skenario ini
-  // (order belum pernah dibuat). dayshift_ulid diresolve dari shift harian yang aktif SEKARANG
-  // (DaySiftModel dayout_time masih null) -- null kalau kebetulan gak ada shift aktif pas
-  // kejadian ini terjadi (harusnya jarang, tapi jangan sampai malah gagal nyimpen audit-nya).
+  // Trash2, cuma muncul kalau item belum punya `ulid`). $order_number nullable (2026-09-18,
+  // disesuaikan): NULL kalau ini order BARU yang belum pernah tersimpan sama sekali (create baru,
+  // dataOrderObject.orderNumber == ''), TERISI kalau kasir lagi EDIT order pending yang UDAH ada
+  // nomornya (buka lewat ViewOrder()) terus nambah menu baru ke situ (item baru ini belum punya
+  // `ulid` sendiri, tapi order induknya udah py order_number) lalu batal sebelum re-save -- biar
+  // baris audit ini tetap bisa dilacak balik ke order mana asalnya, bukan cuma "item apa" doang.
+  // dayshift_ulid diresolve dari shift harian yang aktif SEKARANG (DaySiftModel dayout_time masih
+  // null) -- null kalau kebetulan gak ada shift aktif pas kejadian ini terjadi (harusnya jarang,
+  // tapi jangan sampai malah gagal nyimpen audit-nya).
   // branch_id (2026-09-18, susulan audit) -- sama pola kayak tr_order/tr_dayshift, WAJIB diisi
   // karena APIANDORDER resolve company_id dari kolom ini pas push (PushPOSRemoveItemBeforeSave()).
   // $packages opsional -- sub-item package yang ikut lenyap bareng item HEAD ini.
-  public static function RecordRemoveItemBeforeSave(Request $request, int $item_conv_id, $qty, array $packages = []): void
+  public static function RecordRemoveItemBeforeSave(Request $request, int $item_conv_id, $qty, ?string $order_number = null, array $packages = []): void
   {
     // guard: item_conv_id 0/kosong (request malformed/frontend ngirim nilai falsy) gak usah
     // dicatat -- baris audit yang gak nunjuk ke item manapun gak ada gunanya.
@@ -1154,7 +1159,7 @@ class OrderServices
 
       $header = TrRemoveItemBeforeSaveModel::create([
         'branch_id' => $branch->id ?? null,
-        'order_number' => null,
+        'order_number' => $order_number,
         'dayshift_ulid' => $dayshift->ulid ?? null,
         'item_conv_id' => $item_conv_id,
         'qty' => $qty,
