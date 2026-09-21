@@ -11,6 +11,7 @@ use App\Models\TrOrderDetailModel;
 use App\Models\TrOrderDetailPackageModel;
 use App\Models\TrOrderModel;
 use App\Models\TrOrderPaymentModel;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -181,6 +182,22 @@ class DayShiftServices
           if ($current_dayshift->dayout_time == null) {
             throw new \Exception('tidak bisa start day karena belum end day!');
           }
+        }
+
+        // Guard waktu komputer mundur (2026-09-21) -- bandingkan waktu Start Cash SEKARANG
+        // dengan dayin_time dayshift TERAKHIR (apa pun statusnya, udah di-end-day atau belum,
+        // beda dari GetDayShift() di atas yang cuma nangkep yang masih aktif). Kalau waktu
+        // sekarang lebih AWAL/mundur dari itu, berarti jam komputer kasir salah (mundur, misal
+        // baterai CMOS habis/gak ke-sync NTP) -- ditolak dari awal, DULUAN sebelum ulid dayshift
+        // baru ke-generate (ulid komposisi pakai timestamp, kalau kebablasan bikin ulid mundur
+        // itu bisa nabrak urutan yang udah ada / rusak asumsi "makin baru makin besar" di query
+        // ORDER BY ulid yang dipakai di GetDayShift()).
+        $lastDayshift = DaySiftModel::orderBy('dayin_time', 'desc')->first();
+        // dayin_time gak di-cast ke Carbon oleh model ini ($timestamps=false, gak ada $casts) --
+        // balik sebagai string mentah dari DB, jadi di-parse manual di sini biar aman
+        // dibandingkan, gak bergantung ke cast model.
+        if ($lastDayshift && $datetimenow->lt(Carbon::parse($lastDayshift->dayin_time))) {
+          throw new \Exception('waktu komputer tidak sesuai (mundur dari dayshift terakhir), tidak bisa start cash dengan waktu yang sudah lampau -- cek dan benarkan jam komputer ini dulu');
         }
 
         // DAYSHIFT ULID KOMPOSISI (kolom tetap "ulid", isinya bukan ULID lagi)

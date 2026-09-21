@@ -12,12 +12,24 @@ Kirim data transaksi order (bukan master data) DARI lokal (`db_pos`) KE server E
 | Order detail (item) | `GET /api/push/data-order-detail` | `pushDataOrderDetail()` | `TrOrderDetailModel` → `tr_order_detail` | `POST {endpoint}/pos/push/data_order_detail` |
 | Order detail package | `GET /api/push/data-order-detail-package` | `pushDataOrderDetailPackage()` | `TrOrderDetailPackageModel` → `tr_order_detail_package` | `POST {endpoint}/pos/push/data_order_detail_package` |
 | Order payment | `GET /api/push/data-order-payment` | `pushDataOrderPayment()` | `TrOrderPaymentModel` → `tr_order_payment` | `POST {endpoint}/pos/push/data_order_payment` |
+| Remove item before save (header) | `GET /api/push/data-remove-item-before-save` | `pushDataRemoveItemBeforeSave()` | `TrRemoveItemBeforeSaveModel` → `tr_remove_item_before_save` | `POST {endpoint}/pos/push/data_remove_item_before_save` |
+| Remove item before save package | `GET /api/push/data-remove-item-before-save-package` | `pushDataRemoveItemBeforeSavePackage()` | `TrRemoveItemBeforeSavePackageModel` → `tr_remove_item_before_save_package` | `POST {endpoint}/pos/push/data_remove_item_before_save_package` |
 
-Urutan push **harus** dayshift → dayshift detail → order → order detail → order detail package → order payment (dayshift itu buka toko, secara bisnis harus ada duluan sebelum order — `pos_order.dayshift_ulid` ngerujuk ke situ, walau gak ada FK constraint keras di server yang maksa urutan ini), lihat `PushAll()` di frontend.
+Urutan push **harus** dayshift → dayshift detail → order → order detail → order detail package → order payment (dayshift itu buka toko, secara bisnis harus ada duluan sebelum order — `pos_order.dayshift_ulid` ngerujuk ke situ, walau gak ada FK constraint keras di server yang maksa urutan ini). Remove item before save (+ package) gak sekritikal itu (gak ada dependency FK keras ke `tr_order`/`tr_dayshift`), ditaruh belakangan.
+
+## 2 mekanisme trigger yang terpisah -- HATI-HATI kalau nambah fungsi push baru
+
+Ada **2 jalur** yang masing-masing manggil `PushDataServices::push*()`, harus disinkronkan manual kalau nambah fungsi push baru (gak ada 1 sumber kebenaran tunggal):
+
+1. **`php artisan sync:push`** (`App\Console\Commands\SyncPush.php`) -- command CLI, jalan LOOP terus-menerus tiap `SYNC_PUSH_INTERVAL_SECONDS` detik (default 120), ini jalur push otomatis yang **BENERAN AKTIF** di production (dijalankan lewat supervisor/systemd, di luar scope repo ini).
+2. **`usePushData().PushAll()`** (`posv1-vue/src/composables/usePushData.ts`) -- composable Vue, dipanggil dari `App.vue` lewat `setInterval`. **NONAKTIF** per 2026-09-21 (baris pemanggilnya di-comment-out di `App.vue`, `onMounted()`) -- ada di kode tapi gak pernah jalan sekarang.
+3. `DayShiftServices::EndDay()` juga manggil `PushDataServices::push*()` langsung (bukan lewat 2 jalur di atas) sebagai "jaring pengaman terakhir" sebelum jurnal end-of-day -- **cuma 6 fungsi order/dayshift**, SENGAJA gak termasuk remove_item_before_save (murni audit trail, gak ada relasi ke jurnal).
+
+**Bug ketemu & dibenerin (2026-09-21)**: `pushDataRemoveItemBeforeSave()`/`...Package()` dibangun lengkap (service, controller, route) sejak 2026-09-18, tapi **gak pernah didaftarkan ke `SyncPush.php`** -- cuma ada endpoint manual yang gak pernah dipanggil otomatis dari mana pun. Karena jalur #2 (`PushAll()`) nonaktif, jalur #1 (`sync:push`) itu SATU-SATUNYA push otomatis yang beneran jalan di production -- efeknya data `tr_remove_item_before_save`(+`_package`) numpuk terus di lokal, gak pernah ke-push ke ERP sejak fitur ini dibuat sampai ditemukan gap ini. Dibenerin: `SyncPush.php` sekarang manggil ke-8 fungsi (sebelumnya 6), `sync:push` sukses/gagal ditentukan dari SEMUA 8 fungsi (bukan 6 lagi).
 
 ## Cara kerja tiap fungsi push
 
-Pola sama di ke-6 fungsi:
+Pola sama di ke-8 fungsi:
 
 1. Ambil semua baris lokal yang `sync_at IS NULL` (belum pernah ke-push).
 2. Normalisasi tipe data biar cocok sama yang diharapkan server Go (contoh: `flag_inclusive_tax`/`done_print` di-cast ke `bool`, `tax_rate` null jadi `'0'`, datetime lokal (`Y-m-d H:i:s`) dikonversi ke format ISO8601 `time.Time` lewat `formatedDateTimeToTimeTime()`/`formatedDateToTimeTime()`).
@@ -53,7 +65,7 @@ Tervalidasi end-to-end: `StartDay` → `EndShift` (sukses, `shift_number=1` keca
 
 ## Remove Item Before Save (2026-09-18)
 
-`tr_remove_item_before_save` (+ `_package`) — audit trail item yang dihapus kasir dari cart lokal SEBELUM order pernah tersimpan (dicatat lewat `OrderServices::RecordRemoveItemBeforeSave()`, dipanggil dari `removeItemOrder()` di `orderPage.vue`). Jalur push-nya dibangun lengkap end-to-end, ngikutin pola 6 fungsi push yang udah ada di atas persis:
+`tr_remove_item_before_save` (+ `_package`) — audit trail item yang dihapus kasir dari cart lokal SEBELUM order pernah tersimpan (dicatat lewat `OrderServices::RecordRemoveItemBeforeSave()`, dipanggil dari `removeItemOrder()` di `orderPage.vue`). Jalur push-nya dibangun lengkap end-to-end, ngikutin pola 6 fungsi push yang udah ada di atas persis (**tapi sempat gak kepanggil otomatis dari mana pun** sampai dibenerin 2026-09-21, lihat bagian "2 mekanisme trigger" di atas):
 
 | Data | Route lokal | Service function | Model lokal | Kirim ke (server) |
 | --- | --- | --- | --- | --- |

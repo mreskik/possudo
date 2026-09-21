@@ -7,12 +7,19 @@ use App\Services\PushDataServices;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
-// SyncPush: push data lokal (dayshift + order + detail + payment) ke ERP secara BERKALA --
-// sebelumnya PushDataServices cuma dipanggil 1x sehari (DayShiftServices::EndDay(), sesaat
-// sebelum jurnal). Job ini gak GANTIIN panggilan itu (dibiarin apa adanya, tetap jadi "jaring
-// pengaman terakhir" sebelum jurnal) -- cuma nambahin biar ERP gak nunggu sampai end-of-day
-// buat liat data yang uptodate, berguna misal ada laporan/monitoring yang butuh data lokal
-// yang gak terlalu basi.
+// SyncPush: push data lokal (dayshift + order + detail + payment + remove_item_before_save) ke
+// ERP secara BERKALA -- sebelumnya PushDataServices cuma dipanggil 1x sehari
+// (DayShiftServices::EndDay(), sesaat sebelum jurnal). Job ini gak GANTIIN panggilan itu
+// (dibiarin apa adanya, tetap jadi "jaring pengaman terakhir" sebelum jurnal) -- cuma nambahin
+// biar ERP gak nunggu sampai end-of-day buat liat data yang uptodate, berguna misal ada
+// laporan/monitoring yang butuh data lokal yang gak terlalu basi.
+//
+// remove_item_before_save(_package) (2026-09-21) SENGAJA cuma didaftarkan DI SINI, gak ikut
+// dipanggil dari DayShiftServices::EndDay() -- data ini murni audit trail (item yang dihapus
+// dari cart sebelum order tersimpan), gak ada relasi ke jurnal/dayshift, jadi gak perlu jadi
+// bagian "jaring pengaman sebelum jurnal". Sebelum ini ditambahkan, cuma ada endpoint manual
+// (GET /push/data-remove-item-before-save(-package)) yang gak pernah kepanggil otomatis dari
+// mana pun -- datanya numpuk di lokal, gak pernah ke-push ke ERP.
 //
 // AMAN dipanggil berkali-kali kapan aja -- semua fungsi PushDataServices::push*() filter
 // `sync_at IS NULL`, dan sync_at di-reset NULL lagi tiap ada perubahan (lihat "sync update" di
@@ -46,10 +53,15 @@ class SyncPush extends Command
             $lastError = $this->pushOne('order_detail', fn() => $pushService->pushDataOrderDetail()) ?? $lastError;
             $lastError = $this->pushOne('order_detail_package', fn() => $pushService->pushDataOrderDetailPackage()) ?? $lastError;
             $lastError = $this->pushOne('order_payment', fn() => $pushService->pushDataOrderPayment()) ?? $lastError;
+            // remove_item_before_save(_package) (2026-09-21, ditambahkan -- sebelumnya cuma ada
+            // endpoint manual GET /push/data-remove-item-before-save(-package), gak pernah
+            // kepanggil otomatis dari mana pun, jadi data numpuk di lokal gak pernah ke-push).
+            $lastError = $this->pushOne('remove_item_before_save', fn() => $pushService->pushDataRemoveItemBeforeSave()) ?? $lastError;
+            $lastError = $this->pushOne('remove_item_before_save_package', fn() => $pushService->pushDataRemoveItemBeforeSavePackage()) ?? $lastError;
 
-            // Putaran ini dianggap sukses cuma kalau SEMUA 6 fungsi lolos -- kalau ada 1 aja yang
+            // Putaran ini dianggap sukses cuma kalau SEMUA 8 fungsi lolos -- kalau ada 1 aja yang
             // gagal, JobHealthReporter::failed() (bukan success()) biar kelihatan di jobs-health,
-            // walau 5 fungsi lain berhasil (lihat GET /api/system/jobs-health).
+            // walau fungsi lain berhasil (lihat GET /api/system/jobs-health).
             if ($lastError === null) {
                 JobHealthReporter::success('sync:push');
             } else {
