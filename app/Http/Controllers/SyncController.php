@@ -108,6 +108,26 @@ class SyncController extends Controller
     }
   }
 
+  public function getSubCategoryImages()
+  {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
+    try {
+      $response = $this->setupservices->getSubCategoryImages('', '', $branch->id, $branch->token);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message'),
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
   public function getTableSectionList()
   {
     $branch = $this->currentBranch();
@@ -199,6 +219,26 @@ class SyncController extends Controller
 
     try {
       $response = $this->setupservices->getMasterItem('', '', $branch->id, $branch->token);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message'),
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getMasterItemImages()
+  {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
+    try {
+      $response = $this->setupservices->getMasterItemImages('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),
@@ -490,6 +530,26 @@ class SyncController extends Controller
     }
   }
 
+  public function getMasterImageCustomerDisplayImages()
+  {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
+    try {
+      $response = $this->setupservices->getMasterImageCustomerDisplayImages('', '', $branch->id, $branch->token);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message'),
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
   public function getMasterImageKiosk()
   {
     $branch = $this->currentBranch();
@@ -499,6 +559,26 @@ class SyncController extends Controller
 
     try {
       $response = $this->setupservices->getMasterImageKiosk('', '', $branch->id, $branch->token);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message'),
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getMasterImageKioskImages()
+  {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
+    try {
+      $response = $this->setupservices->getMasterImageKioskImages('', '', $branch->id, $branch->token);
 
       return response()->json([
         'code' => $response->json('code'),

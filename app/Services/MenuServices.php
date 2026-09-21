@@ -306,16 +306,27 @@ class MenuServices
       }
 
       //gabungkan subcategory ke category
+      // Sub Category kosong (gak ada menuList sama sekali) DISKIP -- sebelumnya subcategory tetap
+      // ikut kekirim ke FE walau kosong, karena query $subcategory di atas gak difilter channel
+      // (pos/qr_order) kayak $listmenu, jadi bisa "ada" padahal item aktualnya gak eligible buat
+      // channel ini. Root cause: laporan kendala "POS: Sub Category masih muncul walau tidak ada
+      // Menu" (2026-09-21).
       foreach ($category as $itemcat) {
         $itemcat->subCategoryData = [];
         foreach ($subcategory as $itemsubcat) {
-          if ($itemcat->categoryId == $itemsubcat->categoryId) {
+          if ($itemcat->categoryId == $itemsubcat->categoryId && count($itemsubcat->menuList) > 0) {
             $cloningan = unserialize(serialize($itemsubcat));
             unset($cloningan->categoryId);
             $itemcat->subCategoryData[] = $cloningan;
           }
         }
       }
+
+      // Category yang subCategoryData-nya jadi kosong (semua subcategory-nya ke-filter di atas)
+      // ikut DISKIP juga -- konsisten, gak ada gunanya nampilin category kosong di POS.
+      $category = array_values(array_filter($category, function ($itemcat) {
+        return count($itemcat->subCategoryData) > 0;
+      }));
 
       //masukkan semua haha
       $visitPurposeRow->menuPriceList = $category;

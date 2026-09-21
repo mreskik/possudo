@@ -58,12 +58,14 @@ Route::prefix('sync_pull')->group(function () {
   Route::get('get_station_list', [SyncController::class, 'getStationList']);
   Route::get('get_category_list', [SyncController::class, 'getCategoryList']);
   Route::get('get_subcategory_list', [SyncController::class, 'getSubCategoryList']);
+  Route::get('get_subcategory_images', [SyncController::class, 'getSubCategoryImages']);
   Route::get('get_tablesection_list', [SyncController::class, 'getTableSectionList']);
   Route::get('get_table', [SyncController::class, 'getTable']);
   Route::get('get_tax', [SyncController::class, 'getTax']);
   Route::get('get_terminal', [SyncController::class, 'getTerminal']);
 
   Route::get('get_item', [SyncController::class, 'getMasterItem']);
+  Route::get('get_item_images', [SyncController::class, 'getMasterItemImages']);
   Route::get('get_item_conv', [SyncController::class, 'getMasterItemConv']);
   Route::get('get_item_package', [SyncController::class, 'getMasterItemPackage']);
   Route::get('get_item_package_group', [SyncController::class, 'getMasterItemPackageGroup']);
@@ -79,7 +81,9 @@ Route::prefix('sync_pull')->group(function () {
   Route::get('get_branch_visit_purpose', [SyncController::class, 'getMasterBranchVisitPurpose']);
   Route::get('get_branch_ops_setting', [SyncController::class, 'getMasterBranchOpsSetting']);
   Route::get('get_master_image_customer_display', [SyncController::class, 'getMasterImageCustomerDisplay']);
+  Route::get('get_master_image_customer_display_images', [SyncController::class, 'getMasterImageCustomerDisplayImages']);
   Route::get('get_master_image_kiosk', [SyncController::class, 'getMasterImageKiosk']);
+  Route::get('get_master_image_kiosk_images', [SyncController::class, 'getMasterImageKioskImages']);
   Route::get('get_visit_purpose', [SyncController::class, 'getMasterVisitPurpose']);
   Route::get('get_master_user', [SyncController::class, 'getMasterUser']);
   Route::get('get_master_role_access', [SyncController::class, 'getMasterRoleAccess']);
@@ -110,7 +114,9 @@ Route::prefix('sync-group')->group(function () {
   Route::get('member', [SyncGroupController::class, 'syncMember']);
   Route::get('user', [SyncGroupController::class, 'syncUser']);
   Route::get('menu', [SyncGroupController::class, 'syncMenu']);
+  Route::get('menu-images', [SyncGroupController::class, 'syncMenuImages']);
   Route::get('branch-setting', [SyncGroupController::class, 'syncBranchSetting']);
+  Route::get('branch-setting-images', [SyncGroupController::class, 'syncBranchSettingImages']);
   Route::get('master-setting', [SyncGroupController::class, 'syncMasterSetting']);
   Route::get('sales', [SyncGroupController::class, 'syncSales']);
 });

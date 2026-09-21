@@ -12,11 +12,13 @@ Kolom **Navbar** = apa fungsi ini kepanggil otomatis pas user klik tombol Sync u
 | Station | `getStationList` | `GET /api/sync_pull/get_station_list` | ❌ tidak ke-routing | `StationModel` → `mr_station` | ✅ | ✅ |
 | Category | `getCategoryList` | `GET /api/sync_pull/get_category_list` | ❌ tidak ke-routing | `CategoryModel` → `mr_category` | ✅ | ✅ |
 | Subcategory | `getSubCategoryList` | `GET /api/sync_pull/get_subcategory_list` | ❌ tidak ke-routing | `SubCategoryModel` → `mr_subcategory` | ✅ | ✅ |
+| Subcategory images (2026-09-21, baru) | `getSubCategoryImages` | `GET /api/sync_pull/get_subcategory_images` | ❌ tidak ke-routing | `SubCategoryModel` → `mr_subcategory` (kolom `icon_src`/`banner_src` doang) | ✅ (setelah `getSubCategoryList`) | ✅ |
 | Table section (+ print category setting, bareng dalam 1 call) | `getTableSectionList` (+ `getTableSectionPrintCategorySetting`) | `GET /api/sync_pull/get_tablesection_list` | ❌ tidak ke-routing | `TableSectionModel` + `MasterTableSectionPrintCategorySettingModel` | ✅ | ✅ |
 | Table | `getTable` | `GET /api/sync_pull/get_table` | ❌ tidak ke-routing | `TableModel` → `mr_table` | ✅ | ✅ |
 | Tax | `getTax` | `GET /api/sync_pull/get_tax` | ❌ tidak ke-routing | `MasterTaxModel` → `mr_tax` | ✅ | ✅ |
 | Terminal | `getTerminal` | `GET /api/sync_pull/get_terminal` | ❌ tidak ke-routing | `TerminalModel` → `mr_terminal` | ✅ | ✅ |
 | Item (menu) | `getMasterItem` | `GET /api/sync_pull/get_item` | ❌ tidak ke-routing | `MasterItemModel` → `mr_item` | ✅ | ✅ |
+| Item images (2026-09-21, baru) | `getMasterItemImages` | `GET /api/sync_pull/get_item_images` | ❌ tidak ke-routing | `MasterItemModel` → `mr_item` (kolom `image`/`icon_src` doang) | ✅ (setelah `getMasterItem`) | ✅ |
 | Item conv | `getMasterItemConv` | `GET /api/sync_pull/get_item_conv` | ❌ tidak ke-routing | `MasterItemConvModel` → `mr_item_conv` | ✅ | ✅ |
 | Item package | `getMasterItemPackage` | `GET /api/sync_pull/get_item_package` | ❌ tidak ke-routing | `MasterItemPackageModel` → `mr_item_package` | ✅ | ✅ |
 | Item package group | `getMasterItemPackageGroup` | `GET /api/sync_pull/get_item_package_group` | ❌ tidak ke-routing | `MasterItemPackageGroupModel` → `mr_item_package_group` | ✅ | ✅ |
@@ -32,7 +34,9 @@ Kolom **Navbar** = apa fungsi ini kepanggil otomatis pas user klik tombol Sync u
 | Branch ops setting (jam operasional per hari) | `getMasterBranchOpsSetting` | `GET /api/sync_pull/get_branch_ops_setting` | ❌ tidak ke-routing | `MasterBranchOpsSettingModel` → `mr_branch_ops_setting` | ✅ | ✅ |
 | Master image (header campaign) | `getMasterImage` | `GET /api/sync_pull/get_master_image` | ❌ tidak ke-routing | `MasterImageModel` → `mr_image` | ✅ | ✅ |
 | Master image customer display (gambar cd_pos) | `getMasterImageCustomerDisplay` (2026-08-24, ganti dari `getMasterImageList`) | `GET /api/sync_pull/get_master_image_customer_display` | ❌ tidak ke-routing | `MasterImageCustomerDisplayModel` → `mr_image_customer_display` | ✅ | ✅ |
+| Master image customer display images (2026-09-21, baru) | `getMasterImageCustomerDisplayImages` | `GET /api/sync_pull/get_master_image_customer_display_images` | ❌ tidak ke-routing | `MasterImageCustomerDisplayModel` → `mr_image_customer_display` (kolom `banner_src` doang) | ✅ (setelah `getMasterImageCustomerDisplay`) | ✅ |
 | Master image kiosk (gambar cd_kiosk) | `getMasterImageKiosk` (2026-08-24, ganti dari `getMasterImageListApplyFor`) | `GET /api/sync_pull/get_master_image_kiosk` | ❌ tidak ke-routing | `MasterImageKioskModel` → `mr_image_kiosk` | ✅ | ✅ |
+| Master image kiosk images (2026-09-21, baru) | `getMasterImageKioskImages` | `GET /api/sync_pull/get_master_image_kiosk_images` | ❌ tidak ke-routing | `MasterImageKioskModel` → `mr_image_kiosk` (kolom `banner_src` doang) | ✅ (setelah `getMasterImageKiosk`) | ✅ |
 | Visit purpose | `getMasterVisitPurpose` | `GET /api/sync_pull/get_visit_purpose` | ❌ tidak ke-routing | `MasterVisitPurposeModel` → `mr_visit_purpose` | ✅ | ✅ |
 | Master user | `getMasterUser` | `GET /api/sync_pull/get_master_user` | ❌ tidak ke-routing | `MasterUserModel` → `mr_user` | ⚠️ **tidak** ada di `syncQueue` Navbar | ✅ |
 | Role access | `getMasterRoleAccess` | `GET /api/sync_pull/get_master_role_access` | ❌ tidak ke-routing | `RoleAccessModel` → `mr_role_access` | ⚠️ **tidak** ada di `syncQueue` Navbar | ✅ |
@@ -73,3 +77,36 @@ Kolom **Navbar** = apa fungsi ini kepanggil otomatis pas user klik tombol Sync u
 - Semua fungsi (kecuali `getDatabranch`) sebelumnya gak ada mapping/transform kecuali `getMasterItem` (nambah proses download gambar per item, lihat `SetupServices::downloadImage()`) — ini gak berubah, cuma cara nyimpennya yang beda (upsert vs replace). **Update (2026-08-12)**: `getSubCategoryList()` (kolom `icon_src`, ditambah bareng fitur ini) dan `getMasterImageList()` ikut pola download-gambar yang sama (subfolder `subcategory`/`master-image`), gak cuma `getMasterItem` doang lagi. `getMasterItem()` sendiri juga ketambahan: sekarang download **2 file per item** (`image` di subfolder `item`, `icon_src` baru di subfolder `item-icon`, masing-masing punya fallback sendiri).
 - **`getMasterItem`** (2026-08-27) — kolom baru `description` (`mr_item`, dari `master_item.item_description` ERP), ditarik lewat `COALESCE(mi.item_description, '') as description` di `MasterService.GetItem()` (`APIANDORDER`). Gak butuh perubahan kode di `SetupServices::getMasterItem()` -- `upsertRows()` generic, otomatis kepetakan selama nama kolom lokal (`description`) cocok sama key JSON dari bridge. Ditampilin di `MenuServices::GetMasterMenuList()`/Kiosk, lihat `KIOSK BRANCH VISIT PURPOSE DETAIL.md`.
 - **Fix (2026-08-11)**: karena sync sekarang upsert (jalan berkali-kali, bukan sekali doang kayak truncate), `downloadImage()` tadinya balikin `null` kalau download gagal (network hiccup/timeout) — efeknya gambar yang sebelumnya udah bener-bener ke-download bisa "ilang" (jadi `null`) cuma gara-gara 1 kegagalan network sesaat pas sync berikutnya. Dibenerin: `downloadImage()` sekarang terima parameter `$fallback` (nilai lokal yang lama), dibalikin kalau download gagal — bukan `null`. Remote path yang emang kosong (item/branch sengaja dihapus gambarnya) tetep jadi `null` sesuai maksud, gak kepengaruh fallback. Dipakai di `getMasterItem()` (fallback per item, query `whereIn` sekali di awal) dan `getDatabranch()` (fallback dari row lama sebelum `truncate()`). Tervalidasi via `tinker` + reflection (bukan lewat server dev yang datanya flaky): skenario gagal-download balikin fallback, skenario remote-kosong tetep `null`.
+
+## Update (2026-09-21): download gambar dipisah jadi endpoint sendiri
+
+**Masalah**: `downloadImage()` itu HTTP request **sinkron per baris** ke server ERP (bukan async/batch) — buat `getMasterItem()`/`getSubCategoryList()` yang bisa punya puluhan-ratusan baris, tiap baris nunggu 1-2 request gambar selesai SEBELUM baris berikutnya diproses, dan **sebelum satu pun baris data teks (nama, harga, dst) tersimpan ke DB**. Sync jadi lambat gara-gara gambar, padahal user cuma butuh data teksnya update cepat.
+
+**Solusi**: 4 fungsi sync yang punya gambar (`getSubCategoryList`, `getMasterItem`, `getMasterImageCustomerDisplay`, `getMasterImageKiosk`) **dicabut** panggilan `downloadImage()`-nya — sekarang kolom gambar cuma **dipertahankan apa adanya** dari row lokal yang sudah ada (`$existing[...] ?? null`, TIDAK di-null-in, TIDAK dicoba download). Baris data teks tersimpan cepat tanpa nunggu gambar sama sekali.
+
+Sebagai gantinya, ditambah **4 fungsi baru, pasangan 1:1**, khusus proses gambar:
+
+| Fungsi sync data (data teks, cepat) | Fungsi gambar baru (pasangannya) |
+| --- | --- |
+| `getSubCategoryList()` | `getSubCategoryImages()` |
+| `getMasterItem()` | `getMasterItemImages()` |
+| `getMasterImageCustomerDisplay()` | `getMasterImageCustomerDisplayImages()` |
+| `getMasterImageKiosk()` | `getMasterImageKioskImages()` |
+
+**Cara kerja tiap fungsi gambar baru** (pola sama semua):
+1. Manggil `syncRequest()` ke endpoint ERP yang **SAMA PERSIS** dengan fungsi sync data pasangannya — server ERP **gak perlu diubah sama sekali**, response-nya emang udah dari dulu punya field gambar, cuma sekarang dipakai di 2 tempat beda.
+2. Loop response, buat tiap baris: cek dulu `id`-nya **sudah ada** di tabel lokal (row itu sudah pernah disimpan lewat fungsi sync data pasangannya) — kalau **belum ada**, **SKIP** (fungsi gambar ini gak pernah insert baris baru, itu tetap tugas fungsi sync data).
+3. Kalau row-nya ada, baru panggil `downloadImage()`, lalu `UPDATE` **cuma kolom gambar** row itu (`->where('id', ...)->update([...])`) — kolom lain (nama, harga, dst) **sama sekali gak ikut kesentuh**.
+
+**Ketergantungan urutan**: fungsi gambar baru **WAJIB dipanggil SETELAH** fungsi sync data pasangannya di urutan yang sama (`syncQueue` Navbar/Install) — terutama krusial buat `getMasterImageCustomerDisplayImages()`/`getMasterImageKioskImages()`, karena pasangannya (`getMasterImageCustomerDisplay()`/`getMasterImageKiosk()`) pakai `truncate()+insert()` (lihat section di atas) — kalau fungsi gambar dipanggil SEBELUM/tanpa pasangannya, tabel masih kosong pasca-truncate, semua baris di-skip (gak ada `id` yang cocok).
+
+**Dites end-to-end** (live, server ERP `syncpos.sudobrew.com`): kedelapan fungsi (4 pasang) sukses `code: 0`, data teks tetap utuh (37 subcategory, 56 item, gak berubah dari sebelum split), file gambar yang berhasil didownload **terverifikasi ada fisik di disk** (`public/img/{subdir}/...`). Ditemukan beberapa path gambar lama yang 404 di server ERP (file udah dihapus di sana) — **bukan regresi**, `downloadImage()` merespons sesuai desain (fallback ke path lokal lama, dicatat `Log::warning`), perilaku ini sama persis sebelum maupun sesudah perubahan ini.
+
+**Integrasi UI (2026-09-21, susulan)**: **BUKAN** ditambahin ke `syncQueue` yang ada (`Navbar.vue`) atau nempel ke checkbox Menu/Branch Setting yang udah ada — sengaja jadi **2 kategori checkbox BARU terpisah** di tab Synchronize (`SettingPage.vue`), biar user bisa pilih sync data doang tanpa nunggu gambar kalau lagi buru-buru:
+
+- **"Menu Images"** (key `menu_images`) — checkbox baru, ditaruh TEPAT SETELAH "Menu" di `synchronize_data`/UI. Manggil `GET /api/sync-group/menu-images` (`SyncGroupController::syncMenuImages()`, baru) → `getSubCategoryImages()` + `getMasterItemImages()`.
+- **"Branch Setting Images"** (key `branch_setting_images`) — checkbox baru, ditaruh TEPAT SETELAH "Branch Setting". Manggil `GET /api/sync-group/branch-setting-images` (`SyncGroupController::syncBranchSettingImages()`, baru) → `getMasterImageCustomerDisplayImages()` + `getMasterImageKioskImages()`.
+
+**Urutan proses di `syncSelectedGroups()` (`SettingPage.vue`) mengikuti urutan KEY** di object `synchronize_data` (JS mempertahankan urutan insersi key string, bukan urutan user nyentang checkbox) — jadi selama `menu_images`/`branch_setting_images` didefinisikan SETELAH `menu`/`branch_setting` di object itu, ketergantungan urutan (fungsi gambar butuh row datanya udah ada duluan) otomatis terjaga, gak peduli kombinasi checkbox mana yang dicentang user. **Kalau user cuma centang "Menu Images" doang** (tanpa "Menu") pas row subcategory/item BELUM PERNAH ke-sync sama sekali di lokal, semua baris di-skip diam-diam (fungsi gambar gak pernah insert baris baru) — bukan error, tapi hasilnya kosong; user perlu jalanin "Menu"/"Branch Setting" minimal sekali duluan.
+
+Dites end-to-end lewat `tinker` (manggil controller langsung): `syncMenuImages()` dan `syncBranchSettingImages()` sukses `code: 0` di kedua level (overall + tiap step).

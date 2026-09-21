@@ -157,6 +157,26 @@ class SyncGroupController extends Controller
         ]));
     }
 
+    // syncMenuImages (2026-09-21): kategori BARU, terpisah dari syncMenu() di atas -- khusus
+    // download gambar subcategory/item (SetupServices::downloadImage() dicabut dari
+    // getSubCategoryList()/getMasterItem() biar sync data teks cepat, lihat SYNC PULL.md).
+    // WAJIB dijalanin SETELAH syncMenu() (butuh row subcategory/item udah ada duluan di lokal,
+    // 2 fungsi ini cuma UPDATE kolom gambar, gak pernah insert baris baru) -- tapi sengaja jadi
+    // kategori checkbox TERPISAH (bukan otomatis nempel ke syncMenu()), biar user bisa pilih
+    // sync data doang tanpa nunggu gambar kalau lagi buru-buru.
+    public function syncMenuImages()
+    {
+        $branch = $this->currentBranch();
+        if (!$branch) {
+            return $this->noBranchResponse();
+        }
+
+        return $this->respondGroup($this->runSteps([
+            'get_subcategory_images' => fn() => $this->setupservices->getSubCategoryImages('', '', $branch->id, $branch->token),
+            'get_item_images' => fn() => $this->setupservices->getMasterItemImages('', '', $branch->id, $branch->token),
+        ]));
+    }
+
     public function syncBranchSetting()
     {
         $branch = $this->currentBranch();
@@ -176,6 +196,23 @@ class SyncGroupController extends Controller
             'get_branch_ops_setting' => fn() => $this->setupservices->getMasterBranchOpsSetting('', '', $branch->id, $branch->token),
             'get_master_image_customer_display' => fn() => $this->setupservices->getMasterImageCustomerDisplay('', '', $branch->id, $branch->token),
             'get_master_image_kiosk' => fn() => $this->setupservices->getMasterImageKiosk('', '', $branch->id, $branch->token),
+        ]));
+    }
+
+    // syncBranchSettingImages (2026-09-21): pasangan syncMenuImages() di atas, tapi buat kategori
+    // Branch Setting -- khusus download banner customer display/kiosk. WAJIB dijalanin SETELAH
+    // syncBranchSetting() (2 fungsi pasangannya pakai truncate+insert, lihat catatan
+    // getMasterImageCustomerDisplayImages()/getMasterImageKioskImages() di SetupServices.php).
+    public function syncBranchSettingImages()
+    {
+        $branch = $this->currentBranch();
+        if (!$branch) {
+            return $this->noBranchResponse();
+        }
+
+        return $this->respondGroup($this->runSteps([
+            'get_master_image_customer_display_images' => fn() => $this->setupservices->getMasterImageCustomerDisplayImages('', '', $branch->id, $branch->token),
+            'get_master_image_kiosk_images' => fn() => $this->setupservices->getMasterImageKioskImages('', '', $branch->id, $branch->token),
         ]));
     }
 

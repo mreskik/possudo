@@ -245,6 +245,12 @@ class SetupServices
     }
   }
 
+  // getSubCategoryList: SENGAJA gak download gambar di sini lagi (2026-09-21, dipisah) -- lihat
+  // getSubCategoryImages() di bawah. Alasan: downloadImage() itu HTTP request sinkron per baris
+  // (2 gambar x N subcategory), jadi sync data teks jadi lambat nungguin semua gambar kedownload
+  // duluan sebelum satu baris pun tersimpan. Sekarang icon_src/banner_src dipertahankan APA
+  // ADANYA dari row lokal yang udah ada (gak ketimpa null, gak nyoba download) -- baris BARU
+  // (belum pernah ada) otomatis dapet null sampai getSubCategoryImages() dipanggil nyusul.
   public function getSubCategoryList(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -258,31 +264,60 @@ class SetupServices
       if ($response->json('code') == 0) {
         $list = $response->json("data");
 
-        // icon_src/banner_src dari ERP itu path relatif ke server ERP -- didownload dulu ke
-        // lokal (sama pola kayak MasterItemModel::image / MasterImageKioskModel::banner_src),
-        // biar Kiosk gak gantung koneksi ke ERP tiap kali icon/banner kategori dirender.
-        // Subdir beda ('subcategory' vs 'subcategory-banner') -- 2 file berbeda per sub
-        // category, sama pola kayak image/icon_src item (subfolder terpisah).
         $existingIcons = SubCategoryModel::whereIn('id', array_column($list, 'id'))
           ->pluck('icon_src', 'id');
         $existingBanners = SubCategoryModel::whereIn('id', array_column($list, 'id'))
           ->pluck('banner_src', 'id');
 
         foreach ($list as &$item) {
-          $item['icon_src'] = $this->downloadImage(
-            $item['icon_src'] ?? null,
-            'subcategory',
-            $existingIcons[$item['id']] ?? null
-          );
-          $item['banner_src'] = $this->downloadImage(
-            $item['banner_src'] ?? null,
-            'subcategory-banner',
-            $existingBanners[$item['id']] ?? null
-          );
+          $item['icon_src'] = $existingIcons[$item['id']] ?? null;
+          $item['banner_src'] = $existingBanners[$item['id']] ?? null;
         }
         unset($item);
 
         $this->upsertRows(SubCategoryModel::class, $list);
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  // getSubCategoryImages (2026-09-21): endpoint TERPISAH khusus download gambar subcategory --
+  // manggil endpoint ERP yang SAMA kayak getSubCategoryList() (server gak perlu diubah, response
+  // ERP-nya udah punya icon_src/banner_src dari awal), tapi CUMA proses kolom gambar. Baris yang
+  // id-nya belum ada di lokal (belum pernah di-sync getSubCategoryList()) DI-SKIP -- endpoint ini
+  // gak pernah insert baris baru, itu tugas getSubCategoryList(). UPDATE per-baris (bukan
+  // upsertRows()) biar kolom lain (name, dst) gak ikut kesentuh sama sekali.
+  public function getSubCategoryImages(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_subcategory_list/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        $list = $response->json("data");
+
+        $existingRows = SubCategoryModel::whereIn('id', array_column($list, 'id'))
+          ->get(['id', 'icon_src', 'banner_src'])
+          ->keyBy('id');
+
+        foreach ($list as $item) {
+          $existing = $existingRows->get($item['id']);
+          if (!$existing) {
+            continue;
+          }
+
+          SubCategoryModel::where('id', $item['id'])->update([
+            'icon_src' => $this->downloadImage($item['icon_src'] ?? null, 'subcategory', $existing->icon_src),
+            'banner_src' => $this->downloadImage($item['banner_src'] ?? null, 'subcategory-banner', $existing->banner_src),
+          ]);
+        }
       }
 
       return $response;
@@ -373,6 +408,10 @@ class SetupServices
 
   ////
 
+  // getMasterItem: SENGAJA gak download gambar di sini lagi (2026-09-21, dipisah) -- lihat
+  // getMasterItemImages() di bawah. Alasan sama kayak getSubCategoryList()/getSubCategoryImages():
+  // downloadImage() sinkron per baris bikin sync data teks lambat. image/icon_src dipertahankan
+  // apa adanya dari row lokal yang udah ada.
   public function getMasterItem(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -386,28 +425,58 @@ class SetupServices
       if ($response->json('code') == 0) {
         $items = $response->json("data");
 
-        // fallback per item -- gambar/icon lokal yang lama, dipakai kalau download gagal (bukan
-        // di-null-in, lihat catatan di downloadImage()).
         $existingImages = MasterItemModel::whereIn('id', array_column($items, 'id'))
           ->pluck('image', 'id');
         $existingIcons = MasterItemModel::whereIn('id', array_column($items, 'id'))
           ->pluck('icon_src', 'id');
 
         foreach ($items as &$item) {
-          $item['image'] = $this->downloadImage(
-            $item['image'] ?? null,
-            'item',
-            $existingImages[$item['id']] ?? null
-          );
-          $item['icon_src'] = $this->downloadImage(
-            $item['icon_src'] ?? null,
-            'item-icon',
-            $existingIcons[$item['id']] ?? null
-          );
+          $item['image'] = $existingImages[$item['id']] ?? null;
+          $item['icon_src'] = $existingIcons[$item['id']] ?? null;
         }
         unset($item);
 
         $this->upsertRows(MasterItemModel::class, $items);
+      }
+
+      return $response;
+    } catch (Throwable $e) {
+      throw $e;
+    }
+  }
+
+  // getMasterItemImages (2026-09-21): endpoint TERPISAH khusus download gambar item -- sama pola
+  // persis getSubCategoryImages(), lihat catatan lengkap di situ. Manggil endpoint ERP yang SAMA
+  // kayak getMasterItem(), tapi cuma proses image/icon_src, UPDATE per-baris, skip id yang belum
+  // ada di lokal.
+  public function getMasterItemImages(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_item/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        $items = $response->json("data");
+
+        $existingRows = MasterItemModel::whereIn('id', array_column($items, 'id'))
+          ->get(['id', 'image', 'icon_src'])
+          ->keyBy('id');
+
+        foreach ($items as $item) {
+          $existing = $existingRows->get($item['id']);
+          if (!$existing) {
+            continue;
+          }
+
+          MasterItemModel::where('id', $item['id'])->update([
+            'image' => $this->downloadImage($item['image'] ?? null, 'item', $existing->image),
+            'icon_src' => $this->downloadImage($item['icon_src'] ?? null, 'item-icon', $existing->icon_src),
+          ]);
+        }
       }
 
       return $response;
@@ -529,6 +598,18 @@ class SetupServices
     }
   }
 
+  // getMasterPricelist/getMasterPricelistDetail: SENGAJA truncate+insert (bukan upsertRows),
+  // beda dari kebanyakan fungsi lain di file ini (2026-09-21, disepakati) -- item yang di-takeout
+  // dari menu template di ERP harus BENERAN ilang dari lokal, bukan nyangkut terus (upsert gak
+  // pernah hapus baris yang gak ada lagi di response). Aman dilakukan: pricelist_detail_id yang
+  // disimpen di tr_order_detail (OrderServices.php, MobileOrderPullServices.php,
+  // KioskController.php) TIDAK PERNAH di-JOIN balik ke mr_pricelist_detail buat histori/reprint
+  // struk -- semua data yang ditampilkan ulang (nama, harga, pajak) udah snapshot sendiri di
+  // kolom tr_order_detail, jadi id mr_pricelist_detail yang berubah/hilang gak ngerusak order
+  // lama. Juga gak ada FK constraint keras di DB (pricelist_detail_id cuma unsignedBigInteger
+  // polos). Urutan panggil header (getMasterPricelist) SEBELUM detail (getMasterPricelistDetail)
+  // tetap dipertahankan (lihat SetupPage.vue array sync), walau truncate+insert di sini gak
+  // saling depend secara FK.
   public function getMasterPricelist(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -540,7 +621,8 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPricelistModel::class, $response->json('data'));
+        MasterPricelistModel::truncate();
+        $this->insertRows(MasterPricelistModel::class, $response->json('data'));
       }
 
       return $response;
@@ -560,7 +642,8 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPricelistDetailModel::class, $response->json('data'));
+        MasterPricelistDetailModel::truncate();
+        $this->insertRows(MasterPricelistDetailModel::class, $response->json('data'));
       }
 
       return $response;
@@ -593,6 +676,11 @@ class SetupServices
     }
   }
 
+  // getMasterPaymentMethodGroup: truncate+insert (bukan upsertRows, 2026-09-21, disepakati
+  // setelah audit) -- aman karena TIDAK ADA tabel transaksi (tr_order_payment dkk) yang refer ke
+  // mr_payment_method_group.id secara langsung (cuma mr_payment_method.group_payment_id yang
+  // refer, itu pun cuma di-LEFT JOIN dari master ke master di MasterController.php, gak pernah
+  // di-INNER-JOIN dari histori). Group yang di-takeout di ERP sekarang beneran ilang dari lokal.
   public function getMasterPaymentMethodGroup(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -604,7 +692,8 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPaymentMethodGroupModel::class, $response->json('data'));
+        MasterPaymentMethodGroupModel::truncate();
+        $this->insertRows(MasterPaymentMethodGroupModel::class, $response->json('data'));
       }
 
       return $response;
@@ -689,6 +778,11 @@ class SetupServices
     }
   }
 
+  // getMasterBranchOpsSetting: truncate+insert (bukan upsertRows, 2026-09-21, disepakati setelah
+  // audit) -- aman karena NOL kolom di tabel manapun yang refer ke mr_branch_ops_setting.id
+  // (dikonsumsi selalu lewat kolom `day`, bukan `id` -- lihat DayShiftServices.php/
+  // KioskController.php). Cuma 7 baris (1 per hari), jadwal yang diubah/dihapus di ERP sekarang
+  // beneran ke-reflect di lokal -- upsert di sini justru bug (baris lama nyangkut selamanya).
   public function getMasterBranchOpsSetting(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -700,7 +794,8 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterBranchOpsSettingModel::class, $response->json('data'));
+        MasterBranchOpsSettingModel::truncate();
+        $this->insertRows(MasterBranchOpsSettingModel::class, $response->json('data'));
       }
 
       return $response;
@@ -727,6 +822,10 @@ class SetupServices
   // downloadImage()) DAN gak ada satupun komponen frontend yang render dari tabel itu lagi,
   // udah kegantiin total sama 2 channel di bawah. Sync-nya sia-sia (nyimpen path mentah ERP
   // yang gak pernah dipakai), dicabut dari install sequence (Navbar.vue/SetupPage.vue) juga.
+  // getMasterImageCustomerDisplay: SENGAJA gak download gambar di sini lagi (2026-09-21, dipisah)
+  // -- lihat getMasterImageCustomerDisplayImages() di bawah. Fallback (banner_src lama, di-query
+  // SEBELUM truncate) tetap dipertahankan apa adanya -- truncate+insert di sini gak diubah,
+  // cuma downloadImage()-nya yang dicabut biar step ini gak nungguin HTTP request per baris.
   public function getMasterImageCustomerDisplay(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -740,19 +839,11 @@ class SetupServices
       if ($response->json('code') == 0) {
         $list = $response->json("data");
 
-        // banner_src dari ERP itu path relatif ke server ERP (file fisiknya ada di sana, bukan
-        // di POS) -- didownload dulu ke lokal (sama pola kayak MasterItemModel::image), biar
-        // customer display kasir bisa nampilin tanpa gantung koneksi ke ERP tiap kali gambar
-        // di-render.
         $existingImages = MasterImageCustomerDisplayModel::whereIn('id', array_column($list, 'id'))
           ->pluck('banner_src', 'id');
 
         foreach ($list as &$item) {
-          $item['banner_src'] = $this->downloadImage(
-            $item['banner_src'] ?? null,
-            'master-image',
-            $existingImages[$item['id']] ?? null
-          );
+          $item['banner_src'] = $existingImages[$item['id']] ?? null;
         }
         unset($item);
 
@@ -766,6 +857,48 @@ class SetupServices
     }
   }
 
+  // getMasterImageCustomerDisplayImages (2026-09-21): endpoint TERPISAH khusus download gambar
+  // customer display banner -- sama pola getSubCategoryImages()/getMasterItemImages(), tapi
+  // TANPA insert/truncate sama sekali (murni UPDATE banner_src per baris yang id-nya udah ada di
+  // lokal hasil getMasterImageCustomerDisplay()). WAJIB dipanggil SETELAH getMasterImageCustomer
+  // Display() di urutan sync (kalau dipanggil duluan/sendirian pas tabel masih kosong pasca
+  // truncate, semua baris di-skip karena belum ada id yang cocok).
+  public function getMasterImageCustomerDisplayImages(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_master_image_customer_display/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        $list = $response->json("data");
+
+        $existingRows = MasterImageCustomerDisplayModel::whereIn('id', array_column($list, 'id'))
+          ->get(['id', 'banner_src'])
+          ->keyBy('id');
+
+        foreach ($list as $item) {
+          $existing = $existingRows->get($item['id']);
+          if (!$existing) {
+            continue;
+          }
+
+          MasterImageCustomerDisplayModel::where('id', $item['id'])->update([
+            'banner_src' => $this->downloadImage($item['banner_src'] ?? null, 'master-image', $existing->banner_src),
+          ]);
+        }
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  // getMasterImageKiosk: sama alasan/pola kayak getMasterImageCustomerDisplay() di atas.
   public function getMasterImageKiosk(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -783,16 +916,49 @@ class SetupServices
           ->pluck('banner_src', 'id');
 
         foreach ($list as &$item) {
-          $item['banner_src'] = $this->downloadImage(
-            $item['banner_src'] ?? null,
-            'master-image',
-            $existingImages[$item['id']] ?? null
-          );
+          $item['banner_src'] = $existingImages[$item['id']] ?? null;
         }
         unset($item);
 
         MasterImageKioskModel::truncate();
         $this->insertRows(MasterImageKioskModel::class, $list);
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  // getMasterImageKioskImages (2026-09-21): sama pola getMasterImageCustomerDisplayImages() di
+  // atas, WAJIB dipanggil SETELAH getMasterImageKiosk() di urutan sync.
+  public function getMasterImageKioskImages(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_master_image_kiosk/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        $list = $response->json("data");
+
+        $existingRows = MasterImageKioskModel::whereIn('id', array_column($list, 'id'))
+          ->get(['id', 'banner_src'])
+          ->keyBy('id');
+
+        foreach ($list as $item) {
+          $existing = $existingRows->get($item['id']);
+          if (!$existing) {
+            continue;
+          }
+
+          MasterImageKioskModel::where('id', $item['id'])->update([
+            'banner_src' => $this->downloadImage($item['banner_src'] ?? null, 'master-image', $existing->banner_src),
+          ]);
+        }
       }
 
       return $response;
