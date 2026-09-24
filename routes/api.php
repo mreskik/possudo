@@ -102,6 +102,11 @@ Route::prefix('sync_pull')->group(function () {
 
   Route::get('get_member_type_list', [SyncController::class, 'getMemberTypeList']);
   Route::get('get_member_list', [SyncController::class, 'getMemberList']);
+
+  Route::get('get_notes_menu_list', [SyncController::class, 'getNotesMenuList']);
+  Route::get('get_notes_menu_category', [SyncController::class, 'getNotesMenuCategory']);
+  Route::get('get_notes_menu_sub_category', [SyncController::class, 'getNotesMenuSubCategory']);
+  Route::get('get_notes_menu_detail', [SyncController::class, 'getNotesMenuDetail']);
 });
 
 // sync-group: kelompok endpoint BARU (2026-08-31) buat UI checkbox-per-kategori di
@@ -204,6 +209,10 @@ Route::prefix('dayshift')->group(function () {
   Route::post("end-day", [DayShiftController::class, 'EndDay']);
   // Route::get("report-all", [DayShiftController::class, 'ReportAll']);
   Route::get("report/{dayshift_ulid}", [DayShiftController::class, 'Report']);
+  // v2 -- struktur JSON key-value 1:1 sama kayak yang dicetak PrintServices::PrintEndDay(),
+  // BUKAN array numeric-index kayak Report()/GetReportCurrentShiftforTampilan() (endpoint lama
+  // TETAP ADA, gak dihapus, cuma gak dipakai lagi sama DayStartEndPage.vue).
+  Route::get("report-v2/{dayshift_ulid}", [DayShiftController::class, 'ReportV2']);
   Route::get("dayshift-list", [DayShiftController::class, 'DayShiftList']);
   Route::get("print-report/{dayshift_ulid}", [DayShiftController::class, 'printReport']);
   Route::get("print-endday-report/{dayshift_ulid}", [DayShiftController::class, 'printEndayReport']);
@@ -234,6 +243,7 @@ Route::prefix('branch-menu')->group(function () {
 
 Route::prefix('system')->group(function () {
   Route::get('jobs-health', [SystemController::class, 'JobsHealth']);
+  Route::get('app-version', [SystemController::class, 'AppVersion']);
 });
 
 

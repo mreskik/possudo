@@ -154,6 +154,12 @@ class SyncGroupController extends Controller
             'get_item_package_detail_pricelist' => fn() => $this->setupservices->getMasterItemPackageDetailPricelist('', '', $branch->id, $branch->token),
             'get_pricelist' => fn() => $this->setupservices->getMasterPricelist('', '', $branch->id, $branch->token),
             'get_pricelist_detail' => fn() => $this->setupservices->getMasterPricelistDetail('', '', $branch->id, $branch->token),
+            // notes menu (2026-09-24) -- diikutkan ke grup Menu (bukan checkbox baru sendiri),
+            // header (get_notes_menu_list) WAJIB duluan sebelum child.
+            'get_notes_menu_list' => fn() => $this->setupservices->getNotesMenuList('', '', $branch->id, $branch->token),
+            'get_notes_menu_category' => fn() => $this->setupservices->getNotesMenuCategory('', '', $branch->id, $branch->token),
+            'get_notes_menu_sub_category' => fn() => $this->setupservices->getNotesMenuSubCategory('', '', $branch->id, $branch->token),
+            'get_notes_menu_detail' => fn() => $this->setupservices->getNotesMenuDetail('', '', $branch->id, $branch->token),
         ]));
     }
 

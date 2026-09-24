@@ -58,6 +58,11 @@ class SalesServices
     try {
       $data_order = TrOrderModel::where('order_number', $order_number)->first();
 
+      // payment_by: sama kayak alias "chasier_name as payment_by" di GetSalesList() (List) --
+      // sebelumnya viewSales() (Detail) gak pernah kirim field ini sama sekali, dialog Cashier
+      // di SalesPage.vue kena bind ke field lain (waiter_name) gara-gara ini kosong.
+      $data_order->payment_by = $data_order->chasier_name;
+
       $data_order_payment = TrOrderPaymentModel::where("payment_number", $data_order->payment_number)->get();
       $data_order->payment_detail = DB::select("
       SELECT

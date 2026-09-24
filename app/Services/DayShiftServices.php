@@ -254,47 +254,79 @@ class DayShiftServices
     }
   }
 
+  // EndDay -- urutan disusun ulang 2026-09-24 (sebelumnya: save+push+jurnal 1 transaksi besar,
+  // push gagal = SEMUANYA rollback termasuk save; jurnal tetap dicoba walau push gagal). Sekarang:
+  // 1) validasi, 2) SAVE (transaksi sendiri, sempit, commit duluan -- push gagal TIDAK BOLEH lagi
+  // nge-rollback ini), 3) PUSH semua (try/catch LOKAL, gak nge-throw ke luar), 4) JURNAL cuma
+  // di-hit KALAU push di atas semuanya sukses -- kalau push ada yang gagal, jurnal DISKIP total
+  // (endpoint jurnal ERP emang nolak kalau pos_dayshift/pos_order belum ada di sana, jadi nyoba
+  // jurnal pas push gagal cuma bakal gagal lagi, percuma). Response ke frontend SELALU sukses
+  // ("end day success!") walau push/jurnal gagal di background -- push yang gagal otomatis
+  // di-retry sama job sync:push (jalan tiap 120 detik, filter sync_at IS NULL, lihat SyncPush.php),
+  // jurnal yang gak sempat ke-trigger bisa di-retry manual dari modul Dayshift Jurnal di ERP.
   public static function EndDay(Request $request)
   {
+    $dayshift_ulid = $request->input("dayshift_ulid");
+    $aktual_ending_cash = $request->input("aktual_ending_cash");
+    $notes = $request->input("notes");
+
+    // 1. VALIDASI
+    $current_dayshift = DaySiftModel::where("ulid", $dayshift_ulid)->first();
+    if (!$current_dayshift) {
+      throw new \Exception("tidak pernah start day!");
+    }
+    if ($current_dayshift->dayout_time != null) {
+      throw new \Exception("sudah pernah end day!");
+    }
+
+    // 2. SAVE -- transaksi sendiri, cuma nyakup UPDATE tr_dayshift, commit SEBELUM nyentuh
+    // push/jurnal sama sekali. sync_at di-null-kan bareng (2026-09-22) -- kolom ini udah kepush
+    // duluan pas Start Day (sync:push jalan tiap 120 detik sepanjang shift berlangsung), jadi
+    // sync_at-nya udah TERISI di titik ini. Tanpa di-null-kan, pushDataDayShift() (filter WHERE
+    // sync_at IS NULL) gak bakal pernah nemu baris ini lagi buat di-push ulang -- dayout_time/
+    // dayout_total/dayout_notes yang baru aja diisi gak akan pernah sampai ke pos_dayshift ERP.
+    DB::beginTransaction();
     try {
-
-      $dayshift_ulid = $request->input("dayshift_ulid");
-      $aktual_ending_cash = $request->input("aktual_ending_cash");
-      $notes = $request->input("notes");
-
-      $current_dayshift = DaySiftModel::where("ulid", $dayshift_ulid)->first();
-      if (!$current_dayshift) {
-        throw new \Exception("tidak pernah start day!");
-      }
-      if ($current_dayshift->dayout_time != null) {
-        throw new \Exception("sudah pernah end day!");
-      }
-      DB::beginTransaction();
-
       DaySiftModel::where("ulid", $dayshift_ulid)->update([
         "dayout_time" => now(),
         "dayout_total" => $aktual_ending_cash,
         "dayout_notes" => $notes,
         "dayout_user_id" => self::getLoggedInUserId($request) ?? 1,
+        "sync_at" => null,
       ]);
-      PrintServices::PrintEndDay($dayshift_ulid);
+      DB::commit();
+    } catch (\Throwable $e) {
+      DB::rollBack();
+      throw $e;
+    }
 
-      // PUSH DATA DAYSHIFT DULU -- wajib duluan sebelum request jurnal, karena endpoint jurnal
-      // di ERP (EndDayExec) sekarang nolak kalau baris pos_dayshift-nya belum ada di sana
-      // (guard ditambah bareng flag_jurnal_run, lihat MASTER DAYSHIFT JURNAL.md).
-      $pushService = new PushDataServices;
+    PrintServices::PrintEndDay($dayshift_ulid);
+
+    // 3. PUSH -- try/catch LOKAL, BUKAN nge-throw ke luar (beda dari sebelumnya). Push gagal gak
+    // boleh bikin EndDay keliatan gagal ke frontend -- SAVE di atas udah aman kesimpen.
+    $pushService = new PushDataServices;
+    $pushFailed = false;
+    try {
+      // dayshift dulu, wajib duluan sebelum order (pos_order.dayshift_ulid ngerujuk ke situ).
       $pushService->pushDataDayShift();
       $pushService->pushDataDayShiftDetail();
-
-      // PUSH DATA ORDER DAN DETAIL SERTA PAYMENT
       $pushService->pushDataOrder();
       $pushService->pushDataOrderDetail();
       $pushService->pushDataOrderDetailPackage();
       $pushService->pushDataOrderPayment();
+    } catch (\Throwable $e) {
+      $pushFailed = true;
+      Log::error('EndDay: push ke ERP gagal, jurnal DISKIP -- nunggu sync:push job retry', [
+        'dayshift_ulid' => $dayshift_ulid,
+        'error' => $e->getMessage(),
+      ]);
+    }
 
-      // JURNAL END DAY -- token branch yang sama dipakai buat auth /pos/sync/*, sekarang
-      // wajib juga buat /pos/endday/* (lihat middleware.BranchTokenAuth di APIANDORDER dan
-      // midleware.BranchTokenAuth di sudocore2, keduanya validasi token yang sama).
+    // 4. JURNAL -- CUMA di-hit kalau semua push di atas sukses. Token branch yang sama dipakai
+    // buat auth /pos/sync/*, sekarang wajib juga buat /pos/endday/* (lihat
+    // middleware.BranchTokenAuth di APIANDORDER dan midleware.BranchTokenAuth di sudocore2,
+    // keduanya validasi token yang sama).
+    if (!$pushFailed) {
       $branch = BranchModel::first();
       $resc = Http::withToken($branch->token)
         ->withOptions(['verify' => config('services.http_verify_ssl')])
@@ -309,12 +341,9 @@ class DayShiftServices
           'response' => $resc->json(),
         ]);
       }
-      DB::commit();
-      return "end day success!";
-    } catch (\Throwable $e) {
-      DB::rollBack();
-      throw $e;
     }
+
+    return "end day success!";
   }
 
 
@@ -1356,8 +1385,14 @@ class DayShiftServices
 
       $pakai_header = true;
       $starttime = null;
-      // $endtime = ; karena current berarti batasa atas aja 
-      $daftar_dayshift_detail = DayShiftDetailModel::where('dayshift_ulid', $dayshift_ulid)->get();
+      // $endtime = ; karena current berarti batasa atas aja
+      // JOIN mr_user biar frontend (DayStartEndPage.vue, kolom "User" tabel Shift Detail)
+      // nampilin NAMA yang end shift, bukan shift_user_id mentah -- sama pola dayin_user_name.
+      $daftar_dayshift_detail = DB::table('tr_dayshift_detail')
+        ->leftJoin('mr_user', 'mr_user.id', '=', 'tr_dayshift_detail.shift_user_id')
+        ->where('tr_dayshift_detail.dayshift_ulid', $dayshift_ulid)
+        ->select('tr_dayshift_detail.*', 'mr_user.fullname as shift_user_name')
+        ->get();
       $data_dayshift = DaySiftModel::where('ulid', $dayshift_ulid)->first();
       $data_dayshift_detail = DayShiftDetailModel::where('dayshift_ulid', $dayshift_ulid)
         ->orderBy('ulid', 'desc')->first();
@@ -1509,12 +1544,17 @@ class DayShiftServices
       //langsung di setingkat kan aja yang cersi package 
       $order_paid_detail_package = TrOrderDetailPackageModel::whereIn('tr_order_detail_ulid', $ulid_order_paid_detail)->get();
 
+      // dpp_total: dipakai baris "DPP" section SALES SUMMARY, SUM(dpp*qty) dari kedua tabel
+      // detail (kolom dpp udah ada langsung, gak perlu formula ulang) -- sama pola kayak
+      // GetReportDayshiftorEndDay()/GetReportCurrentShift()/GetReportPerShift().
+      $dpp_total = 0;
       foreach ($order_paid_detail as $opd) {
         if ($opd->tax_type == 'pb1') {
           $netsales_pb1_total += ($opd->tax_amount * $opd->qty);
         } else if ($opd->tax_type == 'vat') {
           $netsales_vat_total += ($opd->tax_amount * $opd->qty);
         }
+        $dpp_total += ($opd->dpp * $opd->qty);
       }
 
       foreach ($order_paid_detail_package as $opd) {
@@ -1523,7 +1563,10 @@ class DayShiftServices
         } else if ($opd->tax_type == 'vat') {
           $netsales_vat_total += $opd->tax_amount * $opd->qty;
         }
+        $dpp_total += ($opd->dpp * $opd->qty);
       }
+
+      $total_tax_total = $netsales_pb1_total + $netsales_vat_total;
 
 
       $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
@@ -1668,9 +1711,58 @@ class DayShiftServices
         ->groupBy("table_name")->get();
 
 
+      // dayin_user_name: dipakai frontend (Shift Detail, DayStartEndPage.vue "Started By") biar
+      // nampilin NAMA kasir yang start day, bukan id mentah (dayshift.dayin_user_id) -- lookup
+      // ke mr_user, sama pola kayak dayin_user_fullname/dayout_user_fullname di PrintServices.php.
+      $dayin_user_name = DB::table('mr_user')
+        ->where('id', $data_dayshift->dayin_user_id ?? null)
+        ->value('fullname') ?? '';
+
+      // sales_by_visit_purpose/sales_by_order_source/sales_by_staff/cash_in_total: dipakai section
+      // SALES TYPE SUMMARY, ORDER SOURCE SUMMARY, STAFF SALES SUMMARY, CASH FLOW SUMMARY di halaman
+      // web (DayStartEndPage.vue) -- disamakan dengan yang sudah ada di GetReportDayshiftorEndDay()/
+      // GetReportCurrentShift()/GetReportPerShift() biar web & print konsisten datanya.
+      $sales_by_visit_purpose = DB::table("tr_order")
+        ->join("mr_visit_purpose", "mr_visit_purpose.id", "=", "tr_order.visit_purpose_id")
+        ->whereIn("tr_order.order_number", $list_ordernumber->paid)
+        ->select(
+          "mr_visit_purpose.name as visit_purpose_name",
+          DB::raw("COUNT(tr_order.order_number) as qty"),
+          DB::raw("SUM(tr_order.total_billing) as total_amount")
+        )
+        ->groupBy("visit_purpose_name")->get();
+
+      $sales_by_order_source = DB::table("tr_order")
+        ->whereIn("tr_order.order_number", $list_ordernumber->paid)
+        ->select(
+          "tr_order.order_source",
+          DB::raw("COUNT(tr_order.order_number) as qty"),
+          DB::raw("SUM(tr_order.total_billing) as total_amount")
+        )
+        ->groupBy("order_source")->get();
+
+      $sales_by_staff = DB::table("tr_order")
+        ->join("mr_user", "mr_user.id", "=", "tr_order.created_by")
+        ->whereIn("tr_order.order_number", $list_ordernumber->paid)
+        ->select(
+          "mr_user.fullname as staff_name",
+          DB::raw("COUNT(tr_order.order_number) as qty"),
+          DB::raw("SUM(tr_order.total_billing) as total_amount")
+        )
+        ->groupBy("staff_name")->get();
+
+      // cash_in_total: filter payment_method_type_id = 1 (ID row "CASH" di mr_payment_method_type),
+      // BUKAN mr_payment_method.name = 'CASH' -- konsisten sama keputusan di GetReportDayshiftorEndDay().
+      $cash_in_total = DB::table("tr_order_payment")
+        ->join("mr_payment_method", "mr_payment_method.id", "=", "tr_order_payment.payment_method_id")
+        ->whereIn("tr_order_payment.payment_number", $list_payment_number)
+        ->where("mr_payment_method.payment_method_type_id", 1)
+        ->sum("tr_order_payment.payment_amount");
+
       return [
 
         "dayshift" => $data_dayshift,
+        "dayin_user_name" => $dayin_user_name,
         "dayshift_detail" => $daftar_dayshift_detail,
         "sales_recapitulation" => [
           ["pl" => 1, "key" => "Hold Sales", "amount" => $holdsales],
@@ -1693,14 +1785,127 @@ class DayShiftServices
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
           ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
         ],
+        "dpp_total" => $dpp_total,
+        "total_tax_total" => $total_tax_total,
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
         "sales_by_category" => $sales_by_category,
-        "sales_by_table" => $sales_by_table_section
+        "sales_by_table" => $sales_by_table_section,
+        "sales_by_visit_purpose" => $sales_by_visit_purpose,
+        "sales_by_order_source" => $sales_by_order_source,
+        "sales_by_staff" => $sales_by_staff,
+        "cash_in_total" => $cash_in_total,
       ];
     } catch (\Throwable $e) {
       throw $e;
     }
+  }
+
+  // breakdownWithPercent: helper array kecil, samain sama printBreakdownSection() di
+  // PrintServices.php -- persentase dihitung dari total section itu sendiri, BUKAN grand total.
+  private static function breakdownWithPercent($rows, string $labelKey, string $amountKey, ?string $qtyKey = 'qty'): array
+  {
+    $total = 0;
+    foreach ($rows as $r) {
+      $total += (float) $r->$amountKey;
+    }
+    $result = [];
+    foreach ($rows as $r) {
+      $amount = (float) $r->$amountKey;
+      $result[] = [
+        "label" => $r->$labelKey,
+        "qty" => $qtyKey && isset($r->$qtyKey) ? (int) $r->$qtyKey : null,
+        "amount" => $amount,
+        "percent" => $total > 0 ? round(($amount / $total) * 100) : 0,
+      ];
+    }
+    return $result;
+  }
+
+  // GetReportSummaryV2 -- struktur response key-value, 1:1 SAMA PERSIS kayak section yang
+  // dicetak PrintServices::PrintEndDay() (SALES SUMMARY/SALES TYPE SUMMARY/ORDER SOURCE
+  // SUMMARY/ITEM CATEGORY SUMMARY/STAFF SALES SUMMARY/PAYMENT METHOD SUMMARY/CASH FLOW SUMMARY).
+  // Reuse GetReportCurrentShiftforTampilan() buat raw data (endpoint lama /report/:id TETAP ADA,
+  // gak dihapus, cuma gak dipakai lagi sama DayStartEndPage.vue setelah pindah ke v2 ini) --
+  // dipakai endpoint baru GET /dayshift/report-v2/:id.
+  static function GetReportSummaryV2($dayshift_ulid)
+  {
+    $raw = self::GetReportCurrentShiftforTampilan($dayshift_ulid);
+    $recap = $raw['sales_recapitulation'];
+    $amountAt = function (int $i) use ($recap) {
+      return (float) ($recap[$i]['amount'] ?? 0);
+    };
+
+    // ORDER SOURCE SUMMARY: 4 kategori FIXED (pos/qr/mobile/kiosk), selalu ditampilkan semua
+    // walau salah satu belum ada transaksi (0) -- sama pola PrintServices::PrintEndDay().
+    $orderSourceLabels = ["pos" => "POS", "qr" => "QR Order", "mobile" => "Mobile App", "kiosk" => "Kiosk"];
+    $orderSourceByKey = [];
+    foreach ($raw['sales_by_order_source'] as $item) {
+      $orderSourceByKey[$item->order_source] = $item;
+    }
+    $orderSourceTotal = 0;
+    foreach ($orderSourceByKey as $item) {
+      $orderSourceTotal += (float) $item->total_amount;
+    }
+    $orderSourceSummary = [];
+    foreach ($orderSourceLabels as $key => $label) {
+      $found = $orderSourceByKey[$key] ?? null;
+      $amount = (float) ($found->total_amount ?? 0);
+      $orderSourceSummary[] = [
+        "label" => $label,
+        "qty" => (int) ($found->qty ?? 0),
+        "amount" => $amount,
+        "percent" => $orderSourceTotal > 0 ? round(($amount / $orderSourceTotal) * 100) : 0,
+      ];
+    }
+
+    $startingCash = (float) ($raw['dayshift']->dayin_total ?? 0);
+    $cashIn = (float) ($raw['cash_in_total'] ?? 0);
+    $cashOut = 0;
+    $expectedCash = $startingCash + $cashIn - $cashOut;
+    $actualCash = (float) ($raw['dayshift']->dayout_total ?? 0);
+
+    return [
+      // passthrough -- field yang gak ada padanannya di section print end day, tapi masih dipakai
+      // DayStartEndPage.vue (header Branch/Started By/Starting Shift, Shift Detail, Sales By
+      // Menu, Sales By Table, dialog End Day) biar halaman itu bisa full pindah ke v2 tanpa
+      // manggil GetReportCurrentShiftforTampilan() lagi secara terpisah dari frontend.
+      "dayshift" => $raw['dayshift'],
+      "dayin_user_name" => $raw['dayin_user_name'],
+      "dayshift_detail" => $raw['dayshift_detail'],
+      "sales_by_menu" => $raw['sales_by_menu'],
+      "sales_by_table" => $raw['sales_by_table'],
+
+      "sales_summary" => [
+        "total_bills" => $amountAt(13),
+        "average_per_bill" => $amountAt(14),
+        "on_hold" => $amountAt(0),
+        "pending" => $amountAt(1),
+        "sales_subtotal" => $amountAt(2),
+        "discount" => $amountAt(18),
+        "dpp" => (float) ($raw['dpp_total'] ?? 0),
+        "service_charge" => $amountAt(5),
+        "pb1" => $amountAt(7),
+        "vat" => $amountAt(8),
+        "total_tax" => (float) ($raw['total_tax_total'] ?? 0),
+        "net_sales" => $amountAt(2),
+        "gross_sales" => $amountAt(9),
+      ],
+      "sales_type_summary" => self::breakdownWithPercent($raw['sales_by_visit_purpose'], "visit_purpose_name", "total_amount"),
+      "order_source_summary" => $orderSourceSummary,
+      "item_category_summary" => self::breakdownWithPercent($raw['sales_by_category'], "category_name", "grand_total"),
+      "staff_sales_summary" => self::breakdownWithPercent($raw['sales_by_staff'], "staff_name", "total_amount"),
+      "payment_method_summary" => self::breakdownWithPercent($raw['payment_recapitulation'], "payment_method_name", "payment_amount"),
+      "cash_flow_summary" => [
+        "starting_cash" => $startingCash,
+        "cash_in" => $cashIn,
+        "cash_out" => $cashOut,
+        "expected_cash" => $expectedCash,
+        "actual_cash" => $actualCash,
+        "variance" => $actualCash - $expectedCash,
+        "closing_note" => $raw['dayshift']->dayout_notes ?? '',
+      ],
+    ];
   }
 
 
@@ -1869,12 +2074,20 @@ class DayShiftServices
       //langsung di setingkat kan aja yang cersi package 
       $order_paid_detail_package = TrOrderDetailPackageModel::whereIn('tr_order_detail_ulid', $ulid_order_paid_detail)->get();
 
+
+      // dpp_total: SUM(dpp*qty) gabungan detail+package, dipakai di section SALES SUMMARY
+      // (baris "DPP") -- kolom dpp udah ada langsung di tr_order_detail/tr_order_detail_package
+      // (nilai net-of-tax, sebelum diskon), sama sumber persis yang dipakai tax breakdown di
+      // bawah, jadi digabung ke loop yang sama biar gak double-loop.
+      $dpp_total = 0;
+
       foreach ($order_paid_detail as $opd) {
         if ($opd->tax_type == 'pb1') {
           $netsales_pb1_total += ($opd->tax_amount * $opd->qty);
         } else if ($opd->tax_type == 'vat') {
           $netsales_vat_total += ($opd->tax_amount * $opd->qty);
         }
+        $dpp_total += ($opd->dpp * $opd->qty);
       }
 
       foreach ($order_paid_detail_package as $opd) {
@@ -1883,7 +2096,10 @@ class DayShiftServices
         } else if ($opd->tax_type == 'vat') {
           $netsales_vat_total += $opd->tax_amount * $opd->qty;
         }
+        $dpp_total += ($opd->dpp * $opd->qty);
       }
+
+      $total_tax_total = $netsales_pb1_total + $netsales_vat_total;
 
 
       $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
@@ -2028,6 +2244,58 @@ class DayShiftServices
         )
         ->groupBy("table_name")->get();
 
+      // sales_by_visit_purpose: dipakai section SALES TYPE SUMMARY (baru) -- group order paid
+      // by visit_purpose_id (Dine In/Takeaway/dst), qty+total per tipe.
+      $sales_by_visit_purpose = DB::table("tr_order")
+        ->join("mr_visit_purpose", "mr_visit_purpose.id", "=", "tr_order.visit_purpose_id")
+        ->whereIn("tr_order.order_number", $list_ordernumber->paid)
+        ->select(
+          "mr_visit_purpose.name as visit_purpose_name",
+          DB::raw("COUNT(tr_order.order_number) as qty"),
+          DB::raw("SUM(tr_order.total_billing) as total_amount")
+        )
+        ->groupBy("visit_purpose_name")->get();
+
+      // sales_by_order_source: dipakai section ORDER SOURCE SUMMARY (baru) -- group order paid
+      // by order_source (pos/qr/mobile/kiosk). SENGAJA gak di-groupBy doang -- 4 kategori FIXED
+      // selalu ditampilkan di section-nya walau salah satu belum ada transaksi sama sekali
+      // (dilengkapi ke 0 di sisi PrintServices, bukan di sini -- query ini cuma balikin yang
+      // beneran ada datanya).
+      $sales_by_order_source = DB::table("tr_order")
+        ->whereIn("tr_order.order_number", $list_ordernumber->paid)
+        ->select(
+          "tr_order.order_source",
+          DB::raw("COUNT(tr_order.order_number) as qty"),
+          DB::raw("SUM(tr_order.total_billing) as total_amount")
+        )
+        ->groupBy("order_source")->get();
+
+      // sales_by_staff: dipakai section STAFF SALES SUMMARY (baru) -- group order paid by
+      // created_by (user_id yang login pas order dibuat), JOIN mr_user buat nama tampilan.
+      // Order tanpa created_by (kalau ada data lama/anomali) gak ikut ke-grouping (INNER JOIN).
+      $sales_by_staff = DB::table("tr_order")
+        ->join("mr_user", "mr_user.id", "=", "tr_order.created_by")
+        ->whereIn("tr_order.order_number", $list_ordernumber->paid)
+        ->select(
+          "mr_user.fullname as staff_name",
+          DB::raw("COUNT(tr_order.order_number) as qty"),
+          DB::raw("SUM(tr_order.total_billing) as total_amount")
+        )
+        ->groupBy("staff_name")->get();
+
+      // cash_in_total: dipakai section CASH FLOW SUMMARY (baru, baris "Cash In") -- total
+      // pembayaran METODE BERTIPE CASH selama periode dayshift ini. BUKAN dari kolom
+      // tr_dayshift.system_cash_received (kolom itu gak pernah diisi/dipakai di kode manapun),
+      // dihitung on-the-fly dari tr_order_payment biar akurat.
+      //
+      // Filter pakai payment_method_type_id = 1 (ID row "CASH" di mr_payment_method_type,
+      // dicek langsung ke data -- 2026-09-23), BUKAN mr_payment_method.name = 'CASH' (nama
+      // metode bisa ganti-ganti/nambah metode baru bertipe cash, tapi ID row tipe-nya tetap).
+      $cash_in_total = DB::table("tr_order_payment")
+        ->join("mr_payment_method", "mr_payment_method.id", "=", "tr_order_payment.payment_method_id")
+        ->whereIn("tr_order_payment.payment_number", $list_payment_number)
+        ->where("mr_payment_method.payment_method_type_id", 1)
+        ->sum("tr_order_payment.payment_amount");
 
       return [
 
@@ -2054,10 +2322,19 @@ class DayShiftServices
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
           ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
         ],
+        // dpp_total/total_tax_total (BARU) -- dipakai baris "DPP"/"Total Tax" section SALES
+        // SUMMARY, dihitung di loop tax breakdown di atas (bukan array sales_recapitulation
+        // biar gak ganggu index numerik yang udah dipakai PrintServices existing).
+        "dpp_total" => $dpp_total,
+        "total_tax_total" => $total_tax_total,
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
         "sales_by_category" => $sales_by_category,
-        "sales_by_table" => $sales_by_table_section
+        "sales_by_table" => $sales_by_table_section,
+        "sales_by_visit_purpose" => $sales_by_visit_purpose,
+        "sales_by_order_source" => $sales_by_order_source,
+        "sales_by_staff" => $sales_by_staff,
+        "cash_in_total" => $cash_in_total,
       ];
     } catch (\Throwable $e) {
       throw $e;
@@ -2223,12 +2500,16 @@ class DayShiftServices
       //langsung di setingkat kan aja yang cersi package 
       $order_paid_detail_package = TrOrderDetailPackageModel::whereIn('tr_order_detail_ulid', $ulid_order_paid_detail)->get();
 
+      // dpp_total: SAMA PERSIS pola GetReportDayshiftorEndDay() -- lihat komentar di sana.
+      $dpp_total = 0;
+
       foreach ($order_paid_detail as $opd) {
         if ($opd->tax_type == 'pb1') {
           $netsales_pb1_total += ($opd->tax_amount * $opd->qty);
         } else if ($opd->tax_type == 'vat') {
           $netsales_vat_total += ($opd->tax_amount * $opd->qty);
         }
+        $dpp_total += ($opd->dpp * $opd->qty);
       }
 
       foreach ($order_paid_detail_package as $opd) {
@@ -2237,7 +2518,10 @@ class DayShiftServices
         } else if ($opd->tax_type == 'vat') {
           $netsales_vat_total += $opd->tax_amount * $opd->qty;
         }
+        $dpp_total += ($opd->dpp * $opd->qty);
       }
+
+      $total_tax_total = $netsales_pb1_total + $netsales_vat_total;
 
 
       $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
@@ -2382,6 +2666,42 @@ class DayShiftServices
         )
         ->groupBy("table_name")->get();
 
+      // sales_by_visit_purpose/sales_by_order_source/sales_by_staff/cash_in_total: SAMA
+      // PERSIS pola GetReportDayshiftorEndDay() -- lihat komentar di sana.
+      $sales_by_visit_purpose = DB::table("tr_order")
+        ->join("mr_visit_purpose", "mr_visit_purpose.id", "=", "tr_order.visit_purpose_id")
+        ->whereIn("tr_order.order_number", $list_ordernumber->paid)
+        ->select(
+          "mr_visit_purpose.name as visit_purpose_name",
+          DB::raw("COUNT(tr_order.order_number) as qty"),
+          DB::raw("SUM(tr_order.total_billing) as total_amount")
+        )
+        ->groupBy("visit_purpose_name")->get();
+
+      $sales_by_order_source = DB::table("tr_order")
+        ->whereIn("tr_order.order_number", $list_ordernumber->paid)
+        ->select(
+          "tr_order.order_source",
+          DB::raw("COUNT(tr_order.order_number) as qty"),
+          DB::raw("SUM(tr_order.total_billing) as total_amount")
+        )
+        ->groupBy("order_source")->get();
+
+      $sales_by_staff = DB::table("tr_order")
+        ->join("mr_user", "mr_user.id", "=", "tr_order.created_by")
+        ->whereIn("tr_order.order_number", $list_ordernumber->paid)
+        ->select(
+          "mr_user.fullname as staff_name",
+          DB::raw("COUNT(tr_order.order_number) as qty"),
+          DB::raw("SUM(tr_order.total_billing) as total_amount")
+        )
+        ->groupBy("staff_name")->get();
+
+      $cash_in_total = DB::table("tr_order_payment")
+        ->join("mr_payment_method", "mr_payment_method.id", "=", "tr_order_payment.payment_method_id")
+        ->whereIn("tr_order_payment.payment_number", $list_payment_number)
+        ->where("mr_payment_method.payment_method_type_id", 1)
+        ->sum("tr_order_payment.payment_amount");
 
       return [
 
@@ -2408,10 +2728,16 @@ class DayShiftServices
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
           ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
         ],
+        "dpp_total" => $dpp_total,
+        "total_tax_total" => $total_tax_total,
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
         "sales_by_category" => $sales_by_category,
-        "sales_by_table" => $sales_by_table_section
+        "sales_by_table" => $sales_by_table_section,
+        "sales_by_visit_purpose" => $sales_by_visit_purpose,
+        "sales_by_order_source" => $sales_by_order_source,
+        "sales_by_staff" => $sales_by_staff,
+        "cash_in_total" => $cash_in_total,
       ];
     } catch (\Throwable $e) {
       throw $e;
@@ -2594,12 +2920,16 @@ class DayShiftServices
       //langsung di setingkat kan aja yang cersi package 
       $order_paid_detail_package = TrOrderDetailPackageModel::whereIn('tr_order_detail_ulid', $ulid_order_paid_detail)->get();
 
+      // dpp_total: SAMA PERSIS pola GetReportDayshiftorEndDay() -- lihat komentar di sana.
+      $dpp_total = 0;
+
       foreach ($order_paid_detail as $opd) {
         if ($opd->tax_type == 'pb1') {
           $netsales_pb1_total += ($opd->tax_amount * $opd->qty);
         } else if ($opd->tax_type == 'vat') {
           $netsales_vat_total += ($opd->tax_amount * $opd->qty);
         }
+        $dpp_total += ($opd->dpp * $opd->qty);
       }
 
       foreach ($order_paid_detail_package as $opd) {
@@ -2608,8 +2938,10 @@ class DayShiftServices
         } else if ($opd->tax_type == 'vat') {
           $netsales_vat_total += $opd->tax_amount * $opd->qty;
         }
+        $dpp_total += ($opd->dpp * $opd->qty);
       }
 
+      $total_tax_total = $netsales_pb1_total + $netsales_vat_total;
 
       $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
         $netsales_sc_total + $netsales_pf_total + $netsales_pb1_total + $netsales_vat_total;
@@ -2753,6 +3085,42 @@ class DayShiftServices
         )
         ->groupBy("table_name")->get();
 
+      // sales_by_visit_purpose/sales_by_order_source/sales_by_staff/cash_in_total: SAMA
+      // PERSIS pola GetReportDayshiftorEndDay() -- lihat komentar di sana.
+      $sales_by_visit_purpose = DB::table("tr_order")
+        ->join("mr_visit_purpose", "mr_visit_purpose.id", "=", "tr_order.visit_purpose_id")
+        ->whereIn("tr_order.order_number", $list_ordernumber->paid)
+        ->select(
+          "mr_visit_purpose.name as visit_purpose_name",
+          DB::raw("COUNT(tr_order.order_number) as qty"),
+          DB::raw("SUM(tr_order.total_billing) as total_amount")
+        )
+        ->groupBy("visit_purpose_name")->get();
+
+      $sales_by_order_source = DB::table("tr_order")
+        ->whereIn("tr_order.order_number", $list_ordernumber->paid)
+        ->select(
+          "tr_order.order_source",
+          DB::raw("COUNT(tr_order.order_number) as qty"),
+          DB::raw("SUM(tr_order.total_billing) as total_amount")
+        )
+        ->groupBy("order_source")->get();
+
+      $sales_by_staff = DB::table("tr_order")
+        ->join("mr_user", "mr_user.id", "=", "tr_order.created_by")
+        ->whereIn("tr_order.order_number", $list_ordernumber->paid)
+        ->select(
+          "mr_user.fullname as staff_name",
+          DB::raw("COUNT(tr_order.order_number) as qty"),
+          DB::raw("SUM(tr_order.total_billing) as total_amount")
+        )
+        ->groupBy("staff_name")->get();
+
+      $cash_in_total = DB::table("tr_order_payment")
+        ->join("mr_payment_method", "mr_payment_method.id", "=", "tr_order_payment.payment_method_id")
+        ->whereIn("tr_order_payment.payment_number", $list_payment_number)
+        ->where("mr_payment_method.payment_method_type_id", 1)
+        ->sum("tr_order_payment.payment_amount");
 
       return [
 
@@ -2779,10 +3147,16 @@ class DayShiftServices
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
           ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
         ],
+        "dpp_total" => $dpp_total,
+        "total_tax_total" => $total_tax_total,
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
         "sales_by_category" => $sales_by_category,
-        "sales_by_table" => $sales_by_table_section
+        "sales_by_table" => $sales_by_table_section,
+        "sales_by_visit_purpose" => $sales_by_visit_purpose,
+        "sales_by_order_source" => $sales_by_order_source,
+        "sales_by_staff" => $sales_by_staff,
+        "cash_in_total" => $cash_in_total,
       ];
     } catch (\Throwable $e) {
       throw $e;

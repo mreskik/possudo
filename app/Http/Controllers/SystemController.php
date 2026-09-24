@@ -13,6 +13,21 @@ class SystemController extends Controller
     // lihat SEND HEARTBEAT.md. Dipakai bareng buat semua job biar konsisten.
     private const STALE_MULTIPLIER = 3;
 
+    // AppVersion: dipakai frontend (Lockscreen + footer sidebar dashboard) buat nampilin versi
+    // & tanggal rilis POS yang lagi jalan -- murni baca .env (APP_VERSION/APP_RELEASE_DATE),
+    // gak ada DB/service terpisah. Sama pola simple env() kayak resolveExpectedInterval() di
+    // bawah (SYNC_PUSH_INTERVAL_SECONDS).
+    public function AppVersion(Request $request)
+    {
+        return response()->json([
+            'code' => 0,
+            'data' => [
+                'version' => env('APP_VERSION', 'unknown'),
+                'release_date' => env('APP_RELEASE_DATE'),
+            ],
+        ]);
+    }
+
     // JobsHealth: baca sys_job_health (diisi App\Services\JobHealthReporter dari dalam loop
     // tiap background job), balikin status per job + overall_status. Lihat
     // DOKUMENTASI BACKGROUND JOB/POLA UMUM.md buat konteks lengkapnya.

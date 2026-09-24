@@ -8,6 +8,21 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
+// INVENTARIS ROUTE (2026-09-24) -- dicek ulang `routes/api.php` (grep SetupController::class),
+// cuma 3 dari ~36 method public di file ini yang KEDAFTAR ROUTE beneran (prefix('setup')):
+//   - getBranchList        -> POST setup/get_branch_list
+//   - getDataBranch        -> POST setup/get_data_branch/{branch_id}
+//   - ChangeStatusInstall  -> GET  setup/install_success/{status}
+// SISANYA (getStationList, getCategoryList, getMasterItem*, getMasterPricelist*,
+// getMasterPaymentMethod*, getMasterBranchVisitPurpose, getMasterVisitPurpose, getMasterUser,
+// getMasterRoleAccess, getMenuApp, getPromo*, getMemberTypeList, getMemberList) itu DEAD CODE --
+// gak ada route yang manggilnya sama sekali. Method yang SAMA NAMANYA/fungsinya udah ada &
+// AKTIF dipakai di SyncController.php (prefix sync_pull, dipanggil pakai token branch, BUKAN
+// username/password kayak di sini) -- proses Setup pertama kali (route di atas) TERNYATA cuma
+// nyimpen data branch + token, SEMUA penarikan master data (termasuk yang sempat ditaruh salah
+// tempat di sini buat Notes Menu, udah dipindah ke SyncController) kejadiannya SETELAH itu,
+// lewat sync_pull/sync-group. Dead code ini SENGAJA gak dihapus (di luar scope task ini),
+// cuma didokumentasikan biar gak ada yang nambah fungsi baru ke sini lagi ngirain ini jalur aktif.
 class SetupController extends Controller
 {
 
@@ -689,6 +704,8 @@ class SetupController extends Controller
       return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
+
+  /////
 
   public function ChangeStatusInstall(int $status)
   {

@@ -67,20 +67,31 @@ class OrderServices
         $datetime_now = now();
         $order_number = self::GenerateOrderNumber($datajson->terminalId);
         $branch = BranchModel::first();
-        $last_order =  TrOrderModel::where('order_date', $date_now)->orderBy('order_queue', 'desc')->first();
+
+        // dayshift di-resolve DULUAN (sebelum hitung order_queue) -- dipakai dobel: sumber
+        // scope order_queue di bawah, dan buat isi dayshift_ulid ke $order.
+        $dayshift = DaySiftModel::where("dayout_time", null)->first();
+        if (!$dayshift) {
+          throw new \Exception("dayshift tidak aktif, tidak bisa membuat order!");
+        }
+
+        // order_queue di-scope PER DAYSHIFT (dayshift_ulid), BUKAN per order_date (tanggal
+        // kalender) lagi -- order_date bisa nyambung >1 dayshift dalam 1 hari (multi-shift) atau
+        // 1 dayshift bisa lintas 2 order_date (shift malam lewat tengah malam), dua-duanya bikin
+        // nomor antrian gak nyambung/reset di tempat yang salah kalau di-scope per tanggal.
+        $last_order =  TrOrderModel::where('dayshift_ulid', $dayshift->ulid)->orderBy('order_queue', 'desc')->first();
 
         $order_queue = 1;
         if ($last_order != null) {
           $order_queue = $last_order->order_queue + 1;
         }
 
-        // 
+        //
         $tablesectionnow = TableSectionModel::where('id', $datajson->tableSectionId)->first();
         if (!$tablesectionnow) {
           throw new \Exception("table Section tidak valid!");
         }
-        // 
-        $dayshift = DaySiftModel::where("dayout_time", null)->first();
+        //
         $order = [
           "dayshift_ulid" => $dayshift->ulid,
           "terminal_id" => $datajson->terminalId,
@@ -102,7 +113,10 @@ class OrderServices
           "visit_purpose_id" => $datajson->visitPurposeId,
           "pax" => $datajson->orderPax,
 
-          "waiter_name" => 'JUSE',
+          // waiter_name sementara diabaikan (belum ada sumber data waiter sungguhan di flow
+          // Create Order) -- diisi sama kayak chasier_name aja (bukan hardcode 'JUSE' lagi),
+          // biar gak ada placeholder yang nyasar ke UI manapun yang nampilin kolom ini.
+          "waiter_name" => self::getChasierName($datajson),
           "sender_name" => 'JUSE',
           "chasier_name" => self::getChasierName($datajson),
           // "pricelist_id" => $datajson->priceListId,
@@ -780,12 +794,18 @@ class OrderServices
       $total_discount += $row->discount_amount;
     }
 
+    // sync_at di-null-kan (2026-09-22) -- sub_total/total_tax/total_billing/dst ini data
+    // finansial inti yang dipush ke ERP, kalau baris ini udah sempat ke-push duluan (sync_at
+    // udah terisi) sebelum recalculate ini jalan, tanpa di-null-in ulang pushDataOrder() gak
+    // bakal pernah nemu baris ini lagi -- ERP nyangkut di angka lama yang udah gak akurat abis
+    // cancel item/move item. Pola sama kayak CancelOrder()/SaveMoveTable()/SavePayment()/Void().
     TrOrderModel::where('order_number', $order_number)->update([
       'sub_total' => $sub_total,
       'total_tax' => $total_tax,
       'total_billing' => $total_billing,
       'total_item' => $total_item,
       'total_discount' => $total_discount,
+      'sync_at' => null,
     ]);
   }
 
@@ -801,6 +821,7 @@ class OrderServices
       TrOrderDetailModel::where('ulid', $ulid)->update([
         "cancel_at" => now(),
         "cancel_notes" => $notes,
+        "sync_at" => null,
       ]);
 
       self::RecalculateOrderTotals($orderdetail->order_number);
@@ -869,17 +890,19 @@ class OrderServices
               // $list_item_after_filter[] = $item;
               $sisa = ($itemquery->qty - $item->moveQty);
 
-              //jika di pindah semua 
+              //jika di pindah semua
               if ($sisa == 0) {
                 $itemquery->update([
-                  'order_number' => $order_number_new
+                  'order_number' => $order_number_new,
+                  'sync_at' => null,
                 ]);
 
-                //jika di pindah sebagian 
+                //jika di pindah sebagian
               } else {
                 // update yang lama
                 TrOrderDetailModel::where('ulid', $itemquery->ulid)->update([
-                  'qty' => $sisa
+                  'qty' => $sisa,
+                  'sync_at' => null,
                 ]);
 
                 // buat baru
@@ -922,7 +945,8 @@ class OrderServices
             TrOrderModel::where('order_number', $order_number_before)->update([
               'status' => 'moved',
               'moved_at' => now(),
-              'moved_by' => null
+              'moved_by' => null,
+              'sync_at' => null,
             ]);
             Log::info('success');
           } else {
@@ -942,17 +966,19 @@ class OrderServices
               // $list_item_after_filter[] = $item;
               $sisa = ($itemquery->qty - $item->moveQty);
 
-              //jika di pindah semua 
+              //jika di pindah semua
               if ($sisa == 0) {
                 $itemquery->update([
-                  'order_number' => $table_detail->order_number
+                  'order_number' => $table_detail->order_number,
+                  'sync_at' => null,
                 ]);
 
-                //jika di pindah sebagian 
+                //jika di pindah sebagian
               } else {
                 // update yang lama
                 TrOrderDetailModel::where('ulid', $itemquery->ulid)->update([
-                  'qty' => $sisa
+                  'qty' => $sisa,
+                  'sync_at' => null,
                 ]);
 
                 // buat baru
@@ -988,7 +1014,8 @@ class OrderServices
             TrOrderModel::where('order_number', $order_number_before)->update([
               'status' => 'moved',
               'moved_at' => now(),
-              'moved_by' => null
+              'moved_by' => null,
+              'sync_at' => null,
             ]);
           } else {
             self::RecalculateOrderTotals($order_number_before);
@@ -1036,17 +1063,19 @@ class OrderServices
             // $list_item_after_filter[] = $item;
             $sisa = ($itemquery->qty - $item->moveQty);
 
-            //jika di pindah semua 
+            //jika di pindah semua
             if ($sisa == 0) {
               $itemquery->update([
-                'order_number' => $order_number_new
+                'order_number' => $order_number_new,
+                'sync_at' => null,
               ]);
 
-              //jika di pindah sebagian 
+              //jika di pindah sebagian
             } else {
               // update yang lama
               TrOrderDetailModel::where('ulid', $itemquery->ulid)->update([
-                'qty' => $sisa
+                'qty' => $sisa,
+                'sync_at' => null,
               ]);
 
               // buat baru
@@ -1082,7 +1111,8 @@ class OrderServices
           TrOrderModel::where('order_number', $order_number_before)->update([
             'status' => 'moved',
             'moved_at' => now(),
-            'moved_by' => null
+            'moved_by' => null,
+            'sync_at' => null,
           ]);
         } else {
           self::RecalculateOrderTotals($order_number_before);

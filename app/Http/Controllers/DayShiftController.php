@@ -137,6 +137,27 @@ class DayShiftController extends Controller
         }
     }
 
+    // ReportV2 -- struktur response key-value, 1:1 sama kayak section yang dicetak
+    // PrintServices::PrintEndDay() (SALES SUMMARY/SALES TYPE SUMMARY/ORDER SOURCE SUMMARY/ITEM
+    // CATEGORY SUMMARY/STAFF SALES SUMMARY/PAYMENT METHOD SUMMARY/CASH FLOW SUMMARY).
+    function ReportV2(Request $request)
+    {
+        try {
+
+            $data = DayShiftServices::GetReportSummaryV2($request->dayshift_ulid);
+
+            return response()->json([
+                "code" => 0,
+                "data" => $data
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 0,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
+
     function DayShiftList(Request $request)
     {
         try {

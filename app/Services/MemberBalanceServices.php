@@ -11,9 +11,19 @@ use Illuminate\Support\Facades\Http;
 // payment_method_id (konsep lokal POS) -- phone_number diterusin APA ADANYA ke APIANDORDER,
 // resolve ke member_id dilakuin DI SANA (konek langsung ke master_member), BUKAN di Laravel --
 // biar cuma 1 request per aksi (bukan by-phone dulu baru topup terpisah), dan Laravel gak perlu
-// pegang/percaya member_id sama sekali. payment_gateway_code tetap di-resolve di sini dari
-// mr_payment_method lokal (itu emang cuma ada di DB lokal POS), sama pola kayak
-// PaymentGatewayServices::RequestPayment().
+// pegang/percaya member_id sama sekali.
+//
+// payment_method_id (2026-09-22, migration 221 sudocore2) DITERUSKAN APA ADANYA ke APIANDORDER --
+// SEBELUMNYA cuma payment_gateway_code hasil resolve lokal yang dikirim (payment_method_id
+// dibuang di sini), TERNYATA BUG: payment_gateway_code gak unik (gak ada constraint di
+// master_payment_method), memberbalancejurnal.resolveTopupSourceCoa() bisa salah akun COA kalau
+// ada >1 payment method beda pakai kode gateway yang sama. mr_payment_method.id lokal itu = SAMA
+// PERSIS master_payment_method.id pusat (mr_payment_method di-sync PULL, id dipertahankan apa
+// adanya, BUKAN auto_increment lokal) -- jadi aman diteruskan langsung. payment_gateway_code
+// TETAP di-resolve+divalidasi di sini (fail-fast di Kiosk, gak perlu round-trip network buat tau
+// "payment method tidak didukung"), tapi APIANDORDER SEKARANG resolve ulang sendiri dari
+// payment_method_id (server-side, gak percaya kode dari body lagi) -- validasi di sini murni UX,
+// bukan satu-satunya lapisan.
 class MemberBalanceServices
 {
   protected string $endpoint;
@@ -37,6 +47,8 @@ class MemberBalanceServices
       throw new \Exception('payment_method_id wajib diisi');
     }
 
+    // Fail-fast lokal (UX doang) -- APIANDORDER resolve ulang payment_gateway_code SENDIRI dari
+    // payment_method_id (server-side), validasi di sini bukan satu-satunya lapisan.
     $paymentMethod = DB::table('mr_payment_method')->where('id', $payment_method_id)->first();
     if (!$paymentMethod) {
       throw new \Exception('payment method tidak ditemukan');
@@ -44,7 +56,6 @@ class MemberBalanceServices
     if (empty($paymentMethod->payment_gateway_code)) {
       throw new \Exception('payment method tidak didukung');
     }
-    $paymentGatewayCode = $paymentMethod->payment_gateway_code;
 
     $branch = BranchModel::first();
     if (!$branch) {
@@ -57,7 +68,7 @@ class MemberBalanceServices
         'phone_number' => $phone_number,
         'amount' => $amount,
         'source' => $source,
-        'payment_gateway_code' => $paymentGatewayCode,
+        'payment_method_id' => $payment_method_id,
         'terminal_id' => $terminal_id,
       ]);
 

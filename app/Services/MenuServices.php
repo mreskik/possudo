@@ -54,6 +54,16 @@ class MenuServices
 
     $tax = MasterTaxModel::get()->groupBy('id');
 
+    // notes_menu (2026-09-24): ditarik SEKALI di sini (bukan per item, lihat
+    // GetAllNotesMenuForMatching()), dicocokkan in-memory per item/sub-item lewat
+    // ResolveNotesMenu() -- POS ('pos') dapet short_notes (field notesMenu, dipakai chip
+    // quick-pick orderPage.vue), Kiosk ('kiosk') dapet full_notes (dipakai mapKioskMenuItem()
+    // buat notes_menu di response). Endpoint terpisah /master/notes-menu/:id &
+    // /kiosk/notes-menu/:id yang sebelumnya nge-resolve on-demand per-klik SUDAH DIHAPUS,
+    // digantikan penuh sama field ini.
+    $notesMenuField = $channel === 'kiosk' ? 'fullNotes' : 'shortNotes';
+    $allNotesMenu = self::GetAllNotesMenuForMatching();
+
 
     // SEMENTARA HOLD DULU LAGNSUNG GABUNG DI PER PRICELIST 
     //data item package
@@ -92,6 +102,8 @@ class MenuServices
   mi.tax_type as taxType,
   mi.bom_id as bomId,
   mi.icon_src as iconSrc,
+  mi.category_id as categoryId,
+  mi.subcategory_id as subCategoryId,
   mipd.flag_all_menu_template as flagAllMenuTemplate,
   mipd.default_item as defaultItem
 
@@ -133,10 +145,11 @@ class MenuServices
 
       FROM mr_pricelist_detail mpd
       JOIN mr_pricelist mp on mp.id = mpd.pricelist_id
-      JOIN mr_item_conv mic on mic.id = mpd.item_conv_detail_id 
+      JOIN mr_item_conv mic on mic.id = mpd.item_conv_detail_id
       JOIN mr_item mi on mi.id = mic.item_id
       JOIN mr_category mc on mc.id = mi.category_id
       WHERE mpd.pricelist_id = ?
+      ORDER BY mc.name ASC
       ", [$visitPurposeRow->menuPriceListId]);
 
       $subcategory = DB::select("
@@ -153,7 +166,8 @@ class MenuServices
       JOIN mr_item mi on mi.id = mic.item_id
       JOIN mr_subcategory msc on msc.id = mi.subcategory_id
 
-      WHERE mpd.pricelist_id = ?", [$visitPurposeRow->menuPriceListId]);
+      WHERE mpd.pricelist_id = ?
+      ORDER BY msc.name ASC", [$visitPurposeRow->menuPriceListId]);
 
       // itemId here is mr_item_conv.id (pricing is set per item_conv, not per item) — itemid_real is the actual mr_item.id
       $listmenu = DB::select("
@@ -182,12 +196,14 @@ class MenuServices
         JOIN mr_item mi on mi.id = mic.item_id
 
         WHERE mpd.pricelist_id = ? and mpd.{$channelColumn} = true
+        ORDER BY mi.name ASC
       ", [$visitPurposeRow->menuPriceListId]);
 
 
       // tarik item package
       foreach ($listmenu as $itemConvRow) {
         $itemConvRow->packageList = [];
+        $itemConvRow->notesMenu = self::ResolveNotesMenu($allNotesMenu, $itemConvRow->categoryId, $itemConvRow->subCategoryId, $notesMenuField);
         $package = DB::select("SELECT id, item_id, separate_print_package as separatePrintPackage FROM mr_item_package WHERE item_id = ?", [$itemConvRow->itemid_real]);
         foreach ($package as $pa) {
           if ($pa->item_id == $itemConvRow->itemid_real) {
@@ -234,6 +250,11 @@ class MenuServices
               if ($mpl->bomId == 0) {
                 $mpl->bomId = null;
               }
+
+              // notes_menu sub-item package -- matching pakai category_id/subcategory_id MILIK
+              // SUB-ITEM ITU SENDIRI (categoryId/subCategoryId di query $menuPackageDetail),
+              // bukan ikut item induk, karena 1 package bisa lintas kategori.
+              $mpl->notesMenu = self::ResolveNotesMenu($allNotesMenu, $mpl->categoryId ?? null, $mpl->subCategoryId ?? null, $notesMenuField);
 
               // harga package per pricelist (2026-08-26) -- flagAllMenuTemplate=false berarti
               // menuPrice HARUS diganti pake override yang cocok (item_package_detail_id +
@@ -333,5 +354,52 @@ class MenuServices
     }
 
     return $branch_visit_purpose;
+  }
+
+  // GetAllNotesMenuForMatching (2026-09-24, endpoint on-demand /notes-menu/:item_conv_id
+  // dihapus di kedua channel -- POS & Kiosk sekarang sama-sama embed notes_menu langsung di
+  // tiap item/sub-item pohon menu, bukan fetch terpisah per-klik): ditarik SEKALI (bukan per
+  // item_conv_id) biar bisa dipakai nge-loop banyak item sekaligus tanpa N+1 query. Baliknya
+  // array baris mentah mr_notes_menu JOIN categories/subcategories/detail (all_category cuma 1
+  // baris flat per notes menu), tinggal di-filter in-memory di ResolveNotesMenu() di bawah.
+  public static function GetAllNotesMenuForMatching(): array
+  {
+    $rows = DB::select("
+      SELECT
+      mnm.id as notesMenuId,
+      mnm.applies_to as appliesTo,
+      mnc.category_id as categoryId,
+      mns.sub_category_id as subCategoryId,
+      mnd.short_notes as shortNotes,
+      mnd.full_notes as fullNotes
+
+      FROM mr_notes_menu mnm
+      LEFT JOIN mr_notes_menu_categories mnc ON mnc.notes_menu_id = mnm.id
+      LEFT JOIN mr_notes_menu_subcategories mns ON mns.notes_menu_id = mnm.id
+      LEFT JOIN mr_notes_menu_detail mnd ON mnd.notes_menu_id = mnm.id
+    ");
+
+    return $rows;
+  }
+
+  // ResolveNotesMenu: cocokkan 1 item (category_id/subcategory_id) ke kumpulan baris dari
+  // GetAllNotesMenuForMatching(), balikin array string unik dari kolom $field yang match --
+  // rule: all_category selalu ikut, category/sub_category match id-nya. $field = 'shortNotes'
+  // (dipakai POS, MenuServices::GetMasterMenuList('pos') -- field notesMenu) atau 'fullNotes'
+  // (dipakai Kiosk, KioskController::mapKioskMenuItem()).
+  public static function ResolveNotesMenu(array $allNotesMenu, ?int $categoryId, ?int $subCategoryId, string $field = 'shortNotes'): array
+  {
+    $notes = [];
+    foreach ($allNotesMenu as $row) {
+      $match = $row->appliesTo === 'all_category'
+        || ($row->appliesTo === 'category' && $row->categoryId == $categoryId)
+        || ($row->appliesTo === 'sub_category' && $row->subCategoryId == $subCategoryId);
+
+      if ($match && !empty($row->$field)) {
+        $notes[$row->$field] = true;
+      }
+    }
+
+    return array_values(array_keys($notes));
   }
 }

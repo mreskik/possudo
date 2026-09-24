@@ -938,6 +938,10 @@ class KioskController extends Controller
             // isinya). Sengaja cuma dibenerin di Kiosk (bukan di GetMasterMenuList() yang
             // dipakai bareng POS) -- POS staff mungkin masih perlu liat struktur kategori
             // lengkap apa adanya, ini murni soal UX Kiosk customer-facing.
+            // notes_menu (2026-09-24): sudah di-resolve di dalam MenuServices::GetMasterMenuList()
+            // sendiri (field notesMenu di tiap item & menu_package_list, isinya full_notes buat
+            // channel 'kiosk') -- di sini tinggal passthrough lewat mapKioskMenuItem(), gak perlu
+            // resolve ulang.
             $categories = [];
             foreach ($vp->menuPriceList as $cat) {
                 $subcategories = [];
@@ -1349,6 +1353,9 @@ class KioskController extends Controller
 
     // mapKioskMenuItem: reshape 1 item dari MenuServices::GetMasterMenuList() (camelCase, plus
     // packageList bertingkat) ke snake_case flat sesuai konvensi kiosk.
+    // notesMenu (2026-09-24): sudah di-resolve di MenuServices::GetMasterMenuList() sendiri
+    // (item->notesMenu dan tiap mpl->notesMenu di menuPackageList), tinggal passthrough ke
+    // notes_menu snake_case di sini.
     private function mapKioskMenuItem($item)
     {
         $packageList = [];
@@ -1367,6 +1374,7 @@ class KioskController extends Controller
                     'tax_id' => $mpl->taxId,
                     'tax_rate' => $mpl->taxRate,
                     'default_item' => $mpl->defaultItem,
+                    'notes_menu' => $mpl->notesMenu ?? [],
                 ];
             }
             $packageList[] = [
@@ -1400,6 +1408,7 @@ class KioskController extends Controller
             'tax_rate' => $item->taxRate,
             'package_id_real' => $item->packageid_real ?? null,
             'separate_print_package' => $item->separatePrintPackage ?? null,
+            'notes_menu' => $item->notesMenu ?? [],
             'package_list' => $packageList,
         ];
     }

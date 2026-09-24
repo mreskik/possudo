@@ -133,7 +133,11 @@ class MobileOrderPullServices
         }
 
         $dateNow = now()->toDateString();
-        $lastOrder = TrOrderModel::where('order_date', $dateNow)->orderBy('order_queue', 'desc')->first();
+        // order_queue di-scope PER DAYSHIFT (dayshift_ulid), BUKAN per order_date lagi -- sama
+        // alasan/fix kayak OrderServices::SaveOrder() (order_date bisa nyambung >1 dayshift
+        // dalam 1 hari, atau 1 dayshift bisa lintas 2 order_date). $dayshift udah di-resolve di
+        // atas (baris 130), gak perlu resolve ulang.
+        $lastOrder = TrOrderModel::where('dayshift_ulid', $dayshift->ulid)->orderBy('order_queue', 'desc')->first();
         $orderQueue = $lastOrder ? $lastOrder->order_queue + 1 : 1;
 
         $totalItem = 0;

@@ -56,6 +56,7 @@ Response:
                                 "tax_rate": "11.00",
                                 "package_id_real": 53,
                                 "separate_print_package": 0,
+                                "notes_menu": ["Tambah level pedas 1 tingkat", "Sugar free"],
                                 "package_list": [
                                     {
                                         "package_id": 9,
@@ -74,7 +75,8 @@ Response:
                                                 "icon_src": null,
                                                 "tax_id": 100,
                                                 "tax_rate": "11.00",
-                                                "default_item": true
+                                                "default_item": true,
+                                                "notes_menu": []
                                             },
                                             {
                                                 "menu_package_id": 211,
@@ -86,7 +88,8 @@ Response:
                                                 "icon_src": null,
                                                 "tax_id": 100,
                                                 "tax_rate": "11.00",
-                                                "default_item": false
+                                                "default_item": false,
+                                                "notes_menu": ["Extra pedas level 2"]
                                             }
                                         ]
                                     },
@@ -134,6 +137,7 @@ Kalau `id` gak ketemu:
 - `icon_src` (di tiap `subcategories[]`) — path relatif ke icon sub category (dari `mr_subcategory.icon_src`, di-download & disimpen lokal pas sync, lihat `SetupServices::getSubCategoryList()`), `null` kalau sub category itu belum ada icon-nya. Sama aturan path relatif kayak `image_src` item.
 - `banner_src` (di tiap `subcategories[]`) — path relatif ke banner sub category (dari `mr_subcategory.banner_src`, di-download & disimpen lokal pas sync di subfolder `subcategory-banner`, terpisah dari `icon_src` yang di `subcategory` — 2 file beda per sub category), `null` kalau sub category itu belum ada banner-nya. Sama aturan path relatif.
 - `icon_src` (di tiap `items[]` dan di tiap `menu_package_list[]`) — path relatif ke icon item (dari `mr_item.icon_src`, di-download & disimpen lokal pas sync, lihat `SetupServices::getMasterItem()`), `null` kalau item itu belum ada icon-nya. Sama aturan path relatif, terpisah dari `image_src` (dua file berbeda per item).
+- `notes_menu` (di tiap `items[]` dan di tiap `menu_package_list[]`) — array string **full_notes** dari `master_notes_menu_detail` yang applies_to-nya match ke `category_id`/`subcategory_id` item itu (lihat "Update (2026-09-24)" di bawah). **Bukan** object `{short_notes, full_notes}` kayak endpoint POS `/api/master/notes-menu/{item_conv_id}` — Kiosk cuma butuh `full_notes`, langsung array string. Array kosong `[]` kalau gak ada notes menu yang match (bukan `null`).
 
 ## Sumber & pemetaan
 
@@ -236,6 +240,19 @@ Tervalidasi lewat `tinker`: isi `description` test di 1 item real (`mr_item.id=8
 - Item `id=101/102/103` (pricelist `7`, `pos=1`/`qr_order=0`, AMERICANO/CAPPUCCINO/ESPRESSO) → **muncul** di `/api/master/menu-list`, **absen** di Kiosk (`visit_purpose_id=8`).
 
 Dua arah kebukti bener — bukan kebetulan satu channel kebetulan superset yang lain di data test ini.
+
+## Update (2026-09-24)
+
+`notes_menu` ditambahin di tiap `items[]` (menu utama) **dan** di tiap `menu_package_list[]` (sub-item package) — keputusan bisnis: Kiosk sudah narik seluruh pohon menu sekali di awal (bukan pola on-demand per-klik kayak POS), jadi notes menu-nya langsung diembed sekalian di sini biar gak perlu roundtrip tambahan pas customer buka form notes. Endpoint terpisah `GET /api/kiosk/notes-menu/{item_conv_id}` yang sempat dibuat buat ini **sudah dihapus** — digantikan penuh oleh field ini.
+
+Sumber & rule matching-nya SAMA PERSIS kayak `MenuServices::GetNotesMenuByItemConv()` (dipakai endpoint POS, lihat `MASTER/NOTES MENU BY ITEM CONV.md`) — `all_category` selalu ikut, `category`/`sub_category` match `category_id`/`subcategory_id`. Bedanya cuma di 2 hal:
+
+1. **Ditarik sekali** lewat `MenuServices::GetAllNotesMenuForMatching()` (semua baris notes menu + detail, JOIN tanpa filter), bukan query per `item_conv_id` — biar gak N+1 query pas loop semua item pohon menu. Matching-nya di-lakuin in-memory lewat `MenuServices::ResolveNotesMenuFullNotes($allNotesMenu, $categoryId, $subCategoryId)`.
+2. **Cuma `full_notes`** yang dikirim (bukan `short_notes` juga) — array string langsung, bukan object `{short_notes, full_notes}`. String duplikat (notes menu yang sama match ke banyak item) di-dedup per baris (`array_unique` via key array di `ResolveNotesMenuFullNotes()`), tapi TETAP terduplikasi ANTAR item (kalau 50 item sama-sama match notes menu `all_category`, string itu ke-copy 50x di response — trade-off yang disengaja demi kesederhanaan struktur, dibanding taruh notes menu terpisah di root dan biar FE yang gabungin).
+
+**Sub-item package** (`menu_package_list[].notes_menu`) matching-nya pakai `category_id`/`subcategory_id` **milik sub-item itu sendiri** (dari `mr_item` sub-item via `mr_item_package_detail.item_conv_detail_id` → `mr_item_conv` → `mr_item`), BUKAN ikut `category_id`/`subcategory_id` item paket induknya — karena 1 package bisa berisi sub-item lintas kategori (mis. minuman di dalam package makanan).
+
+Tervalidasi lewat `php -l` (`MenuServices.php`, `KioskController.php`) dan request HTTP live ke `/api/kiosk/branch-visit-purpose/{id}` — `notes_menu` muncul di kedua level (item utama & sub-item package), array kosong buat item yang gak match, gak ada regresi ke field lain.
 
 ## Catatan performa
 

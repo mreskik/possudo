@@ -17,6 +17,10 @@ use App\Models\MasterItemPackageModel;
 use App\Models\MasterMemberModel;
 use App\Models\MasterMemberTypeModel;
 use App\Models\MasterMenuAppModel;
+use App\Models\MasterNotesMenuCategoriesModel;
+use App\Models\MasterNotesMenuDetailModel;
+use App\Models\MasterNotesMenuModel;
+use App\Models\MasterNotesMenuSubCategoriesModel;
 use App\Models\MasterPaymentMethodGroupModel;
 use App\Models\MasterPaymentMethodModel;
 use App\Models\MasterPaymentMethodTypeModel;
@@ -1342,6 +1346,96 @@ class SetupServices
 
       if ($response->json('code') == 0) {
         $this->upsertRows(MasterMemberModel::class, $response->json('data'));
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  // getNotesMenu* (2026-09-24): FULL REPLACE (truncate+insert), sama pola getMasterPricelist()
+  // -- filter branch & flag_active UDAH KELAR di server (APIANDORDER GetMasterNotesMenu()),
+  // jadi upsert gak cocok dipakai di sini (notes menu yang dinonaktifkan/dihapus di ERP HARUS
+  // ikut hilang dari POS tiap sync, bukan nyangkut selamanya). Header (getNotesMenuList) WAJIB
+  // dipanggil SEBELUM child (category/sub_category/detail) -- urutan dipertahankan di
+  // syncMenu() (SyncGroupController), walau truncate+insert di sini gak saling depend FK.
+  public function getNotesMenuList(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_notes_menu_list/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        MasterNotesMenuModel::truncate();
+        $this->insertRows(MasterNotesMenuModel::class, $response->json('data'));
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  public function getNotesMenuCategory(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_notes_menu_category/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        MasterNotesMenuCategoriesModel::truncate();
+        $this->insertRows(MasterNotesMenuCategoriesModel::class, $response->json('data'));
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  public function getNotesMenuSubCategory(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_notes_menu_sub_category/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        MasterNotesMenuSubCategoriesModel::truncate();
+        $this->insertRows(MasterNotesMenuSubCategoriesModel::class, $response->json('data'));
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  public function getNotesMenuDetail(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_notes_menu_detail/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        MasterNotesMenuDetailModel::truncate();
+        $this->insertRows(MasterNotesMenuDetailModel::class, $response->json('data'));
       }
 
       return $response;

@@ -121,7 +121,7 @@ class PaymentGatewayServices
     // di sini, itu tindakan eksplisit, beda kasus dari expired yang sifatnya pasif.
     TrOrderModel::where('order_number', $order_number)
       ->where('status', 'expired')
-      ->update(['status' => 'pending']);
+      ->update(['status' => 'pending', 'sync_at' => null]);
 
     return $response->json('data');
   }
@@ -193,7 +193,7 @@ class PaymentGatewayServices
     if ($status === 'expired' && $order->order_source === 'kiosk') {
       TrOrderModel::where('order_number', $order_number)
         ->where('status', 'pending')
-        ->update(['status' => 'expired']);
+        ->update(['status' => 'expired', 'sync_at' => null]);
     }
 
     return ['status' => $status === 'settlement' ? 'paid' : $status, 'order_number' => $order_number];

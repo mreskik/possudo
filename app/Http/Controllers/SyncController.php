@@ -909,4 +909,87 @@ class SyncController extends Controller
       return response()->json(['code' => 100, 'message' => $e->getMessage()]);
     }
   }
+
+  // getNotesMenu* (2026-09-24) -- pindah ke sini dari SetupController (salah tempat, di situ
+  // gak ada route yang aktif motretnya). currentBranch()/noBranchResponse() SAMA barrier kayak
+  // getPromoList dkk di atas -- token dari mr_branch, bukan username/password.
+  public function getNotesMenuList()
+  {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
+    try {
+      $response = $this->setupservices->getNotesMenuList('', '', $branch->id, $branch->token);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message'),
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getNotesMenuCategory()
+  {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
+    try {
+      $response = $this->setupservices->getNotesMenuCategory('', '', $branch->id, $branch->token);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message'),
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getNotesMenuSubCategory()
+  {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
+    try {
+      $response = $this->setupservices->getNotesMenuSubCategory('', '', $branch->id, $branch->token);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message'),
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
+  public function getNotesMenuDetail()
+  {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
+    try {
+      $response = $this->setupservices->getNotesMenuDetail('', '', $branch->id, $branch->token);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message'),
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
 }
