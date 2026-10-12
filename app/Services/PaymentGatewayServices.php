@@ -201,8 +201,7 @@ class PaymentGatewayServices
 
   // confirmPayment: manggil PaymentServices::SavePayment() yang SAMA dipakai POS -- payment_detail
   // di-construct dari data yang udah disimpen tr_kiosk_payment_request pas request dibuat
-  // (payment_method_id, amount), bukan dari client. card_number/bank_name/verification_code/
-  // account_name kosong (gak relevan buat QRIS).
+  // (payment_method_id, amount), bukan dari client. info kosong (gak relevan buat QRIS).
   private function confirmPayment(TrOrderModel $order, KioskPaymentRequestModel $attempt): void
   {
     $fakeRequest = new \Illuminate\Http\Request();
@@ -213,10 +212,7 @@ class PaymentGatewayServices
         [
           'payment_method_id' => $attempt->payment_method_id,
           'payment_amount' => $attempt->amount,
-          'card_number' => null,
-          'bank_name' => null,
-          'verification_code' => null,
-          'account_name' => null,
+          'info' => null,
         ],
       ],
     ]);

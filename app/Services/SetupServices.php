@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BranchModel;
 use App\Models\CategoryModel;
 use App\Models\MasterBranchOpsSettingModel;
+use App\Models\MasterBranchSettingModel;
 use App\Models\MasterImageCustomerDisplayModel;
 use App\Models\MasterImageKioskModel;
 use App\Models\MasterBranchVisitPurposeModel;
@@ -34,6 +35,7 @@ use App\Models\MasterPromoItemsModel;
 use App\Models\MasterPromoApplyToModel;
 use App\Models\MasterPromoModel;
 use App\Models\MasterPromoSubCategoriesModel;
+use App\Models\MasterPromoTierModel;
 use App\Models\MasterPromoTimesModel;
 use App\Models\MasterPromoTypeMembersModel;
 use App\Models\MasterPromoVisitPurposesModel;
@@ -132,8 +134,12 @@ class SetupServices
           'id' => $response->json('data.BranchID'),
           'branch_code' => $response->json("data.BranchCode"),
           'branch_name' => $response->json("data.BranchName"),
+          'brand_id' => $response->json("data.BrandID"),
           'brand_code' => $response->json("data.BrandCode"),
           'brand_name' => $response->json("data.BrandName"),
+          'brand_color' => $response->json("data.BrandColor"),
+          'primary_color' => $response->json("data.PrimaryColor"),
+          'secondary_color' => $response->json("data.SecondaryColor"),
           'address' => $response->json("data.Address"),
           'phone' => $response->json('data.Phone'),
           'printing_header' => $response->json('data.PrintingHeader'),
@@ -142,6 +148,16 @@ class SetupServices
           'token' => $response->json("data.Token"),
           'logo_header_src' => $this->downloadImage($response->json('data.LogoHeaderSrc'), 'branch', $existing->logo_header_src ?? null),
           'image_footer_src' => $this->downloadImage($response->json('data.ImageFooterSrc'), 'branch', $existing->image_footer_src ?? null),
+        ]);
+
+        // mr_branch_setting (2026-09-25) -- SCOPE MINIMAL, cuma domain_receipt/
+        // whatsapp_template_text (bukan semua kolom setting ERP), singleton sama pola kayak
+        // mr_branch di atas (truncate+create, bukan upsert).
+        MasterBranchSettingModel::truncate();
+        MasterBranchSettingModel::create([
+          'branch_id' => $response->json('data.BranchID'),
+          'domain_receipt' => $response->json('data.DomainReceipt'),
+          'whatsapp_template_text' => $response->json('data.WhatsappTemplateText'),
         ]);
       }
 
@@ -1184,6 +1200,27 @@ class SetupServices
 
       if ($response->json('code') == 0) {
         $this->upsertRows(MasterPromoTypeMembersModel::class, $response->json('data'));
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  // getPromoTier (2026-09-30) -- barrier tier promo, mirror PERSIS getPromoTypeMember() di atas.
+  public function getPromoTier(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_promo_tier/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        $this->upsertRows(MasterPromoTierModel::class, $response->json('data'));
       }
 
       return $response;

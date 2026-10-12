@@ -93,6 +93,7 @@ Route::prefix('sync_pull')->group(function () {
   Route::get('get_promo_branch', [SyncController::class, 'getPromoBranch']);
   Route::get('get_promo_visit_purpose', [SyncController::class, 'getPromoVisitPurpose']);
   Route::get('get_promo_type_member', [SyncController::class, 'getPromoTypeMember']);
+  Route::get('get_promo_tier', [SyncController::class, 'getPromoTier']);
   Route::get('get_promo_category', [SyncController::class, 'getPromoCategory']);
   Route::get('get_promo_sub_category', [SyncController::class, 'getPromoSubCategory']);
   Route::get('get_promo_item', [SyncController::class, 'getPromoItem']);
@@ -132,6 +133,7 @@ Route::prefix('master')->group(function () {
   Route::get('visit-purpose', [MasterController::class, 'getVisitPurpose']);
   Route::get('menu-list', [MasterController::class, 'GetMasterMenuList']);
   Route::get('branch', [MasterController::class, 'GetBranchDetail']);
+  Route::get('brand', [MasterController::class, 'GetBrandDetail']);
   Route::get('payment-method/{visit_purpose_id}', [MasterController::class, 'GetPaymentMethod']);
   Route::get('station-list', [MasterController::class, 'GetStationList']);
 
@@ -257,4 +259,14 @@ Route::prefix('push')->group(function () {
   Route::get('data-dayshift-detail', [PushDataController::class, 'PushDataDayShiftDetail']);
   Route::get('data-remove-item-before-save', [PushDataController::class, 'PushDataRemoveItemBeforeSave']);
   Route::get('data-remove-item-before-save-package', [PushDataController::class, 'PushDataRemoveItemBeforeSavePackage']);
+
+  // order-sync-all (2026-09-25): 1 link, push GLOBAL 4 tabel order sekaligus (order/detail/
+  // package/payment), TANPA parameter order_number -- lihat komentar PushOrderSyncAll() di
+  // PushDataController.php.
+  Route::get('order-sync-all', [PushDataController::class, 'PushOrderSyncAll']);
+
+  // sold-out (2026-10-09): tombol manual "Push" di Menu Management page -- snapshot PENUH item
+  // yang lagi sold out, REPLACE total di ERP (bukan sync_at-based kayak yang di atas). Lihat
+  // komentar PushDataServices::pushDataSoldOut().
+  Route::get('sold-out', [PushDataController::class, 'PushDataSoldOut']);
 });

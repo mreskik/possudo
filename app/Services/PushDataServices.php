@@ -10,6 +10,8 @@ use App\Models\TrOrderModel;
 use App\Models\TrOrderPaymentModel;
 use App\Models\TrRemoveItemBeforeSaveModel;
 use App\Models\TrRemoveItemBeforeSavePackageModel;
+use App\Models\BranchModel;
+use App\Models\MasterItemModel;
 use Carbon\Carbon;
 use DateTime;
 use Illuminate\Support\Facades\DB;
@@ -433,6 +435,43 @@ class PushDataServices
       if (DB::transactionLevel() > 0) {
         DB::rollBack();
       }
+      throw $e;
+    }
+  }
+
+  // pushDataSoldOut: tombol manual "Push" di Menu Management page (2026-10-09) -- BEDA POLA
+  // dari fungsi push lain di atas (bukan sync_at-based/append-only). mr_item TIDAK punya kolom
+  // sync_at, dan sold out itu STATE yang naik-turun (bukan histori transaksi) -- jadi tiap klik
+  // kirim SNAPSHOT PENUH item_id yang LAGI flag_soldout=true saat ini, bukan cuma yang "baru
+  // berubah". ERP (lewat APIANDORDER /pos/push/sold_out) REPLACE TOTAL baris branch ini di
+  // master_item_sold_out (DELETE+INSERT) -- jadi item yang baru di-unsoldout-kan otomatis
+  // kehapus dari ERP di push berikutnya, gak perlu kirim daftar "hapus" terpisah.
+  //
+  // item_id yang dikirim = mr_item.id (item FISIK, SAMA PERSIS master_item.id di ERP -- lihat
+  // SetupServices::getMasterItem(), upsert langsung by id tanpa remap) -- BUKAN
+  // item_conv_detail_id/mr_item_conv.id (itu level varian/pricing, flag_soldout nempel di item
+  // fisiknya, bukan di variannya).
+  function pushDataSoldOut()
+  {
+    try {
+      $branch = BranchModel::first();
+      if (!$branch) {
+        throw new \Exception('data branch lokal tidak ditemukan');
+      }
+
+      $itemIds = MasterItemModel::where('flag_soldout', true)->pluck('id');
+
+      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/sold_out", [
+        "branch_id" => $branch->id,
+        "item_ids" => $itemIds,
+      ]);
+
+      if ($response->json('code') == 0) {
+        return 'success';
+      } else {
+        throw new \Exception($response->json('message'));
+      }
+    } catch (\Throwable $e) {
       throw $e;
     }
   }

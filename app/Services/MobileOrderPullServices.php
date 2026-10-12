@@ -269,6 +269,14 @@ class MobileOrderPullServices
                     'payment_gateway_order_id' => $order['payment']['payment_gateway_order_id'] ?? null,
                     'payment_amount' => $order['payment']['payment_amount'],
                     'voucher_code' => $order['payment']['voucher_code'] ?? null,
+                    // deduct_member_id: snapshot id member yang saldonya kepotong (method "Bayar
+                    // pakai Saldo"/wallet), NULL buat payment method lain -- lihat migration
+                    // sudocore2 241 (mb_order_payment) & 2026_10_01_000000 (tr_order_payment).
+                    'deduct_member_id' => $order['payment']['deduct_member_id'] ?? null,
+                    // mdr_amount: snapshot nominal biaya MDR, SUDAH DIHITUNG di sudomobile saat
+                    // payment dibuat -- DITERUSKAN apa adanya di sini (BUKAN dihitung ulang),
+                    // lihat migration sudocore2 242 & 2026_10_01_010000 (tr_order_payment).
+                    'mdr_amount' => $order['payment']['mdr_amount'] ?? 0,
                 ]);
             }
 

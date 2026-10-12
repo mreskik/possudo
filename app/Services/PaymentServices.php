@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\BranchModel;
 use App\Models\MasterMemberModel;
+use App\Models\MasterPaymentMethodModel;
 use App\Models\TrOrderDetailModel;
 use App\Models\TrOrderModel;
 use App\Models\TrOrderPaymentModel;
@@ -16,6 +17,19 @@ use stdClass;
 
 class PaymentServices
 {
+  // calculateMdrAmount: mdr_amount SNAPSHOT (2026-10-01) -- payment_amount x
+  // mr_payment_method.mdr / 100, dihitung SAAT payment dibuat (bukan dihitung ulang
+  // belakangan). CUMA informasi, TIDAK ada jurnal/posting akuntansi yang nyentuh nilai ini.
+  // payment_method_id gak ketemu -- dianggap mdr 0 (bukan exception, biar SavePayment() gak
+  // gagal total gara-gara lookup mdr doang).
+  private static function calculateMdrAmount(int $paymentMethodId, float $paymentAmount): float
+  {
+    $paymentMethod = MasterPaymentMethodModel::find($paymentMethodId);
+    if (!$paymentMethod || !$paymentMethod->mdr) {
+      return 0;
+    }
+    return round($paymentAmount * (float) $paymentMethod->mdr / 100, 2);
+  }
 
 
   public static function GenerateOrderNumber($terminal_id)
@@ -76,10 +90,13 @@ class PaymentServices
           // change_amount: kembalian tunai, cuma keisi kalau frontend ngirim (CASH), default 0
           // buat method lain -- lihat migration change_amount di tr_order_payment.
           'change_amount' => $item['change_amount'] ?? 0,
-          'card_number' => $item['card_number'],
-          'bank_name' => $item['bank_name'],
-          'verification_code' => $item['verification_code'],
-          'account_name' => $item['account_name']
+          // info (migration 2026_09_30, GANTI card_number/bank_name/account_name/
+          // verification_code) -- 1 field bebas teks, diisi kasir apa adanya buat metode
+          // pembayaran non-cash (kartu/EDC dst).
+          'info' => $item['info'] ?? null,
+          // mdr_amount (migration 2026_10_01) -- dihitung SERVER-SIDE dari mr_payment_method.mdr,
+          // BUKAN dari client (gak ada di $item sama sekali, biar gak bisa dimanipulasi frontend).
+          'mdr_amount' => self::calculateMdrAmount((int) $item['payment_method_id'], (float) $item['payment_amount']),
         ];
       }
 
@@ -168,10 +185,8 @@ class PaymentServices
           'payment_method_id' => $item['payment_method_id'],
           'payment_amount' => $item['payment_amount'],
           'change_amount' => $item['change_amount'] ?? 0,
-          'card_number' => $item['card_number'],
-          'bank_name' => $item['bank_name'],
-          'verification_code' => $item['verification_code'],
-          'account_name' => $item['account_name']
+          'info' => $item['info'] ?? null,
+          'mdr_amount' => self::calculateMdrAmount((int) $item['payment_method_id'], (float) $item['payment_amount']),
         ];
       }
 

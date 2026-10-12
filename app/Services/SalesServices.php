@@ -43,7 +43,7 @@ class SalesServices
       AND tro.order_in >= ?
       GROUP BY payment_number,order_number
 
-      ORDER BY tro.order_number DESC
+      ORDER BY tro.order_date DESC
     ", [$dayshift->dayin_time]);
 
       return $data;
@@ -62,6 +62,19 @@ class SalesServices
       // sebelumnya viewSales() (Detail) gak pernah kirim field ini sama sekali, dialog Cashier
       // di SalesPage.vue kena bind ke field lain (waiter_name) gara-gara ini kosong.
       $data_order->payment_by = $data_order->chasier_name;
+
+      // member_name/member_phone_number (2026-10-02): TrOrderModel::first() generik gak pernah
+      // JOIN ke mr_member (beda dari OrderServices::ViewOrder() yang raw SQL + LEFT JOIN) -- di-
+      // resolve manual di sini, dipakai Send WA buat auto-isi nomor tujuan kalau order ada member_id.
+      $data_order->member_name = null;
+      $data_order->member_phone_number = null;
+      if ($data_order->member_id) {
+        $member = DB::selectOne("SELECT name, phone_number FROM mr_member WHERE id = ?", [$data_order->member_id]);
+        if ($member) {
+          $data_order->member_name = $member->name;
+          $data_order->member_phone_number = $member->phone_number;
+        }
+      }
 
       $data_order_payment = TrOrderPaymentModel::where("payment_number", $data_order->payment_number)->get();
       $data_order->payment_detail = DB::select("

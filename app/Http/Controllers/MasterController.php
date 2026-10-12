@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\BranchModel;
+use App\Models\MasterBranchSettingModel;
 use App\Models\CategoryModel;
 use App\Models\MasterBranchVisitPurposeModel;
 use App\Models\MasterMemberTypeModel;
@@ -189,6 +190,17 @@ class MasterController extends Controller
         $data = BranchModel::first();
 
         if ($data) {
+            // setting (2026-09-25): mr_branch_setting SCOPE MINIMAL, cuma domain_receipt/
+            // whatsapp_template_text (bukan semua kolom setting ERP, lihat migration
+            // 2026_09_25_080000_create_table_mr_branch_setting.php) -- singleton per install,
+            // sama pola kayak $data di atas. null kalau belum pernah sync (branch lama/belum
+            // pernah setup ulang), FE yang nentuin fallback (lihat DOKUMENTASI, whatsapp_template_text
+            // kosong -> pakai template default hardcoded).
+            $setting = MasterBranchSettingModel::where('branch_id', $data->id)->first();
+            $data->setting = [
+                'domain_receipt' => $setting->domain_receipt ?? '',
+                'whatsapp_template_text' => $setting->whatsapp_template_text ?? '',
+            ];
 
             return response()->json([
                 'code' => 0,
@@ -201,6 +213,30 @@ class MasterController extends Controller
             ]);
         }
     }
+
+    // GetBrandDetail (2026-10-12): mr_branch singleton (sama pola GetBranchDetail() di atas) --
+    // gak ada tabel master_brand terpisah di POS lokal, data brand nempel jadi kolom tambahan di
+    // mr_branch (brand_id/brand_code/brand_name/brand_color/primary_color/secondary_color, lihat
+    // migration 2026_10_12_000000_add_brand_columns_to_mr_branch.php). Endpoint ini CUMA
+    // nampilin 4 kolom warna+nama brand (bukan semua kolom mr_branch kayak GetBranchDetail) --
+    // scope sempit sesuai permintaan, gak ada filter/parameter karena mr_branch cuma 1 baris.
+    public function GetBrandDetail()
+    {
+        $data = BranchModel::first(['brand_name', 'brand_color', 'primary_color', 'secondary_color']);
+
+        if ($data) {
+            return response()->json([
+                'code' => 0,
+                'data' => $data
+            ]);
+        } else {
+            return response()->json([
+                'code' => 100,
+                'message' => "brandDetail gak muncul!"
+            ]);
+        }
+    }
+
     public function GetStationList()
     {
         $data = StationModel::get();
@@ -313,6 +349,9 @@ class MasterController extends Controller
         // Payment page (once wired) can call this again with the actual member_type_id to also
         // surface member-restricted promos.
         $member_type_id = $request->query("member_type_id");
+        // tier_level (2026-09-30) -- sama semantiknya kayak member_type_id di atas: optional,
+        // NULL kalau member belum dipilih, otomatis fallback ke flag_all_tiers=true doang.
+        $tier_level = $request->query("tier_level");
 
         $day_names = ['minggu', 'senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
         $today_day = $day_names[now()->dayOfWeek];
@@ -355,6 +394,13 @@ class MasterController extends Controller
                         )
                     )
                     AND (
+                        mp.flag_all_tiers = true
+                        OR EXISTS (
+                            SELECT 1 FROM mr_promo_tier mptr
+                            WHERE mptr.promo_id = mp.id AND mptr.tier_level = ?
+                        )
+                    )
+                    AND (
                         mp.flag_all_days = true
                         OR EXISTS (
                             SELECT 1 FROM mr_promo_days mpd
@@ -376,7 +422,7 @@ class MasterController extends Controller
                         )
                     )
                 ORDER BY mp.name ASC
-            ", [$visit_purpose_id, $member_type_id, $today_day, $now_time]);
+            ", [$visit_purpose_id, $member_type_id, $tier_level, $today_day, $now_time]);
 
             $this->AttachPromoTargetIds($data);
             $this->AttachUsedToday($data);

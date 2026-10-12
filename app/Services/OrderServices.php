@@ -50,6 +50,51 @@ class OrderServices
     }
   }
 
+  // ValidatePromoTierBarrier (2026-09-30) -- promo yang mr_promo.flag_all_tiers=false WAJIB
+  // member (kalau ada) tier-nya cocok ke salah satu baris mr_promo_tier promo itu. Beda dari
+  // flag_required_member (yang nolak "gak ada member sama sekali") -- ini nolak "ada member,
+  // tapi tier-nya gak sesuai promo". Kalau member_id kosong, barrier ini gak nolak apa-apa (itu
+  // udah tanggung jawab flag_required_member terpisah) -- promo yang flag_all_tiers=false tapi
+  // member_id kosong lolos ke sini APA ADANYA, murni buat kasus flag_required_member=false
+  // (dianggap gak wajib member) yang somehow juga punya batasan tier -- kombinasi itu sendiri
+  // seharusnya udah ditolak keras di sisi admin (validatePromoRequiredMember() ERP), jadi ini
+  // murni pengaman tambahan.
+  private static function ValidatePromoTierBarrier(array $listOrder, ?int $memberId): void
+  {
+    if (empty($memberId)) {
+      return;
+    }
+
+    $usedPromoIds = [];
+    foreach ($listOrder as $item) {
+      if (!empty($item['promoId'])) {
+        $usedPromoIds[] = $item['promoId'];
+      }
+      foreach (($item['menuPackageList'] ?? []) as $pkg) {
+        if (!empty($pkg['promoId'])) {
+          $usedPromoIds[] = $pkg['promoId'];
+        }
+      }
+    }
+    if (empty($usedPromoIds)) {
+      return;
+    }
+
+    $member = \App\Models\MasterMemberModel::find($memberId);
+    $tierLevel = $member->tier_level ?? 1;
+
+    $mismatchedPromo = \App\Models\MasterPromoModel::whereIn('id', array_unique($usedPromoIds))
+      ->where('flag_all_tiers', false)
+      ->whereDoesntHave('tiers', function ($q) use ($tierLevel) {
+        $q->where('tier_level', $tierLevel);
+      })
+      ->first();
+
+    if ($mismatchedPromo) {
+      throw new \Exception("This promo is for members only");
+    }
+  }
+
   /**
    * Naming note: `$item['menuId']` (frontend cart field) and the `tr_order_detail.menu_id` /
    * `tr_order_detail_package.menu_id` columns it gets saved into are actually `mr_item_conv.id`,
@@ -158,6 +203,41 @@ class OrderServices
 
         $order_detail = [];
         $order_detail_package = [];
+
+        // Barrier flag_required_member (2026-09-30) -- promo yang mr_promo.flag_required_member
+        // = true WAJIB order-nya punya member_id (bukan guest). Dicek SEKALI di sini (bukan per
+        // baris item), kumpulin dulu SEMUA promo_id unik yang kepake (header + package), query
+        // sekali ke mr_promo -- niru pola batch yang sama kayak sudomobile (pricing/promo.go),
+        // bukan N+1 query per baris.
+        if (empty($order['member_id'])) {
+          $usedPromoIds = [];
+          if ($datajson->listOrder) {
+            foreach ($datajson->listOrder as $item) {
+              if (!empty($item['promoId'])) {
+                $usedPromoIds[] = $item['promoId'];
+              }
+              foreach (($item['menuPackageList'] ?? []) as $pkg) {
+                if (!empty($pkg['promoId'])) {
+                  $usedPromoIds[] = $pkg['promoId'];
+                }
+              }
+            }
+          }
+          if (!empty($usedPromoIds)) {
+            $requiredMemberPromo = \App\Models\MasterPromoModel::whereIn('id', array_unique($usedPromoIds))
+              ->where('flag_required_member', true)
+              ->first();
+            if ($requiredMemberPromo) {
+              throw new \Exception("This promo is for members only");
+            }
+          }
+        }
+
+        // Barrier tier promo (2026-09-30) -- promo yang mr_promo.flag_all_tiers=false WAJIB
+        // member (yang udah dipilih) tier-nya cocok sama salah satu baris mr_promo_tier promo
+        // itu. BEDA dari flag_required_member di atas: ini gak nolak "gak ada member" (itu udah
+        // dicek terpisah), tapi nolak "ada member TAPI tier-nya gak cocok".
+        self::ValidatePromoTierBarrier($datajson->listOrder, $order['member_id'] ?? null);
 
         //pengecekan stok
         $datagrouping_ = [];
@@ -299,6 +379,34 @@ class OrderServices
 
         $order_detail = [];
         $order_detail_package = [];
+
+        // Barrier flag_required_member (2026-09-30) -- sama pola kayak jalur order BARU di
+        // atas, cuma member_id-nya diambil dari $order_update (request kali ini), bukan
+        // $current_table_order (member bisa aja baru dipilih pas nambah pesanan ini).
+        if (empty($order_update['member_id'])) {
+          $usedPromoIds = [];
+          foreach ($datajson->listOrder as $item) {
+            if (!empty($item['promoId'])) {
+              $usedPromoIds[] = $item['promoId'];
+            }
+            foreach (($item['menuPackageList'] ?? []) as $pkg) {
+              if (!empty($pkg['promoId'])) {
+                $usedPromoIds[] = $pkg['promoId'];
+              }
+            }
+          }
+          if (!empty($usedPromoIds)) {
+            $requiredMemberPromo = \App\Models\MasterPromoModel::whereIn('id', array_unique($usedPromoIds))
+              ->where('flag_required_member', true)
+              ->first();
+            if ($requiredMemberPromo) {
+              throw new \Exception("This promo is for members only");
+            }
+          }
+        }
+
+        // Barrier tier promo (2026-09-30) -- sama pola kayak jalur order BARU di atas.
+        self::ValidatePromoTierBarrier($datajson->listOrder, $order_update['member_id'] ?? null);
 
         //pengecekan stok
         $datagrouping_ = [];
@@ -476,7 +584,8 @@ class OrderServices
       tro.order_in as orderIn,
       tro.status as status,
       tro.member_id as memberId,
-      mm.name as memberName
+      mm.name as memberName,
+      mm.phone_number as memberPhoneNumber
 
       FROM tr_order tro
       JOIN mr_visit_purpose mvp on mvp.id = tro.visit_purpose_id
