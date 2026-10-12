@@ -209,7 +209,6 @@ Route::prefix('dayshift')->group(function () {
   Route::get('end-shift/{dayshift_ulid}', [DayShiftController::class, 'Endshift']);
   Route::get('detail-list/{dayshift_ulid}', [DayShiftController::class, 'ListDayShiftDetail']);
   Route::post("end-day", [DayShiftController::class, 'EndDay']);
-  // Route::get("report-all", [DayShiftController::class, 'ReportAll']);
   Route::get("report/{dayshift_ulid}", [DayShiftController::class, 'Report']);
   // v2 -- struktur JSON key-value 1:1 sama kayak yang dicetak PrintServices::PrintEndDay(),
   // BUKAN array numeric-index kayak Report()/GetReportCurrentShiftforTampilan() (endpoint lama

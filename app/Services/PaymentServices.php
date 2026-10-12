@@ -162,17 +162,17 @@ class PaymentServices
     try {
       $dataorder = TrOrderModel::where('order_number', $datajson->order_number)->first();
       if (!$dataorder) {
-        throw new \Exception("order number $datajson->order_number tidak ditemukan!");
+        throw new \Exception("order number $datajson->order_number not found!");
       }
       if ($dataorder->payment_number == null || $dataorder->payment_number == '') {
-        throw new \Exception("order number $datajson->order_number belum pernah payment!");
+        throw new \Exception("order number $datajson->order_number has never been paid!");
       }
 
       Log::info($dataorder->total_billing);
       Log::info("" . $datajson->total_payment);
 
       if ($dataorder->total_billing != $datajson->total_payment) {
-        throw new \Exception("Jumlah nominal payment tidak sama dengan order!");
+        throw new \Exception("Payment amount does not match the order!");
       }
       DB::beginTransaction();
       $datapaymentlama = TrOrderPaymentModel::where('payment_number', $dataorder->payment_number)->delete();
@@ -205,10 +205,10 @@ class PaymentServices
 
       $dataorder = TrOrderModel::where('order_number', $order_number)->first();
       if (!$dataorder) {
-        throw new \Exception("order number $order_number tidak ditemukan!");
+        throw new \Exception("order number $order_number not found!");
       }
       if ($dataorder->payment_number == null || $dataorder->payment_number == '') {
-        throw new \Exception("order number $order_number belum pernah payment!");
+        throw new \Exception("order number $order_number has never been paid!");
       }
 
       $datapaymentdetail = TrOrderPaymentModel::where("payment_number", $dataorder->payment_number)->get();

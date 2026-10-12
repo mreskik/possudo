@@ -147,10 +147,10 @@ class SalesServices
       $data_order = TrOrderModel::where("order_number", $order_number)->first();
 
       if ($data_order->status != "paid") {
-        throw new \Exception("hanya order paid yang bisa di void!");
+        throw new \Exception("only paid orders can be voided!");
       }
       if (!$data_order) {
-        throw new \Exception("data order tidak ditemukan!");
+        throw new \Exception("order data not found!");
       }
 
       DB::beginTransaction();

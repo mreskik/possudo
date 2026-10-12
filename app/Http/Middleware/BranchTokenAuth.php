@@ -14,13 +14,13 @@ class BranchTokenAuth
         $token = $request->bearerToken();
 
         if (!$token) {
-            return response()->json(['code' => 401, 'message' => 'Token tidak ditemukan.'], 401);
+            return response()->json(['code' => 401, 'message' => 'Token not found.'], 401);
         }
 
         $branch = DB::table('mr_branch')->where('token', $token)->first();
 
         if (!$branch) {
-            return response()->json(['code' => 401, 'message' => 'Token tidak valid.'], 401);
+            return response()->json(['code' => 401, 'message' => 'Invalid token.'], 401);
         }
 
         return $next($request);

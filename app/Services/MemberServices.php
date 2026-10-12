@@ -23,7 +23,7 @@ class MemberServices
   {
     $branch = BranchModel::first();
     if (!$branch) {
-      throw new \Exception('branch belum dipilih/disimpan, lakukan setup dulu');
+      throw new \Exception('branch has not been selected/saved, please complete setup first');
     }
 
     $response = Http::withToken($branch->token)

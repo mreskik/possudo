@@ -22,7 +22,7 @@ class AuthController extends Controller
             if (!$user) {
                 return response()->json([
                     "code" => 100,
-                    "message" => "Sandi salah !",
+                    "message" => "Incorrect password!",
                 ]);
             }
 

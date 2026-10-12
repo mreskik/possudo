@@ -49,7 +49,7 @@ class SettingServices
     DB::transaction(function () use ($terminals) {
       foreach ($terminals as $terminal) {
         if (empty($terminal['id'])) {
-          throw new \Exception('id terminal wajib diisi di setiap baris kiosk.terminal.');
+          throw new \Exception('terminal id is required in every kiosk.terminal row.');
         }
 
         TerminalModel::where('id', $terminal['id'])->update([

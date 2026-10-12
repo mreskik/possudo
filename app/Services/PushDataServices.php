@@ -456,7 +456,7 @@ class PushDataServices
     try {
       $branch = BranchModel::first();
       if (!$branch) {
-        throw new \Exception('data branch lokal tidak ditemukan');
+        throw new \Exception('local branch data not found');
       }
 
       $itemIds = MasterItemModel::where('flag_soldout', true)->pluck('id');

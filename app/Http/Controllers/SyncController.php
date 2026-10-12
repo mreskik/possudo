@@ -25,7 +25,7 @@ class SyncController extends Controller
 
   private function noBranchResponse()
   {
-    return response()->json(['code' => 100, 'message' => 'branch belum dipilih/disimpan, lakukan setup dulu']);
+    return response()->json(['code' => 100, 'message' => 'branch has not been selected/saved, please complete setup first']);
   }
 
   public function getDataBranch()

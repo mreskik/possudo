@@ -101,24 +101,6 @@ class DayShiftController extends Controller
         }
     }
 
-    function ReportAll(Request $request)
-    {
-        try {
-            $data = DayShiftServices::GetReportAll();
-
-            return response()->json([
-                "code" => 0,
-                "data" => $data
-            ]);
-        } catch (\Throwable $e) {
-            Log::info($e);
-            return response()->json([
-                "code" => 100,
-                "message" => $e->getMessage()
-            ]);
-        }
-    }
-
     function Report(Request $request)
     {
         try {

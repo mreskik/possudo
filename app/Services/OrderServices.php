@@ -117,7 +117,7 @@ class OrderServices
         // scope order_queue di bawah, dan buat isi dayshift_ulid ke $order.
         $dayshift = DaySiftModel::where("dayout_time", null)->first();
         if (!$dayshift) {
-          throw new \Exception("dayshift tidak aktif, tidak bisa membuat order!");
+          throw new \Exception("dayshift is not active, cannot create order!");
         }
 
         // order_queue di-scope PER DAYSHIFT (dayshift_ulid), BUKAN per order_date (tanggal
@@ -134,7 +134,7 @@ class OrderServices
         //
         $tablesectionnow = TableSectionModel::where('id', $datajson->tableSectionId)->first();
         if (!$tablesectionnow) {
-          throw new \Exception("table Section tidak valid!");
+          throw new \Exception("invalid table section!");
         }
         //
         $order = [
@@ -713,7 +713,7 @@ class OrderServices
       $order = TrOrderModel::where("order_number", $order_number)->whereIn("status", ['pending', 'hold'])->first();
 
       if (!$order) {
-        throw new \Exception('bukan order pending / hold!');
+        throw new \Exception('not a pending / hold order!');
       }
 
 
@@ -784,7 +784,7 @@ class OrderServices
 
 
       if (!$orderdetail) {
-        throw new \Exception('order tidak ditemukan! ');
+        throw new \Exception('order not found! ');
       }
 
       $perubahan = [
@@ -793,7 +793,7 @@ class OrderServices
       ];
       if ($tablesection->type == 'dinein') {
         if ($table_id == null) {
-          throw new \Exception('table harus dipilih! ');
+          throw new \Exception('table must be selected! ');
         }
 
 
@@ -815,7 +815,7 @@ class OrderServices
           JOIN tr_order tro on tro.table_id = mt.id AND tro.status IN ('pending', 'hold')
           WHERE mt.id = ?", [$table_id]);
           if ($exists) {
-            throw new \Exception('Table masih ada order !');
+            throw new \Exception('Table still has an active order!');
           }
         }
 
@@ -924,7 +924,7 @@ class OrderServices
       $orderdetail = TrOrderDetailModel::where('ulid', $ulid)->whereNull('cancel_at')->first();
 
       if (!$orderdetail) {
-        throw new \Exception('item tidak ditemukan / sudah dicancel!');
+        throw new \Exception('item not found / already cancelled!');
       }
 
       TrOrderDetailModel::where('ulid', $ulid)->update([
@@ -948,7 +948,7 @@ class OrderServices
 
       $tablesectionquery = TableSectionModel::where('id', $to_tablesection_id)->first();
       if (!$tablesectionquery) {
-        throw new \Exception("table section tidak ditemukan!");
+        throw new \Exception("table section not found!");
       }
       if ($tablesectionquery->type == 'dinein') {
 
@@ -987,7 +987,7 @@ class OrderServices
           $order_number_new = self::SaveOrder($data);
 
           if ($order_number_new == '') {
-            throw new \Exception('gagal create order number!');
+            throw new \Exception('failed to create order number!');
           }
 
           // $list_item_after_filter = [];
@@ -1160,7 +1160,7 @@ class OrderServices
         $order_number_new = self::SaveOrder($data);
 
         if ($order_number_new == '') {
-          throw new \Exception('gagal create order number!');
+          throw new \Exception('failed to create order number!');
         }
 
         // $list_item_after_filter = [];

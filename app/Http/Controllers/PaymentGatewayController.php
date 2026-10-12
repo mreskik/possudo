@@ -27,7 +27,7 @@ class PaymentGatewayController extends Controller
             if (!$order_number || !$payment_method_id || !$amount) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'order_number, payment_method_id, dan amount wajib diisi',
+                    'message' => 'order_number, payment_method_id, and amount are required',
                 ]);
             }
 
@@ -73,7 +73,7 @@ class PaymentGatewayController extends Controller
             if (!$order_number) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'order_number wajib diisi',
+                    'message' => 'order_number is required',
                 ]);
             }
 
@@ -81,7 +81,7 @@ class PaymentGatewayController extends Controller
             if (!$order) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'order tidak ditemukan',
+                    'message' => 'order not found',
                 ]);
             }
 
@@ -92,7 +92,7 @@ class PaymentGatewayController extends Controller
             if ($order->payment_number !== null) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'order sudah dibayar, tidak bisa cancel payment request',
+                    'message' => 'order has already been paid, cannot cancel payment request',
                 ]);
             }
 

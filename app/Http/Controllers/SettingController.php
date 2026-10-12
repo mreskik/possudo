@@ -30,7 +30,7 @@ class SettingController extends Controller
             if (count($messages) === 0) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'Tidak ada section yang dikirim (general_setting/kiosk).',
+                    'message' => 'No section was sent (general_setting/kiosk).',
                 ]);
             }
 

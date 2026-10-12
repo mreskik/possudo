@@ -136,13 +136,13 @@ class KioskController extends Controller
             if (!$user) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'Sandi salah!',
+                    'message' => 'Incorrect password!',
                 ]);
             }
 
             return response()->json([
                 'code' => 0,
-                'message' => 'Sandi benar!',
+                'message' => 'Correct password!',
                 'data' => [
                     'id' => $user->id,
                     'username' => $user->username,
@@ -227,7 +227,7 @@ class KioskController extends Controller
             if (!$data) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'terminal tidak ditemukan',
+                    'message' => 'terminal not found',
                 ]);
             }
 
@@ -332,7 +332,7 @@ class KioskController extends Controller
             if (!$order) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'order tidak ditemukan',
+                    'message' => 'order not found',
                 ]);
             }
 
@@ -406,14 +406,14 @@ class KioskController extends Controller
             if (!$data_order) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'order tidak ditemukan',
+                    'message' => 'order not found',
                 ]);
             }
 
             if ($data_order->status !== 'paid') {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'order belum dibayar, belum ada struk buat ini',
+                    'message' => 'order has not been paid, there is no receipt for this yet',
                 ]);
             }
 
@@ -529,7 +529,7 @@ class KioskController extends Controller
             if (!$order_number || !$payment_method_id) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'order_number dan payment_method_id wajib diisi',
+                    'message' => 'order_number and payment_method_id are required',
                 ]);
             }
 
@@ -584,7 +584,7 @@ class KioskController extends Controller
             if (!$phoneNumber || !$amount || !$paymentMethodId || !$terminalId) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'phone_number, amount, payment_method_id, dan terminal_id wajib diisi',
+                    'message' => 'phone_number, amount, payment_method_id, and terminal_id are required',
                 ]);
             }
 
@@ -690,7 +690,7 @@ class KioskController extends Controller
             if (!$topupData) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'topup belum dibayar, belum ada struk buat ini',
+                    'message' => 'topup has not been paid, there is no receipt for this yet',
                 ]);
             }
 
@@ -734,7 +734,7 @@ class KioskController extends Controller
             if (!$order_number) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'order_number wajib diisi',
+                    'message' => 'order_number is required',
                 ]);
             }
 
@@ -742,13 +742,13 @@ class KioskController extends Controller
             if (!$order) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'order tidak ditemukan',
+                    'message' => 'order not found',
                 ]);
             }
             if ($order->status !== 'pending' || $order->payment_number !== null) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'payment order ini tidak bisa di-cancel (bukan status pending / sudah dibayar)',
+                    'message' => 'this order payment cannot be cancelled (not pending status / already paid)',
                 ]);
             }
 
@@ -757,20 +757,20 @@ class KioskController extends Controller
             if ($result['settled']) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'order ternyata sudah dibayar, tidak jadi di-cancel',
+                    'message' => 'order has already been paid, cancellation aborted',
                 ]);
             }
 
             if (!$result['cancelled']) {
                 return response()->json([
                     'code' => 0,
-                    'message' => 'tidak ada payment aktif buat di-cancel',
+                    'message' => 'no active payment to cancel',
                 ]);
             }
 
             return response()->json([
                 'code' => 0,
-                'message' => 'payment berhasil di-cancel',
+                'message' => 'payment cancelled successfully',
             ]);
         } catch (\Throwable $e) {
             return response()->json([
@@ -877,7 +877,7 @@ class KioskController extends Controller
             if (!$order_number) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'order_number wajib diisi',
+                    'message' => 'order_number is required',
                 ]);
             }
 
@@ -920,7 +920,7 @@ class KioskController extends Controller
             if (!$vp) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'visit purpose tidak ditemukan',
+                    'message' => 'visit purpose not found',
                 ]);
             }
 
@@ -1020,7 +1020,7 @@ class KioskController extends Controller
             if (!$terminal_id) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'terminal_id wajib diisi',
+                    'message' => 'terminal_id is required',
                 ]);
             }
 
@@ -1028,14 +1028,14 @@ class KioskController extends Controller
             if (!$terminal) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'terminal tidak ditemukan',
+                    'message' => 'terminal not found',
                 ]);
             }
 
             if (!$terminal->table_section_id) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'terminal ini belum dikonfigurasi table_section_id, hubungi admin',
+                    'message' => 'this terminal has not been configured with a table_section_id, please contact admin',
                 ]);
             }
 
@@ -1082,13 +1082,13 @@ class KioskController extends Controller
         if (!$order) {
             return response()->json([
                 'code' => 100,
-                'message' => 'order tidak ditemukan',
+                'message' => 'order not found',
             ]);
         }
         if (!in_array($order->status, ['pending', 'hold'])) {
             return response()->json([
                 'code' => 100,
-                'message' => 'order sudah tidak bisa diedit (bukan status pending/hold)',
+                'message' => 'order can no longer be edited (not pending/hold status)',
             ]);
         }
 
@@ -1104,7 +1104,7 @@ class KioskController extends Controller
         if ($cancelResult['settled']) {
             return response()->json([
                 'code' => 100,
-                'message' => 'order sudah dibayar, tidak bisa diedit lagi',
+                'message' => 'order has already been paid, can no longer be edited',
             ]);
         }
 

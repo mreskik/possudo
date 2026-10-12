@@ -39,28 +39,28 @@ class PaymentGatewayServices
   {
     $paymentMethod = DB::table('mr_payment_method')->where('id', $payment_method_id)->first();
     if (!$paymentMethod) {
-      throw new \Exception('payment method tidak ditemukan');
+      throw new \Exception('payment method not found');
     }
 
     if (empty($paymentMethod->payment_gateway_code)) {
-      throw new \Exception('payment method tidak didukung');
+      throw new \Exception('payment method not supported');
     }
 
     $order = TrOrderModel::where('order_number', $order_number)->first();
     if (!$order) {
-      throw new \Exception('order tidak ditemukan');
+      throw new \Exception('order not found');
     }
 
     // order yang udah di-cancel (lihat KioskController::CancelOrder()) itu tindakan final --
     // gak boleh diminta payment lagi lewat sini. Beda dari 'expired' (pasif, boleh di-retry).
     if ($order->status === 'cancel') {
-      throw new \Exception('order sudah dibatalkan, tidak bisa request payment lagi');
+      throw new \Exception('order has already been cancelled, cannot request payment again');
     }
 
     $branch = BranchModel::first();
     $amount = $amount ?? (int) $order->total_billing;
     if ($amount <= 0) {
-      throw new \Exception('nominal payment tidak valid');
+      throw new \Exception('payment amount is invalid');
     }
     // Sanity bound -- backend gak independen tau "udah kebayar berapa" pas split-payment
     // (payment_detail sisi cash/card masih murni state frontend, belum ke-persist sampai
@@ -68,7 +68,7 @@ class PaymentGatewayServices
     // "amount gak boleh lebih dari total tagihan order", bukan "gak boleh lebih dari outstanding
     // yang tersisa" -- itu dipercaya dari client, sama level trust-nya kayak payment_amount cash.
     if ($amount > (int) $order->total_billing) {
-      throw new \Exception('nominal payment melebihi total tagihan order');
+      throw new \Exception('payment amount exceeds the order total bill');
     }
 
     // cancel attempt lama yang masih pending buat order ini (kalau ada)
@@ -140,7 +140,7 @@ class PaymentGatewayServices
   {
     $order = TrOrderModel::where('order_number', $order_number)->first();
     if (!$order) {
-      throw new \Exception('order tidak ditemukan');
+      throw new \Exception('order not found');
     }
 
     // udah pernah ke-confirm sebelumnya (attempt lain/polling sebelumnya) -- jangan cek ulang
@@ -153,7 +153,7 @@ class PaymentGatewayServices
       ->orderByDesc('created_at')
       ->first();
     if (!$attempt) {
-      throw new \Exception('belum pernah ada request pembayaran buat order ini');
+      throw new \Exception('no payment request has ever been made for this order');
     }
 
     $response = Http::withOptions(['verify' => config('services.http_verify_ssl')])->get($this->endpoint . '/payment-gateway/' . $attempt->order_id);

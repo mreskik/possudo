@@ -116,7 +116,7 @@ class MobileOrderPullServices
 
         $tableSection = TableSectionModel::where('id', $terminal->table_section_id)->first();
         if (!$tableSection) {
-            throw new \Exception("table_section_id {$terminal->table_section_id} (dari terminal worker) tidak ditemukan");
+            throw new \Exception("table_section_id {$terminal->table_section_id} (from terminal worker) not found");
         }
 
         // Reuse DayShiftServices::GetDayShift() (2026-09-18, fix) -- SEBELUMNYA query manual di
@@ -129,7 +129,7 @@ class MobileOrderPullServices
         // yang beda dari yang dipakai proses lain, salah kelompok pas jurnal endday.
         $dayshift = DayShiftServices::GetDayShift();
         if (!$dayshift) {
-            throw new \Exception('belum ada dayshift aktif (dayin) di branch ini');
+            throw new \Exception('no active dayshift (dayin) for this branch yet');
         }
 
         $dateNow = now()->toDateString();

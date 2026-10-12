@@ -36,7 +36,7 @@ class SyncGroupController extends Controller
 
     private function noBranchResponse()
     {
-        return response()->json(['code' => 100, 'message' => 'branch belum dipilih/disimpan, lakukan setup dulu']);
+        return response()->json(['code' => 100, 'message' => 'branch has not been selected/saved, please complete setup first']);
     }
 
     // runSteps: jalanin tiap step SATU-SATU, try/catch PER STEP -- 1 gagal gak nahan step

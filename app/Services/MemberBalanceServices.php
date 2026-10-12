@@ -41,25 +41,25 @@ class MemberBalanceServices
   public function TopupBalance(string $phone_number, float $amount, ?int $payment_method_id, string $source, ?int $terminal_id): array
   {
     if ($amount <= 0) {
-      throw new \Exception('amount wajib lebih dari 0');
+      throw new \Exception('amount must be greater than 0');
     }
     if (!$payment_method_id) {
-      throw new \Exception('payment_method_id wajib diisi');
+      throw new \Exception('payment_method_id is required');
     }
 
     // Fail-fast lokal (UX doang) -- APIANDORDER resolve ulang payment_gateway_code SENDIRI dari
     // payment_method_id (server-side), validasi di sini bukan satu-satunya lapisan.
     $paymentMethod = DB::table('mr_payment_method')->where('id', $payment_method_id)->first();
     if (!$paymentMethod) {
-      throw new \Exception('payment method tidak ditemukan');
+      throw new \Exception('payment method not found');
     }
     if (empty($paymentMethod->payment_gateway_code)) {
-      throw new \Exception('payment method tidak didukung');
+      throw new \Exception('payment method not supported');
     }
 
     $branch = BranchModel::first();
     if (!$branch) {
-      throw new \Exception('branch belum dipilih/disimpan, lakukan setup dulu');
+      throw new \Exception('branch has not been selected/saved, please complete setup first');
     }
 
     $response = Http::withToken($branch->token)
@@ -84,7 +84,7 @@ class MemberBalanceServices
   {
     $branch = BranchModel::first();
     if (!$branch) {
-      throw new \Exception('branch belum dipilih/disimpan, lakukan setup dulu');
+      throw new \Exception('branch has not been selected/saved, please complete setup first');
     }
 
     $response = Http::withToken($branch->token)
