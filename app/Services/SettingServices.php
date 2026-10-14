@@ -32,7 +32,7 @@ class SettingServices
 
   // SaveTerminalSetting update table_section_id & receipt_station_id untuk sekumpulan
   // terminal (semua jenis/pos_type, bukan cuma kiosk). $terminals adalah isi key
-  // "terminal.list" dari body.
+  // "terminal" dari body (array langsung, bukan nested).
   public static function SaveTerminalSetting(array $terminals)
   {
     // array kosong = memang belum ada terminal di branch ini, bukan error — biarkan
@@ -44,7 +44,7 @@ class SettingServices
     DB::transaction(function () use ($terminals) {
       foreach ($terminals as $terminal) {
         if (empty($terminal['id'])) {
-          throw new \Exception('terminal id is required in every terminal.list row.');
+          throw new \Exception('terminal id is required in every terminal row.');
         }
 
         TerminalModel::where('id', $terminal['id'])->update([
