@@ -49,7 +49,7 @@ class SettingController extends Controller
     public function load(Request $request)
     {
         try {
-            $data = SettingModel::first()->makeHidden(['customer_display_left', 'customer_display_top']);
+            $data = SettingModel::first()->makeHidden(['customer_display_left', 'customer_display_top', 'customer_display_name']);
 
             return response()->json([
                 'code' => 0,

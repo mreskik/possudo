@@ -16,13 +16,11 @@ class SettingServices
       Log::info($data);
       $default_station = $data['defaultStation'] ?? null;
       $use_customer_display = $data['useCustomerDisplay'] ?? null;
-      $customer_display_name = $data['customerDisplay']['name'] ?? null;
       $use_virtual_keyboard = $data['useVirtualKeyboard'] ?? null;
 
       SettingModel::where('id', 1)->update([
         'default_station' => $default_station,
         'use_customer_display' => $use_customer_display,
-        'customer_display_name' => $customer_display_name,
         'use_virtual_keyboard' => $use_virtual_keyboard,
       ]);
 
