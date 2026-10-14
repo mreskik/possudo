@@ -78,7 +78,7 @@ Order butuh dayshift aktif (`pos_order.dayshift_ulid`).
 Setup awal (Fase 0) sudah pakai `sync_pull/*`; fase ini untuk sinkron ulang manual setelah app jalan.
 
 38. [`SETTING/SETTING.md`](POS/SETTING/SETTING.md)
-39. [`SETTING/TEST PRINT AND CUSTOMER DISPLAY.md`](POS/SETTING/TEST%20PRINT%20AND%20CUSTOMER%20DISPLAY.md)
+39. [`SETTING/TEST PRINT.md`](POS/SETTING/TEST%20PRINT.md)
 40. [`SYNC/SYNC GROUP.md`](POS/SYNC/SYNC%20GROUP.md) — jalur kedua (beda dari `sync_pull/*` Fase 0), dipakai tab Synchronize.
 
 ## Fase 8 — Menu Management (admin, terakhir karena bergantung ke Master Menu)

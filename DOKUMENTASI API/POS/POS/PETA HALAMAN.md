@@ -152,7 +152,7 @@ Route `/dashboard/setting` — `src/modules/dashboard/setting/SettingPage.vue`
 | Synchronize | `GET /sync-group/branch-setting`, `branch-setting-images`, `member`, `promotion`, `table`, `master-setting`, `menu`, `menu-images`, `sales`, `user` — satu per satu sesuai centang, urutan tetap | [`../SYNC/SYNC GROUP.md`](../SYNC/SYNC%20GROUP.md) — **jalur BEDA** dari `/sync_pull/get_*` yang dipakai halaman Setup (lihat catatan di bawah) |
 | Terminal | `GET /master/terminal-list`, `GET /master/table-section` | [`MASTER/TERMINAL LIST.md`](MASTER/TERMINAL%20LIST.md) |
 | Save (General+Terminal gabung) | `POST /setting/save` | [`SETTING/SETTING.md`](SETTING/SETTING.md) — sukses → `globalstore.loadData()` |
-| Test Print | `GET /setting/test-print-all`, `GET /setting/test-print/{id}` | [`SETTING/TEST PRINT AND CUSTOMER DISPLAY.md`](SETTING/TEST%20PRINT%20AND%20CUSTOMER%20DISPLAY.md) |
+| Test Print | `GET /setting/test-print-all`, `GET /setting/test-print/{id}` | [`SETTING/TEST PRINT.md`](SETTING/TEST%20PRINT.md) |
 
 **Penting**: `/sync-group/*` (dipakai di sini, untuk sinkron ulang berkala/manual) dan `/sync_pull/get_*` (dipakai di halaman Setup, instalasi awal) adalah **2 jalur berbeda** untuk tujuan serupa — jangan disamakan saat migrasi.
 
@@ -173,7 +173,7 @@ Ketiganya bukan bagian dari alur kasir harian — hanya dipakai sekali saat setu
 
 - **Setup** (`/setup`, `SetupPage.vue`) — wizard: `POST /setup/get_branch_list` → `POST /setup/get_data_branch/{id}` → rentetan `GET /sync_pull/get_*` (±35 endpoint, berurutan) → `GET /setup/install_success/1`. Lihat [`../SETUP/SETUP WIZARD.md`](../SETUP/SETUP%20WIZARD.md) dan [`../SYNC/SYNC PULL.md`](../SYNC/SYNC%20PULL.md).
 - **Terminal Select** (`/terminal`, `TerminalPage.vue`) — `GET /master/branch`, `GET /master/terminal-list`, `GET /sync_pull/get_terminal`.
-- **Display Customer** (`/display_customer`, `DisplayCustomerPage.vue`) — customer-facing pasif, baca status payment gateway via cross-tab `localStorage` (bukan API call baru di sisi Display), dibuka murni dari FE (`window.open()` di `Navbar.vue`) — tidak ada endpoint backend sama sekali (jalur lama `exec()` shell command sudah dihapus 2026-10-14, lihat [`SETTING/TEST PRINT AND CUSTOMER DISPLAY.md`](SETTING/TEST%20PRINT%20AND%20CUSTOMER%20DISPLAY.md)).
+- **Display Customer** (`/display_customer`, `DisplayCustomerPage.vue`) — customer-facing pasif, baca status payment gateway via cross-tab `localStorage` (bukan API call baru di sisi Display), dibuka murni dari FE (`window.open()` di `Navbar.vue`) — tidak ada endpoint backend sama sekali (jalur lama `exec()` shell command sudah dihapus 2026-10-14).
 
 ## Catatan migrasi tambahan
 
