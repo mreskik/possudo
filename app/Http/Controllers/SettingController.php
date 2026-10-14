@@ -23,14 +23,14 @@ class SettingController extends Controller
                 $messages[] = SettingServices::Save($request->input('general_setting'));
             }
 
-            if ($request->has('kiosk.terminal')) {
-                $messages[] = SettingServices::SaveKioskTerminal($request->input('kiosk.terminal'));
+            if ($request->has('terminal.list')) {
+                $messages[] = SettingServices::SaveTerminalSetting($request->input('terminal.list'));
             }
 
             if (count($messages) === 0) {
                 return response()->json([
                     'code' => 100,
-                    'message' => 'No section was sent (general_setting/kiosk).',
+                    'message' => 'No section was sent (general_setting/terminal).',
                 ]);
             }
 

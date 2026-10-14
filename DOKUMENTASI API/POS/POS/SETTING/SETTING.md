@@ -16,8 +16,8 @@ POST /api/setting/save
     "useCustomerDisplay": true,
     "useVirtualKeyboard": true
   },
-  "kiosk": {
-    "terminal": [
+  "terminal": {
+    "list": [
       { "id": 5, "table_section_id": 2, "receipt_station_id": 1 }
     ]
   }
@@ -29,9 +29,9 @@ POST /api/setting/save
 { "code": 0, "message": "Success" }
 ```
 
-- **Deteksi section via `$request->has('general_setting')`/`$request->has('kiosk.terminal')`** — kirim body kosong sama sekali (tidak ada section manapun) → `{ "code": 100, "message": "No section was sent (general_setting/kiosk)." }`.
+- **Deteksi section via `$request->has('general_setting')`/`$request->has('terminal.list')`** — kirim body kosong sama sekali (tidak ada section manapun) → `{ "code": 100, "message": "No section was sent (general_setting/terminal)." }`.
 - `general_setting` — update singleton `SettingModel` (`id = 1`) — `defaultStation`/`useCustomerDisplay`/`useVirtualKeyboard`. Field yang tidak dikirim (`?? null`) akan **ditimpa jadi `null`** — ini **bukan** partial update per-field, kirim ulang section ini berarti kirim semua field-nya, bukan cuma yang berubah.
-- `kiosk.terminal` — array terminal Kiosk, update `table_section_id`/`receipt_station_id` per terminal. Array **kosong** dianggap valid (no-op, bukan error) — sengaja, supaya form yang selalu mengirim section ini (walau branch belum punya terminal Kiosk) tidak ikut gagal. Setiap baris **wajib** punya `id` → kosong → `"terminal id is required in every kiosk.terminal row."`.
+- `terminal.list` — array **semua terminal** (semua `pos_type`, bukan cuma Kiosk — key section-nya dulu bernama `kiosk`, sudah direname 2026-10-14 karena menyesatkan: tab UI-nya ("Terminal Setting") dan datanya memang untuk semua jenis terminal), update `table_section_id`/`receipt_station_id` per terminal. Array **kosong** dianggap valid (no-op, bukan error) — sengaja, supaya form yang selalu mengirim section ini (walau branch belum punya terminal) tidak ikut gagal. Setiap baris **wajib** punya `id` → kosong → `"terminal id is required in every terminal.list row."`.
 
 ## Load
 
@@ -52,14 +52,14 @@ Singleton `SettingModel::first()` apa adanya — snake_case (**beda konvensi** d
 
 ## Alur Implementasi
 
-Dipanggil dari `SettingPage.vue` — `load()` saat halaman dibuka (isi form awal), `Save()` saat submit (section mana yang dikirim tergantung tab mana yang sedang diedit kasir, tapi body selalu include `kiosk.terminal` walau array kosong — lihat catatan di atas).
+Dipanggil dari `SettingPage.vue` — `load()` saat halaman dibuka (isi form awal), `Save()` saat submit (section mana yang dikirim tergantung tab mana yang sedang diedit kasir, tapi body selalu include `terminal.list` walau array kosong — lihat catatan di atas).
 
 ## Sumber
 
 - `app/Http/Controllers/SettingController.php` — `save()`, `load()`.
-- `app/Services/SettingServices.php` — `Save()`, `SaveKioskTerminal()`.
-- Frontend: `src/services/SettingServices.ts` (`Save`, `load`), `src/modules/dashboard/setting/SettingPage.vue`.
+- `app/Services/SettingServices.php` — `Save()`, `SaveTerminalSetting()`.
+- Frontend: `src/services/SettingServices.ts` (`Save`, `load`), `src/modules/dashboard/setting/SettingPage.vue` (`terminalSettingList`, `loadTerminalSettingList()`, `saveAllHandler()`).
 
 ## Status
 
-Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifikasi ulang lewat HTTP request live di sesi ini).
+Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifikasi ulang lewat HTTP request live di sesi ini). Diupdate 2026-10-14: section `kiosk.terminal` direname jadi `terminal.list` (termasuk `SaveKioskTerminal()` → `SaveTerminalSetting()`, dan variabel frontend `kioskTerminalList`/`loadKioskTerminals()` → `terminalSettingList`/`loadTerminalSettingList()`) — penamaan lama menyesatkan karena fitur ini untuk semua jenis terminal, bukan cuma Kiosk.

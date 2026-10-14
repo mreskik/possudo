@@ -30,12 +30,13 @@ class SettingServices
     }
   }
 
-  // SaveKioskTerminal update table_section_id & receipt_station_id untuk sekumpulan terminal
-  // kiosk sekaligus. $terminals adalah isi key "kiosk.terminal" dari body.
-  public static function SaveKioskTerminal(array $terminals)
+  // SaveTerminalSetting update table_section_id & receipt_station_id untuk sekumpulan
+  // terminal (semua jenis/pos_type, bukan cuma kiosk). $terminals adalah isi key
+  // "terminal.list" dari body.
+  public static function SaveTerminalSetting(array $terminals)
   {
-    // array kosong = memang belum ada terminal kiosk di branch ini, bukan error — biarkan
-    // no-op supaya saveAllHandler (yang selalu ngirim section kiosk) gak ikut gagal.
+    // array kosong = memang belum ada terminal di branch ini, bukan error — biarkan
+    // no-op supaya saveAllHandler (yang selalu ngirim section terminal) gak ikut gagal.
     if (count($terminals) === 0) {
       return "Success";
     }
@@ -43,7 +44,7 @@ class SettingServices
     DB::transaction(function () use ($terminals) {
       foreach ($terminals as $terminal) {
         if (empty($terminal['id'])) {
-          throw new \Exception('terminal id is required in every kiosk.terminal row.');
+          throw new \Exception('terminal id is required in every terminal.list row.');
         }
 
         TerminalModel::where('id', $terminal['id'])->update([
