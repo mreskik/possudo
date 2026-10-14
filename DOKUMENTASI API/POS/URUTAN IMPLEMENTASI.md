@@ -11,7 +11,7 @@ Urutan **persis** mengikuti apa yang device baru alami sebelum kasir bisa login 
 1. **Setup** (`/setup`) — [`SETUP/SETUP WIZARD.md`](POS/SETUP/SETUP%20WIZARD.md): wizard pilih company → pilih branch → `install_success`.
 2. **Sync Pull** (dipanggil wizard di atas, bukan halaman sendiri) — [`SYNC/SYNC PULL.md`](POS/SYNC/SYNC%20PULL.md): ±35 endpoint `sync_pull/get_*` berurutan, ini yang benar-benar mengisi data lokal pertama kali.
 3. **Terminal Select** (`/terminal`) — [`MASTER/TERMINAL LIST.md`](POS/MASTER/TERMINAL%20LIST.md): pilih terminal device ini, baru bisa lanjut ke Lockscreen.
-4. **Display Customer** (`/display_customer`, opsional, kalau branch ini pakai 2nd screen) — lihat [`SETTING/TEST PRINT AND CUSTOMER DISPLAY.md`](POS/SETTING/TEST%20PRINT%20AND%20CUSTOMER%20DISPLAY.md) bagian cara buka Display Customer via `exec()`.
+4. **Display Customer** (`/display_customer`, opsional, kalau branch ini pakai 2nd screen) — dibuka murni dari FE (`window.open()` di `Navbar.vue`), tidak ada endpoint backend; cross-tab via `localStorage`/Pinia `persist`, lihat [`PETA HALAMAN.md`](POS/PETA%20HALAMAN.md).
 
 Setelah Fase 0 selesai, device sudah punya data lokal + terminal terpilih — baru masuk ke Fase 1 (Lockscreen/Login) dan seterusnya di alur harian normal.
 

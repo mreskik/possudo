@@ -241,6 +241,9 @@ class MenuServices
 
               //taxrate
               if ($mpl->taxId != 0 and $mpl->taxId !== null) {
+                if (!isset($tax[$mpl->taxId])) {
+                  throw new \Exception("Tax ID {$mpl->taxId} not found in local master_tax data, please re-sync tax data from ERP");
+                }
                 $mpl->taxRate = $tax[$mpl->taxId][0]->rate;
               } else {
                 $mpl->taxRate = null;
@@ -307,6 +310,9 @@ class MenuServices
             }
 
             if ($itemConvRow->taxId != 0 and $itemConvRow->taxId !== null) {
+              if (!isset($tax[$itemConvRow->taxId])) {
+                throw new \Exception("Tax ID {$itemConvRow->taxId} not found in local master_tax data, please re-sync tax data from ERP");
+              }
               $itemConvRow->taxRate = $tax[$itemConvRow->taxId][0]->rate;
             } else {
               $itemConvRow->taxRate = null;

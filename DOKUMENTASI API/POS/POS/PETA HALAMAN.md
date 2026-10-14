@@ -173,7 +173,7 @@ Ketiganya bukan bagian dari alur kasir harian — hanya dipakai sekali saat setu
 
 - **Setup** (`/setup`, `SetupPage.vue`) — wizard: `POST /setup/get_branch_list` → `POST /setup/get_data_branch/{id}` → rentetan `GET /sync_pull/get_*` (±35 endpoint, berurutan) → `GET /setup/install_success/1`. Lihat [`../SETUP/SETUP WIZARD.md`](../SETUP/SETUP%20WIZARD.md) dan [`../SYNC/SYNC PULL.md`](../SYNC/SYNC%20PULL.md).
 - **Terminal Select** (`/terminal`, `TerminalPage.vue`) — `GET /master/branch`, `GET /master/terminal-list`, `GET /sync_pull/get_terminal`.
-- **Display Customer** (`/display_customer`, `DisplayCustomerPage.vue`) — customer-facing pasif, baca status payment gateway via cross-tab `localStorage` (bukan API call baru di sisi Display) — dibuka lewat `exec()` shell command dari [`SETTING/TEST PRINT AND CUSTOMER DISPLAY.md`](SETTING/TEST%20PRINT%20AND%20CUSTOMER%20DISPLAY.md).
+- **Display Customer** (`/display_customer`, `DisplayCustomerPage.vue`) — customer-facing pasif, baca status payment gateway via cross-tab `localStorage` (bukan API call baru di sisi Display), dibuka murni dari FE (`window.open()` di `Navbar.vue`) — tidak ada endpoint backend sama sekali (jalur lama `exec()` shell command sudah dihapus 2026-10-14, lihat [`SETTING/TEST PRINT AND CUSTOMER DISPLAY.md`](SETTING/TEST%20PRINT%20AND%20CUSTOMER%20DISPLAY.md)).
 
 ## Catatan migrasi tambahan
 
