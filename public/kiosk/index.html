@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" style="background-color: #ffffff;">
+<html lang="en" style="background-color: #ffffff;" oncontextmenu="return false;">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/kiosk/favicon.svg" />
@@ -8,11 +8,28 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="theme-color" content="#ffffff" />
-    <title>Sudokiosk</title>
-    <script type="module" crossorigin src="/kiosk/assets/index-BGHqsdC0.js"></script>
-    <link rel="stylesheet" crossorigin href="/kiosk/assets/index-AMqH6Oz6.css">
+    <title>Order Kiosk</title>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('orderkiosk-brand-storage');
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            var b = parsed && parsed.state && parsed.state.brandDetail;
+            if (b) {
+              var root = document.documentElement;
+              if (b.brand_color) root.style.setProperty('--brand', b.brand_color);
+              if (b.primary_color) root.style.setProperty('--primary', b.primary_color);
+              if (b.secondary_color) root.style.setProperty('--secondary', b.secondary_color);
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <script type="module" crossorigin src="/kiosk/assets/index-DvvGFtEE.js"></script>
+    <link rel="stylesheet" crossorigin href="/kiosk/assets/index-dFaN-euP.css">
   <link rel="manifest" href="/kiosk/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/kiosk/registerSW.js"></script></head>
-  <body style="background-color: #ffffff;">
+  <body style="background-color: #ffffff;" oncontextmenu="return false;">
     <div id="root"></div>
   </body>
 </html>

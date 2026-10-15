@@ -390,6 +390,26 @@ class SyncController extends Controller
     }
   }
 
+  public function getMasterPricelistSubCategorySequence()
+  {
+    $branch = $this->currentBranch();
+    if (!$branch) {
+      return $this->noBranchResponse();
+    }
+
+    try {
+      $response = $this->setupservices->getMasterPricelistSubCategorySequence('', '', $branch->id, $branch->token);
+
+      return response()->json([
+        'code' => $response->json('code'),
+        'message' => $response->json('message'),
+      ]);
+    } catch (\Throwable $e) {
+      Log::info($e->getMessage());
+      return response()->json(['code' => 100, 'message' => $e->getMessage()]);
+    }
+  }
+
   public function getMasterPaymentMethod()
   {
     $branch = $this->currentBranch();

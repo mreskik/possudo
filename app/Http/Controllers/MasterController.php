@@ -94,6 +94,43 @@ class MasterController extends Controller
         }
     }
 
+    // GetMasterMenuListByVisitPurpose (2026-10-15): versi per-visit-purpose dari menu-list di
+    // atas -- reuse MenuServices::GetMasterMenuList('pos') apa adanya (tax resolution & package
+    // handling sama persis), tinggal difilter ke 1 baris sesuai $visitPurposeId. TIDAK di-reshape
+    // ke snake_case (beda dari KioskController::GetBranchVisitPurposeDetail()) -- endpoint ini
+    // tetap konsumen POS, jadi dipertahankan camelCase konsisten sama /api/master/menu-list.
+    public function GetMasterMenuListByVisitPurpose(Request $request, int $visitPurposeId)
+    {
+        try {
+            $allVisitPurpose = MenuServices::GetMasterMenuList('pos');
+
+            $vp = null;
+            foreach ($allVisitPurpose as $row) {
+                if ($row->id == $visitPurposeId) {
+                    $vp = $row;
+                    break;
+                }
+            }
+
+            if (!$vp) {
+                return response()->json([
+                    'code' => 100,
+                    'message' => 'visit purpose not found',
+                ]);
+            }
+
+            return response()->json([
+                'code' => 0,
+                'data' => $vp
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'code' => 100,
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
     // GetPaymentMethod: payment method yang valid buat 1 visit purpose, di-nest 3 level --
     // Type (CASH/CARD/VOUCHER/OTHER) -> Group (nama bank buat CARD, "OTHER" generic buat yang
     // lain -- lihat mr_payment_method_group, disepakati 2026-08-31) -> Method. mpm.type_id/

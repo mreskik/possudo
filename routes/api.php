@@ -73,6 +73,7 @@ Route::prefix('sync_pull')->group(function () {
   Route::get('get_item_package_detail_pricelist', [SyncController::class, 'getMasterItemPackageDetailPricelist']);
   Route::get('get_pricelist', [SyncController::class, 'getMasterPricelist']);
   Route::get('get_pricelist_detail', [SyncController::class, 'getMasterPricelistDetail']);
+  Route::get('get_pricelist_sub_category_sequence', [SyncController::class, 'getMasterPricelistSubCategorySequence']);
 
   Route::get('get_payment_method', [SyncController::class, 'getMasterPaymentMethod']);
   Route::get('get_payment_method_group', [SyncController::class, 'getMasterPaymentMethodGroup']);
@@ -132,6 +133,7 @@ Route::prefix('master')->group(function () {
   Route::get('table-section-table', [MasterController::class, 'getTableSectionTable']);
   Route::get('visit-purpose', [MasterController::class, 'getVisitPurpose']);
   Route::get('menu-list', [MasterController::class, 'GetMasterMenuList']);
+  Route::get('menu-list/{visitPurposeId}', [MasterController::class, 'GetMasterMenuListByVisitPurpose']);
   Route::get('branch', [MasterController::class, 'GetBranchDetail']);
   Route::get('brand', [MasterController::class, 'GetBrandDetail']);
   Route::get('payment-method/{visit_purpose_id}', [MasterController::class, 'GetPaymentMethod']);

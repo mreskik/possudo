@@ -2,7 +2,7 @@
 
 Base path: `/api/sync_pull`
 
-39 endpoint — **background, tanpa UI langsung**. Masing-masing narik 1 jenis master data dari ERP (sudocore2, lewat `SERVER_ENDPOINT` di `.env`) dan menyimpannya ke tabel lokal POS. Dipanggil berkali-kali sepanjang umur install (bukan cuma sekali waktu Setup) — lewat 2 jalur: tombol **Sync** manual di `SettingPage.vue` (dikelompokkan per kategori, lihat [`SYNC GROUP.md`](SYNC%20GROUP.md)) dan proses awal `SetupPage.vue` (lihat [`../SETUP/SETUP WIZARD.md`](../SETUP/SETUP%20WIZARD.md)).
+50 endpoint (2026-10-15, dikoreksi dari "39" sebelumnya — angka lama itu kebetulan sama dengan jumlah yang dipanggil `syncServices.ts`, bukan total endpoint backend; lihat tabel di bawah dan catatan "9 endpoint lain" soal selisihnya) — **background, tanpa UI langsung**. Masing-masing narik 1 jenis master data dari ERP (sudocore2, lewat `SERVER_ENDPOINT` di `.env`) dan menyimpannya ke tabel lokal POS. Dipanggil berkali-kali sepanjang umur install (bukan cuma sekali waktu Setup) — lewat 2 jalur: tombol **Sync** manual di `SettingPage.vue` (dikelompokkan per kategori, lihat [`SYNC GROUP.md`](SYNC%20GROUP.md)) dan proses awal `SetupPage.vue` (lihat [`../SETUP/SETUP WIZARD.md`](../SETUP/SETUP%20WIZARD.md)).
 
 ## Pola seragam (semua 39 endpoint identik strukturnya)
 
@@ -37,6 +37,7 @@ GET /api/sync_pull/get_xxx
 | `get_item_package_detail_pricelist` | `MasterItemPackageDetailPricelistModel` | **Truncate+insert** |
 | `get_pricelist` | `MasterPricelistModel` | **Truncate+insert** (disepakati, bukan upsert) |
 | `get_pricelist_detail` | `MasterPricelistDetailModel` | **Truncate+insert** |
+| `get_pricelist_sub_category_sequence` | `MasterPricelistSubCategorySequenceModel` | **Truncate+insert** (BARU 2026-10-15, sama pola `get_pricelist`/`get_pricelist_detail` — urutan tampil subcategory per menu template, lihat `MASTER MENU TEMPLATE.md` sudocore2) |
 | `get_payment_method` | `MasterPaymentMethodModel` | Upsert by `id` |
 | `get_payment_method_group` | `MasterPaymentMethodGroupModel` | **Truncate+insert** (2026-09-21, disepakati) |
 | `get_payment_method_type` | `MasterPaymentMethodTypeModel` | Upsert by `id` |
@@ -75,13 +76,19 @@ GET /api/sync_pull/get_xxx
 
 4 endpoint di atas (`get_subcategory_images`, `get_item_images`, `get_master_image_customer_display_images`, `get_master_image_kiosk_images`) **cuma download file gambar**, dipisah dari endpoint data teks pasangannya (2026-09-21, `SetupServices::downloadImage()` dicabut dari proses sync data teks) — biar sync data (cepat, sering dipanggil) gak keikut lambat oleh proses download gambar (lambat, jaringan-dependent). Gambar disimpan lokal di `public/img/{subdir}/` — subdir beda per jenis (`branch`, `item`, dst).
 
+## Endpoint yang dipanggil lewat sync-group, bukan individual (2026-10-15)
+
+9 dari 50 endpoint **tidak pernah dipanggil langsung dari `syncServices.ts`/`SetupPage.vue`** — cuma lewat `SyncGroupController.php` (sync berkala per kategori, lihat [`SYNC GROUP.md`](SYNC%20GROUP.md)): `get_subcategory_images`, `get_item_images`, `get_notes_menu_list`, `get_notes_menu_category`, `get_notes_menu_sub_category`, `get_notes_menu_detail`, `get_master_image_customer_display_images`, `get_master_image_kiosk_images`, `get_promo_apply_to`. Ini **disengaja** (bukan dead code), cuma dicatat di sini karena sempat bikin bingung waktu audit jumlah endpoint (lihat juga catatan `get_promo_tier` di bawah).
+
+**`get_promo_tier` sempat benar-benar dead** (tidak dipanggil dari manapun — bukan `syncServices.ts`, bukan `SyncGroupController`, bukan `SetupPage.vue`) sejak ditambahkan 2026-09-30 ("mirror persis `getPromoTypeMember()`"). Diperbaiki 2026-10-15: ditambahkan ke `SyncGroupController::syncPromotion()` (kategori promotion) dan ke `syncServices.ts`+`SetupPage.vue` (Setup Wizard). `get_promo_apply_to` juga sempat hilang dari Setup Wizard (cuma ada di sync-group) — ditambahkan juga ke `syncServices.ts`+`SetupPage.vue` di tanggal yang sama, biar install pertama device baru langsung lengkap.
+
 ## Sumber
 
-- `app/Http/Controllers/SyncController.php` — 39 method, 1:1 sama urutan tabel di atas.
+- `app/Http/Controllers/SyncController.php` — 50 method, 1:1 sama urutan tabel di atas.
 - `app/Services/SetupServices.php` — logic query ke ERP + simpan lokal (di-SHARE dengan `SetupController::getDataBranch()`, lihat [`../SETUP/SETUP WIZARD.md`](../SETUP/SETUP%20WIZARD.md)).
 - `routes/api.php` — group `Route::prefix('sync_pull')`.
 - Frontend: `src/services/sync/syncServices.ts` (1 fungsi per endpoint, dipanggil dari `SetupPage.vue` dan [`SYNC GROUP.md`](SYNC%20GROUP.md)).
 
 ## Status
 
-Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifikasi ulang lewat HTTP request live di sesi ini).
+Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung. Diupdate 2026-10-15: (1) dikoreksi jumlah endpoint dari "39" jadi "50" (angka lama salah, ikut jumlah panggilan `syncServices.ts` bukan total backend) sekaligus audit lengkap jalur pemanggilan tiap endpoint; (2) ditambahkan endpoint baru `get_pricelist_sub_category_sequence`; (3) diperbaiki `get_promo_tier` (dead) dan `get_promo_apply_to` (hilang dari Setup Wizard). `go build`/`php -l`/`vite build` semua bersih setelah perubahan, query baru sudah ditest manual lewat `psql`. **Belum tervalidasi lewat HTTP request live.**

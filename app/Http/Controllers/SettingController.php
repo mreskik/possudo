@@ -81,13 +81,22 @@ class SettingController extends Controller
         try {
             $general_setting = SettingModel::first()->makeHidden(['customer_display_left', 'customer_display_top', 'customer_display_name']);
 
-            // query sama seperti MasterController::GetTerminalList() (/master/terminal-list)
-            // -- sengaja diduplikasi di sini (bukan reuse controller lain) biar section ini
-            // independen, gampang dikembangkan terpisah dari endpoint master generic.
+            // query mirip MasterController::GetTerminalList() (/master/terminal-list), tapi
+            // select-nya diperketat cuma kolom yang benar-benar dipakai tabel Terminal Setting
+            // di SettingPage.vue -- sengaja diduplikasi di sini (bukan reuse controller lain)
+            // biar section ini independen, gampang dikembangkan terpisah dari endpoint master
+            // generic.
             $terminal = DB::table('mr_terminal as t')
                 ->leftJoin('mr_pos_type as pt', 'pt.id', '=', 't.pos_type_id')
                 ->where('t.is_active', true)
-                ->select('t.*', 'pt.name as pos_type_name', 'pt.device_type as pos_type_device_type')
+                ->select(
+                    't.id',
+                    't.name',
+                    't.table_section_id',
+                    't.receipt_station_id',
+                    'pt.name as pos_type_name',
+                    'pt.device_type as pos_type_device_type'
+                )
                 ->get();
 
             return response()->json([

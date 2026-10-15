@@ -152,22 +152,32 @@ class MenuServices
       ORDER BY mc.name ASC
       ", [$visitPurposeRow->menuPriceListId]);
 
+      // sequence (2026-10-15): urutan tampil subcategory, dari mr_pricelist_sub_category_sequence
+      // (ditarik sync pull dari master_pricelist_sub_category_sequence, sudocore2 -- lihat
+      // MASTER MENU TEMPLATE.md). LEFT JOIN (bukan JOIN) -- subcategory yang belum pernah diatur
+      // urutannya TETAP muncul (tidak boleh hilang dari menu cuma gara-gara belum ada baris
+      // sequence), sequence-nya NULL di kasus itu. ORDER BY sequence ASC dengan NULL ditaruh
+      // PALING BELAKANG (subcategory tanpa urutan explicit jatuh ke akhir, bukan acak nyelip
+      // di tengah), msc.name ASC jadi tie-breaker (NULL semua, atau sequence sama).
       $subcategory = DB::select("
       SELECT DISTINCT
       mi.category_id as categoryId,
       mi.subcategory_id as subCategoryId,
       msc.name as SubCategoryName,
       msc.icon_src as subCategoryIconSrc,
-      msc.banner_src as subCategoryBannerSrc
+      msc.banner_src as subCategoryBannerSrc,
+      pscs.sequence as sequence
 
       FROM mr_pricelist_detail mpd
       JOIN mr_pricelist mp on mp.id = mpd.pricelist_id
       JOIN mr_item_conv mic on mic.id = mpd.item_conv_detail_id
       JOIN mr_item mi on mi.id = mic.item_id
       JOIN mr_subcategory msc on msc.id = mi.subcategory_id
+      LEFT JOIN mr_pricelist_sub_category_sequence pscs
+        ON pscs.pricelist_id = mpd.pricelist_id AND pscs.sub_category_id = mi.subcategory_id
 
       WHERE mpd.pricelist_id = ?
-      ORDER BY msc.name ASC", [$visitPurposeRow->menuPriceListId]);
+      ORDER BY (pscs.sequence IS NULL) ASC, pscs.sequence ASC, msc.name ASC", [$visitPurposeRow->menuPriceListId]);
 
       // itemId here is mr_item_conv.id (pricing is set per item_conv, not per item) — itemid_real is the actual mr_item.id
       $listmenu = DB::select("

@@ -1,27 +1,27 @@
 <svg width="1050" height="150" viewBox="0 0 1050 150" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bgGradientWide" x1="525" y1="0" x2="525" y2="150" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#f8fafc" />
-      <stop offset="100%" stop-color="#edf4fc" />
-    </linearGradient>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@700&amp;display=swap');
 
       .font-sans {
         font-family: 'Google Sans', 'Product Sans', 'Alpa Sans Flex', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       }
+      .banner-bg {
+        fill: var(--foreground, #1e3a8a);
+        fill-opacity: 0.2;
+      }
       .main-title {
         font-size: 38px;
         font-weight: 700;
         letter-spacing: 2px;
-        fill: #1A375D;
+        fill: var(--brand, #1e3a8a);
       }
     </style>
   </defs>
 
-  <!-- Background Base -->
-  <rect width="1050" height="150" fill="#a8c6f0"/>
+  <!-- Background Base: foreground/20 -->
+  <rect width="1050" height="150" class="banner-bg" fill="#1e3a8a" fill-opacity="0.2"/>
 
-  <!-- Only NO PICTURE text dead-centered -->
-  <text x="525" y="75" text-anchor="middle" dominant-baseline="central" class="font-sans main-title">PICTURE IS CURRENTLY UNAVAILABLE</text>
+  <!-- Only NO PICTURE text dead-centered: brand -->
+  <text x="525" y="75" text-anchor="middle" dominant-baseline="central" class="font-sans main-title" fill="#1e3a8a">PICTURE IS CURRENTLY UNAVAILABLE</text>
 </svg>

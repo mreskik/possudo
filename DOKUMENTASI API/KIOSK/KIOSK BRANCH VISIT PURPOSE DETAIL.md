@@ -33,6 +33,7 @@ Response:
                         "subcategory_name": "FOOD",
                         "icon_src": "/img/subcategory/019f648a-f12e-7252-a76f-aa8fc55679bf.jpg",
                         "banner_src": "/img/subcategory-banner/019f648a-f12e-7252-a76f-aa8fc55679bf.jpg",
+                        "sequence": 1,
                         "items": [
                             {
                                 "detail_pricelist_id": 93,
@@ -136,6 +137,7 @@ Kalau `id` gak ketemu:
 - `image_src` — path relatif ke gambar item (dari `mr_item.image`, di-download & disimpen lokal pas sync, lihat `SetupServices::downloadImage()`), `null` kalau item belum ada gambarnya. **Path relatif**, bukan URL penuh — frontend perlu prefix sendiri pakai base URL Laravel (sama pola kayak `logo_header_src`/`image_footer_src` branch di `paymentPage.vue`: `${API_BASE}${item.image_src}`).
 - `icon_src` (di tiap `subcategories[]`) — path relatif ke icon sub category (dari `mr_subcategory.icon_src`, di-download & disimpen lokal pas sync, lihat `SetupServices::getSubCategoryList()`), `null` kalau sub category itu belum ada icon-nya. Sama aturan path relatif kayak `image_src` item.
 - `banner_src` (di tiap `subcategories[]`) — path relatif ke banner sub category (dari `mr_subcategory.banner_src`, di-download & disimpen lokal pas sync di subfolder `subcategory-banner`, terpisah dari `icon_src` yang di `subcategory` — 2 file beda per sub category), `null` kalau sub category itu belum ada banner-nya. Sama aturan path relatif.
+- `sequence` (di tiap `subcategories[]`, BARU 2026-10-15) — urutan tampil subcategory, dari `mr_pricelist_sub_category_sequence` (ditarik sync pull dari `master_pricelist_sub_category_sequence`, sudocore2 — lihat [`MENU LIST.md`](../POS/POS/MASTER/MENU%20LIST.md) buat detail lengkap, sumbernya sama 1:1 karena satu fungsi shared `GetMasterMenuList()`). `null` kalau subcategory itu belum pernah diatur urutannya — bukan error. Query backend (`$subcategory` di `MenuServices::GetMasterMenuList()`) sudah `ORDER BY` berdasar field ini (`null` ditaruh paling belakang, tie-break nama ASC), jadi urutan array `subcategories[]` di response ini **sudah terurut** tanpa perlu sort tambahan di sisi Kiosk — field ini cuma di-passthrough, bukan hasil sort baru di `KioskController`.
 - `icon_src` (di tiap `items[]` dan di tiap `menu_package_list[]`) — path relatif ke icon item (dari `mr_item.icon_src`, di-download & disimpen lokal pas sync, lihat `SetupServices::getMasterItem()`), `null` kalau item itu belum ada icon-nya. Sama aturan path relatif, terpisah dari `image_src` (dua file berbeda per item).
 - `notes_menu` (di tiap `items[]` dan di tiap `menu_package_list[]`) — array string **full_notes** dari `master_notes_menu_detail` yang applies_to-nya match ke `category_id`/`subcategory_id` item itu (lihat "Update (2026-09-24)" di bawah). POS punya field sejenis di `/api/master/menu-list` (`notesMenu`, camelCase, isinya `short_notes`) — logic & sumber data sama persis, cuma beda field yang dipakai (`shortNotes` vs `fullNotes`), lihat `MenuServices::GetMasterMenuList()`. Array kosong `[]` kalau gak ada notes menu yang match (bukan `null`).
 
@@ -174,7 +176,7 @@ Pemetaan nama field per level (versi POS camelCase → kiosk snake_case):
 
 `package_list[]` (kalau item punya package) juga di-snake_case-in: `packageId`→`package_id`, `packageName`→`package_name`, `minQty`→`min_qty`, `maxQty`→`max_qty`, `menuPackageList`→`menu_package_list` (isinya: `menuPackageId`→`menu_package_id`, `itemId`→`item_id`, `menuName`→`menu_name`, `menuDescription`→`description`, `menuPrice`→`menu_price`, `taxType`→`tax_type`, `bomId`→`bom_id`, `iconSrc`→`icon_src`, `taxId`→`tax_id`, `taxRate`→`tax_rate`, `defaultItem`→`default_item`).
 
-`subcategories[]` juga ada pemetaan sendiri (versi POS `$subcategory` query → kiosk): `subCategoryId`→`subcategory_id`, `SubCategoryName`→`subcategory_name`, `subCategoryIconSrc`→`icon_src`, `subCategoryBannerSrc`→`banner_src`.
+`subcategories[]` juga ada pemetaan sendiri (versi POS `$subcategory` query → kiosk): `subCategoryId`→`subcategory_id`, `SubCategoryName`→`subcategory_name`, `subCategoryIconSrc`→`icon_src`, `subCategoryBannerSrc`→`banner_src`, `sequence`→`sequence` (nama sama, BARU 2026-10-15).
 
 ## Update (2026-08-11)
 
@@ -258,6 +260,12 @@ Rule matching-nya sama kayak sebelumnya: `all_category` selalu ikut, `category`/
 Konsumen frontend (`posv1-vue`, `orderPage.vue`) ikut dirombak — `getNotesMenuByItemConv()` (fetch on-demand) dihapus total dari `MasterServices.ts`, `openEditOrderListDialog()` dan `prefetchNotesMenuForPackage()` sekarang baca langsung dari data yang sudah ada (`itemOrder.notesMenu`/`sub.notesMenu`, dibawa dari `tbMasterDataMenu` pas item di-push ke cart), bukan network call lagi. Build `posv1-vue` lolos tanpa error setelah perubahan ini.
 
 Tervalidasi lewat `php -l` (`MenuServices.php`, `KioskController.php`) dan request HTTP live ke `/api/kiosk/branch-visit-purpose/{id}` — `notes_menu` muncul di kedua level (item utama & sub-item package), array kosong buat item yang gak match, gak ada regresi ke field lain.
+
+## Update (2026-10-15)
+
+`sequence` ditambahin di tiap `subcategories[]` — urutan tampil subcategory, menyusul fitur yang sama yang baru ditambahkan di POS (`/api/master/menu-list`, lihat [`MENU LIST.md`](../POS/POS/MASTER/MENU%20LIST.md)). Sumbernya dari ERP: tabel `master_pricelist_sub_category_sequence` (sudocore2), ditarik ke lokal POS lewat sync pull (`mr_pricelist_sub_category_sequence`). Karena satu sumber logic (`MenuServices::GetMasterMenuList()`), query `$subcategory` yang sudah di-`LEFT JOIN` + `ORDER BY` berdasar `sequence` otomatis ikut kepakai di Kiosk juga — perubahan di sini cuma 1 baris tambahan di `KioskController::GetBranchVisitPurposeDetail()` (`'sequence' => $sub->sequence`), passthrough murni, gak ada sort baru ditulis di Kiosk (array-nya sudah terurut dari backend).
+
+Tervalidasi: `php -l` lolos. Belum ada verifikasi HTTP live baru di titik ini (perubahan reshape sederhana, konsisten pola sama seperti field lain yang sudah tervalidasi di versi POS).
 
 ## Catatan performa
 

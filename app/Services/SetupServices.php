@@ -28,6 +28,7 @@ use App\Models\MasterPaymentMethodTypeModel;
 use App\Models\MasterPaymentMethodVisitPurposeModel;
 use App\Models\MasterPricelistDetailModel;
 use App\Models\MasterPricelistModel;
+use App\Models\MasterPricelistSubCategorySequenceModel;
 use App\Models\MasterPromoBranchesModel;
 use App\Models\MasterPromoCategoriesModel;
 use App\Models\MasterPromoDaysModel;
@@ -664,6 +665,30 @@ class SetupServices
       if ($response->json('code') == 0) {
         MasterPricelistDetailModel::truncate();
         $this->insertRows(MasterPricelistDetailModel::class, $response->json('data'));
+      }
+
+      return $response;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
+  // getMasterPricelistSubCategorySequence (2026-10-15) -- urutan tampil subcategory per menu
+  // template. Truncate+insert, sama pola & alasan kayak getMasterPricelist/getMasterPricelistDetail
+  // di atas (data ini juga replace-all sifatnya di ERP, lihat MASTER MENU TEMPLATE.md sudocore2).
+  public function getMasterPricelistSubCategorySequence(string $username, string $password, int $branch_id, ?string $token = null)
+  {
+    try {
+      $response = $this->syncRequest(
+        $username,
+        $password,
+        $token,
+        $this->endpoint . '/pos/sync/get_pricelist_sub_category_sequence/' . $branch_id
+      );
+
+      if ($response->json('code') == 0) {
+        MasterPricelistSubCategorySequenceModel::truncate();
+        $this->insertRows(MasterPricelistSubCategorySequenceModel::class, $response->json('data'));
       }
 
       return $response;

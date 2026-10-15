@@ -97,6 +97,7 @@ class SyncGroupController extends Controller
             'get_promo_branch' => fn() => $this->setupservices->getPromoBranch('', '', $branch->id, $branch->token),
             'get_promo_visit_purpose' => fn() => $this->setupservices->getPromoVisitPurpose('', '', $branch->id, $branch->token),
             'get_promo_type_member' => fn() => $this->setupservices->getPromoTypeMember('', '', $branch->id, $branch->token),
+            'get_promo_tier' => fn() => $this->setupservices->getPromoTier('', '', $branch->id, $branch->token),
             'get_promo_category' => fn() => $this->setupservices->getPromoCategory('', '', $branch->id, $branch->token),
             'get_promo_sub_category' => fn() => $this->setupservices->getPromoSubCategory('', '', $branch->id, $branch->token),
             'get_promo_item' => fn() => $this->setupservices->getPromoItem('', '', $branch->id, $branch->token),
@@ -154,6 +155,7 @@ class SyncGroupController extends Controller
             'get_item_package_detail_pricelist' => fn() => $this->setupservices->getMasterItemPackageDetailPricelist('', '', $branch->id, $branch->token),
             'get_pricelist' => fn() => $this->setupservices->getMasterPricelist('', '', $branch->id, $branch->token),
             'get_pricelist_detail' => fn() => $this->setupservices->getMasterPricelistDetail('', '', $branch->id, $branch->token),
+            'get_pricelist_sub_category_sequence' => fn() => $this->setupservices->getMasterPricelistSubCategorySequence('', '', $branch->id, $branch->token),
             // notes menu (2026-09-24) -- diikutkan ke grup Menu (bukan checkbox baru sendiri),
             // header (get_notes_menu_list) WAJIB duluan sebelum child.
             'get_notes_menu_list' => fn() => $this->setupservices->getNotesMenuList('', '', $branch->id, $branch->token),
