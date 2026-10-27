@@ -68,4 +68,23 @@ class SetupController extends Controller
       ]);
     }
   }
+
+  // GetInstallStatus -- baca balik flag_install_status, ditambahkan 2026-10-27. Murni backend --
+  // frontend (SetupPage.vue) BELUM diubah buat pakai ini, tetap pakai cek branch_name lama.
+  public function GetInstallStatus()
+  {
+    try {
+      return response()->json([
+        'code' => 0,
+        'data' => [
+          'is_installed' => ConfigService::GetInstallStatus(),
+        ],
+      ]);
+    } catch (\Throwable $e) {
+      return response()->json([
+        'code' => 100,
+        'message' => $e->getMessage()
+      ]);
+    }
+  }
 }

@@ -27,6 +27,7 @@ class MemberServices
     }
 
     $response = Http::withToken($branch->token)
+      ->withHeaders(BranchAuthHeaderService::build())
       ->withOptions(['verify' => config('services.http_verify_ssl')])
       ->get($this->endpoint . '/pos/member/' . $branch->id . '/by-phone/' . $phone_number);
 

@@ -63,6 +63,7 @@ class MemberBalanceServices
     }
 
     $response = Http::withToken($branch->token)
+      ->withHeaders(BranchAuthHeaderService::build())
       ->withOptions(['verify' => config('services.http_verify_ssl')])
       ->post($this->endpoint . '/pos/member-topup/' . $branch->id, [
         'phone_number' => $phone_number,
@@ -88,6 +89,7 @@ class MemberBalanceServices
     }
 
     $response = Http::withToken($branch->token)
+      ->withHeaders(BranchAuthHeaderService::build())
       ->withOptions(['verify' => config('services.http_verify_ssl')])
       ->get($this->endpoint . '/pos/member-topup/' . $branch->id . '/check-status/' . $reference_number);
 

@@ -197,6 +197,56 @@ class PrintServices
     $print->setEmphasis(false);
   }
 
+  // printStaffPaymentSection: cetak "STAFF PAYMENT SUMMARY" versi DIKELOMPOKKAN per staf (2026-
+  // 10-22, keputusan sesi -- GANTIKAN printBreakdownSection() yang sebelumnya dipakai section ini
+  // dengan label datar "Nama - Metode"). Format baru per staf: 1 baris header (nama + persen dari
+  // GRAND TOTAL semua staff payment), diikuti sub-baris per metode bayar ("- <Metode> (<qty>)" +
+  // amount), ditutup baris "- Total" staf itu. Staf diurutkan AMOUNT TERBESAR DULU.
+  //
+  // $rows: array of ["staff_name" => string, "payment_method_name" => string, "qty" => int,
+  // "amount" => float] -- 1 baris = 1 kombinasi staf+metode (hasil query flat, BELUM
+  // dikelompokkan -- pengelompokan per staf dilakukan DI SINI, bukan di query SQL, biar query-nya
+  // tetap sederhana 1 level group by staf+metode kayak sebelumnya).
+  public static function printStaffPaymentSection($print, array $rows, int $charPerLine)
+  {
+    $grandTotal = 0;
+    $byStaff = [];
+    foreach ($rows as $r) {
+      $grandTotal += $r['amount'];
+      if (!isset($byStaff[$r['staff_name']])) {
+        $byStaff[$r['staff_name']] = ['total' => 0, 'methods' => []];
+      }
+      $byStaff[$r['staff_name']]['total'] += $r['amount'];
+      $byStaff[$r['staff_name']]['methods'][] = $r;
+    }
+
+    // urutan staf: total amount terbesar dulu.
+    uasort($byStaff, fn($a, $b) => $b['total'] <=> $a['total']);
+
+    $print->setJustification(Printer::JUSTIFY_CENTER);
+    $print->setEmphasis(true);
+    $print->feed(1);
+    $print->text("STAFF PAYMENT SUMMARY\n");
+    $print->setEmphasis(false);
+    $print->setJustification(Printer::JUSTIFY_LEFT);
+    $print->text("\n");
+
+    foreach ($byStaff as $staffName => $staff) {
+      $percent = $grandTotal > 0 ? round(($staff['total'] / $grandTotal) * 100) : 0;
+      $print->text(self::kirikakan($staffName, $percent . "%", $charPerLine));
+      foreach ($staff['methods'] as $m) {
+        $print->text(self::kirikakan("  - " . $m['payment_method_name'] . " (" . $m['qty'] . ")", number_format($m['amount'], 0, ',', '.'), $charPerLine));
+      }
+      $print->text(self::kirikakan("  - Total", number_format($staff['total'], 0, ',', '.'), $charPerLine));
+      $print->text("\n");
+    }
+
+    $print->text(self::separator("-", $charPerLine));
+    $print->setEmphasis(true);
+    $print->text(self::kirikakan("Total Staff Payment", number_format($grandTotal, 0, ',', '.'), $charPerLine));
+    $print->setEmphasis(false);
+  }
+
   // getLoggedInUserFullname ambil nama user yang sedang login dari bearer token request,
   // pola sama seperti OrderServices::getChasierName() -- app ini gak pakai Auth::user() Laravel,
   // login state-nya di tabel mr_session (session_id = token).
@@ -1688,6 +1738,13 @@ class PrintServices
     }
     self::printBreakdownSection($print, "PAYMENT METHOD SUMMARY", $paymentRows, "Total Payment", $charPerLine);
 
+    // STAFF PAYMENT SUMMARY -- dikelompokkan PER STAF (2026-10-22, lihat printStaffPaymentSection()).
+    $staffPaymentRows = [];
+    foreach ($datareport['sales_by_staff_payment'] as $item) {
+      $staffPaymentRows[] = ["staff_name" => $item->staff_name, "payment_method_name" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->amount];
+    }
+    self::printStaffPaymentSection($print, $staffPaymentRows, $charPerLine);
+
     // CASH FLOW SUMMARY (baru) -- starting/actual cash dari tr_dayshift (diinput manual pas
     // Start Day/End Day), cash_in dihitung on-the-fly dari tr_order_payment metode CASH. cash_out
     // HARDCODE 0 -- BELUM ada tabel pencatatan pengeluaran kas di sistem ini (fitur lanjutan,
@@ -1853,6 +1910,13 @@ class PrintServices
       $paymentRows[] = ["label" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->payment_amount];
     }
     self::printBreakdownSection($print, "PAYMENT METHOD SUMMARY", $paymentRows, "Total Payment", $charPerLine);
+
+    // STAFF PAYMENT SUMMARY -- dikelompokkan PER STAF, lihat printStaffPaymentSection() (2026-10-22).
+    $staffPaymentRows = [];
+    foreach ($datareport['sales_by_staff_payment'] as $item) {
+      $staffPaymentRows[] = ["staff_name" => $item->staff_name, "payment_method_name" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->amount];
+    }
+    self::printStaffPaymentSection($print, $staffPaymentRows, $charPerLine);
 
     // CASH FLOW SUMMARY -- SAMA PERSIS pola PrintEndDay(), lihat komentar di sana.
     $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
@@ -2043,6 +2107,13 @@ class PrintServices
       $paymentRows[] = ["label" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->payment_amount];
     }
     self::printBreakdownSection($print, "PAYMENT METHOD SUMMARY", $paymentRows, "Total Payment", $charPerLine);
+
+    // STAFF PAYMENT SUMMARY -- dikelompokkan PER STAF, lihat printStaffPaymentSection() (2026-10-22).
+    $staffPaymentRows = [];
+    foreach ($datareport['sales_by_staff_payment'] as $item) {
+      $staffPaymentRows[] = ["staff_name" => $item->staff_name, "payment_method_name" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->amount];
+    }
+    self::printStaffPaymentSection($print, $staffPaymentRows, $charPerLine);
 
     // CASH FLOW SUMMARY -- SAMA POLA PrintEndDay()/PrintReportDaysift(), TAPI starting_cash/
     // actual_cash di sini SUMBERNYA TETAP LEVEL DAYSHIFT (tr_dayshift.dayin_total/dayout_total,
@@ -2255,6 +2326,13 @@ class PrintServices
       $paymentRows[] = ["label" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->payment_amount];
     }
     self::printBreakdownSection($print, "PAYMENT METHOD SUMMARY", $paymentRows, "Total Payment", $charPerLine);
+
+    // STAFF PAYMENT SUMMARY -- dikelompokkan PER STAF, lihat printStaffPaymentSection() (2026-10-22).
+    $staffPaymentRows = [];
+    foreach ($datareport['sales_by_staff_payment'] as $item) {
+      $staffPaymentRows[] = ["staff_name" => $item->staff_name, "payment_method_name" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->amount];
+    }
+    self::printStaffPaymentSection($print, $staffPaymentRows, $charPerLine);
 
     // CASH FLOW SUMMARY -- SAMA PERSIS pola PrintCurrentShift(), lihat komentar di sana.
     // Starting/Actual Cash level dayshift (bukan per-shift), Actual Cash bisa 0 kalau harinya

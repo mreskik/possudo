@@ -31,6 +31,24 @@ class PushDataServices
     $this->endpoint = env('SERVER_ENDPOINT');
   }
 
+  // requireBranchToken (2026-10-16): token branch SEKARANG WAJIB dikirim ke semua endpoint
+  // /pos/push/* (sebelumnya TANPA otentikasi apa pun -- siapa pun yang tau URL bisa nyuntik
+  // data order/dayshift/payment palsu buat branch_id manapun, lihat APIANDORDER
+  // middleware.BranchTokenAuth di pushRouter). Diambil FRESH dari mr_branch tiap kali fungsi
+  // push dipanggil (BUKAN disimpen sekali di constructor) -- biar kalau device baru SELESAI
+  // install SAAT proses background (sync:push) lagi jalan, putaran BERIKUTNYA otomatis dapat
+  // token baru tanpa perlu restart service apa pun. Dipanggil PALING AWAL (sebelum query data
+  // lokal) -- device yang belum install gagal cepat, gak buang-buang query/HTTP request buat
+  // data yang toh gak akan pernah ke-push tanpa token.
+  protected function requireBranchToken(): string
+  {
+    $branch = BranchModel::first();
+    if (!$branch || !$branch->token) {
+      throw new \Exception('branch belum di-install, push dilewati');
+    }
+    return $branch->token;
+  }
+
   protected function formatedDateTimeToTimeTime(string $datetime_or_timestamp)
   {
     $date = Carbon::createFromFormat('Y-m-d H:i:s', $datetime_or_timestamp, config("app.timezone"));
@@ -58,6 +76,7 @@ class PushDataServices
     $datetime = now()->toISOString(true);
     // $datetime = now();
     try {
+      $token = $this->requireBranchToken();
       $list_data_order = TrOrderModel::where('sync_at', null)->get();
 
       //penyesuaian untuk timestamp/datetime to format go time.Time
@@ -98,7 +117,7 @@ class PushDataServices
       // return $list_data_order;
 
 
-      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order", [
+      $response = Http::asJson()->withToken($token)->withHeaders(BranchAuthHeaderService::build())->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order", [
         "list_order" => $list_data_order
       ]);
 
@@ -130,6 +149,7 @@ class PushDataServices
     $datetime = now()->toISOString(true);
     // $datetime = now();
     try {
+      $token = $this->requireBranchToken();
 
       $list_data_order_detail = TrOrderDetailModel::where('sync_at', null)->get();
 
@@ -156,7 +176,7 @@ class PushDataServices
       // return $list_data_order_detail;
 
 
-      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_detail", [
+      $response = Http::asJson()->withToken($token)->withHeaders(BranchAuthHeaderService::build())->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_detail", [
         "list_order_detail" => $list_data_order_detail
       ]);
       if ($response->json('code') == 0) {
@@ -187,6 +207,7 @@ class PushDataServices
 
     $datetime = now()->toISOString(true);
     try {
+      $token = $this->requireBranchToken();
 
       $list_data_order_detail_package = TrOrderDetailPackageModel::where('sync_at', null)->get();
 
@@ -207,7 +228,7 @@ class PushDataServices
       // return $list_data_order_detail_package;
 
 
-      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_detail_package", [
+      $response = Http::asJson()->withToken($token)->withHeaders(BranchAuthHeaderService::build())->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_detail_package", [
         "list_order_detail_package" => $list_data_order_detail_package
       ]);
       if ($response->json('code') == 0) {
@@ -238,6 +259,7 @@ class PushDataServices
 
     $datetime = now()->toISOString(true);
     try {
+      $token = $this->requireBranchToken();
 
       $list_data_order_payment = TrOrderPaymentModel::where('sync_at', null)->get();
 
@@ -257,7 +279,7 @@ class PushDataServices
       // return $list_data_order_detail_package;
 
 
-      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_payment", [
+      $response = Http::asJson()->withToken($token)->withHeaders(BranchAuthHeaderService::build())->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_order_payment", [
         "list_order_payment" => $list_data_order_payment
       ]);
       if ($response->json('code') == 0) {
@@ -287,6 +309,7 @@ class PushDataServices
   {
     $datetime = now()->toISOString(true);
     try {
+      $token = $this->requireBranchToken();
       $list_data_dayshift = DaySiftModel::where('sync_at', null)->get();
 
       foreach ($list_data_dayshift as $item) {
@@ -301,7 +324,7 @@ class PushDataServices
         $item->sync_at = $datetime;
       }
 
-      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_dayshift", [
+      $response = Http::asJson()->withToken($token)->withHeaders(BranchAuthHeaderService::build())->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_dayshift", [
         "list_dayshift" => $list_data_dayshift
       ]);
 
@@ -329,6 +352,7 @@ class PushDataServices
   {
     $datetime = now()->toISOString(true);
     try {
+      $token = $this->requireBranchToken();
       $list_data_dayshift_detail = DayShiftDetailModel::where('sync_at', null)->get();
 
       foreach ($list_data_dayshift_detail as $item) {
@@ -339,7 +363,7 @@ class PushDataServices
         $item->sync_at = $datetime;
       }
 
-      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_dayshift_detail", [
+      $response = Http::asJson()->withToken($token)->withHeaders(BranchAuthHeaderService::build())->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_dayshift_detail", [
         "list_dayshift_detail" => $list_data_dayshift_detail
       ]);
 
@@ -370,6 +394,7 @@ class PushDataServices
   {
     $datetime = now()->toISOString(true);
     try {
+      $token = $this->requireBranchToken();
       $list_data = TrRemoveItemBeforeSaveModel::where('sync_at', null)->get();
 
       foreach ($list_data as $item) {
@@ -379,7 +404,7 @@ class PushDataServices
         $item->sync_at = $datetime;
       }
 
-      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_remove_item_before_save", [
+      $response = Http::asJson()->withToken($token)->withHeaders(BranchAuthHeaderService::build())->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_remove_item_before_save", [
         "list_remove_item_before_save" => $list_data
       ]);
 
@@ -407,6 +432,7 @@ class PushDataServices
   {
     $datetime = now()->toISOString(true);
     try {
+      $token = $this->requireBranchToken();
       $list_data = TrRemoveItemBeforeSavePackageModel::where('sync_at', null)->get();
 
       foreach ($list_data as $item) {
@@ -415,7 +441,7 @@ class PushDataServices
         }
       }
 
-      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_remove_item_before_save_package", [
+      $response = Http::asJson()->withToken($token)->withHeaders(BranchAuthHeaderService::build())->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/data_remove_item_before_save_package", [
         "list_remove_item_before_save_package" => $list_data
       ]);
 
@@ -455,13 +481,14 @@ class PushDataServices
   {
     try {
       $branch = BranchModel::first();
-      if (!$branch) {
+      if (!$branch || !$branch->token) {
         throw new \Exception('local branch data not found');
       }
+      $token = $branch->token;
 
       $itemIds = MasterItemModel::where('flag_soldout', true)->pluck('id');
 
-      $response = Http::asJson()->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/sold_out", [
+      $response = Http::asJson()->withToken($token)->withHeaders(BranchAuthHeaderService::build())->connectTimeout(5)->timeout(30)->withOptions(['verify' => config('services.http_verify_ssl')])->post($this->endpoint . "/pos/push/sold_out", [
         "branch_id" => $branch->id,
         "item_ids" => $itemIds,
       ]);

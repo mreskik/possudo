@@ -80,6 +80,7 @@ Response (struktur ringkas — isi lengkap sangat panjang, lihat kode untuk deta
     "item_category_summary": [...],
     "staff_sales_summary": [...],
     "payment_method_summary": [...],
+    "staff_payment_summary": [ { "label": "Kasir 1 - CASH", "qty": 0, "amount": 0, "percent": 0 } ],
     "cash_flow_summary": {
       "starting_cash": 500000,
       "cash_in": 0,
@@ -91,8 +92,9 @@ Response (struktur ringkas — isi lengkap sangat panjang, lihat kode untuk deta
 }
 ```
 
-- **7 section utama**, masing-masing nama section (`sales_summary`, `sales_type_summary`, `order_source_summary`, `item_category_summary`, `staff_sales_summary`, `payment_method_summary`, `cash_flow_summary`) **sama persis** dengan section di struk cetak End Day — kalau butuh pemahaman detail arti tiap angka, cocokkan ke `PrintServices::PrintEndDay()`.
+- **8 section utama**, masing-masing nama section (`sales_summary`, `sales_type_summary`, `order_source_summary`, `item_category_summary`, `staff_sales_summary`, `payment_method_summary`, `staff_payment_summary`, `cash_flow_summary`) **sama persis** dengan section di struk cetak End Day — kalau butuh pemahaman detail arti tiap angka, cocokkan ke `PrintServices::PrintEndDay()`.
 - `order_source_summary` — **4 kategori FIXED** (`pos`/`qr`/`mobile`/`kiosk`), **selalu** ditampilkan semua walau salah satu belum punya transaksi (`amount: 0`) — bukan cuma kategori yang ada datanya.
+- `staff_payment_summary` (2026-10-20, baru) — breakdown **2 dimensi** staff × payment method (siapa yang bikin order, dibayar pakai metode apa), beda dari `staff_sales_summary` (cuma per staff) dan `payment_method_summary` (cuma per metode). `label` sudah digabung `"Nama Staff - Nama Metode"` dari query SQL (`CONCAT`), bukan 2 field terpisah — keputusan sadar biar bisa langsung reuse `breakdownWithPercent()`/`printBreakdownSection()` tanpa modifikasi. `qty` = jumlah baris pembayaran (`COUNT(tr_order_payment.ulid)`), bukan quantity barang.
 - `cash_flow_summary.cash_out` — **selalu `0`** di kode saat ini (field placeholder, belum ada sumber data "uang keluar" yang diimplementasikan).
 - Field passthrough (`dayshift`, `dayin_user_name`, `dayshift_detail`, `sales_by_menu`, `sales_by_table`) — dari `GetReportCurrentShiftforTampilan()` (fungsi laporan v1), diikutkan supaya `DayStartEndPage.vue` tidak perlu panggil 2 endpoint terpisah.
 
@@ -123,3 +125,5 @@ Dipakai saat End Day — kalau masih ada order pending yang belum selesai, biasa
 ## Status
 
 Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifikasi ulang lewat HTTP request live di sesi ini). Report V2 sangat kompleks (ratusan baris kalkulasi) — ringkasan ini struktural, disarankan baca `GetReportSummaryV2()`/`GetReportCurrentShiftforTampilan()` langsung kalau butuh detail formula tiap angka.
+
+Diupdate 2026-10-20: ditambahkan section `staff_payment_summary` — perubahan dilakukan konsisten di 4 fungsi sumber data (`GetReportCurrentShiftforTampilan()`, `GetReportDayshiftorEndDay()`, `GetReportCurrentShift()`, `GetReportPerShift()`), `GetReportSummaryV2()`, dan 4 fungsi print (`PrintEndDay()`, `PrintReportDaysift()`, `PrintCurrentShift()`, `PrintPerShiftv2()` — lihat [`PRINT AND DETAIL LIST.md`](PRINT%20AND%20DETAIL%20LIST.md)). FE (`DayStartEndPage.vue`, repo `posv1-vue`) ditambahkan card baru "Staff Payment Summary".

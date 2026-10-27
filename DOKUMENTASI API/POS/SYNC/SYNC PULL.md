@@ -15,6 +15,8 @@ GET /api/sync_pull/get_xxx
 - Belum pernah install (`mr_branch` kosong) → semua endpoint ini balikin `{ "code": 100, "message": "branch has not been selected/saved, please complete setup first" }`.
 - Request ke ERP pakai `connectTimeout(5)` + `timeout(15)` — gagal cepat kalau internet mati, gak nge-hang lama.
 
+**Perbaikan keamanan (2026-10-16)**: endpoint tujuan di APIANDORDER (`/pos/sync/*`) sebelumnya cuma validasi token "valid dan aktif" lewat `middleware.BranchTokenAuth`, **tanpa** cross-check `branch_id` di path terhadap branch pemilik token — device dengan token branch A yang sah bisa ganti `:branch_id` di URL jadi branch manapun dan baca data master branch lain (termasuk `get_member_list`/`get_master_user`/`get_master_role_access` yang sensitif). Sudah diperbaiki (`parseBranchID()` di `sync_handler.go` APIANDORDER sekarang cross-check lewat `helpers.MatchingBranchID()`) — tidak ada perubahan apa pun di sisi POS (Laravel) untuk perbaikan ini, token yang dikirim POS tetap sama seperti sebelumnya.
+
 ## Daftar lengkap — endpoint, tabel lokal, strategi simpan
 
 | Endpoint | Model/Tabel lokal | Strategi |

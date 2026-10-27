@@ -55,6 +55,7 @@ class MobileOrderPullServices
         $endpoint = env('SERVER_ENDPOINT');
         try {
             $response = Http::withToken($branchToken)
+                ->withHeaders(BranchAuthHeaderService::build())
                 ->withOptions(['verify' => config('services.http_verify_ssl')])
                 ->get($endpoint . "/pos/mobile-order/get_pending/{$branchId}");
         } catch (\Throwable $e) {
@@ -80,6 +81,7 @@ class MobileOrderPullServices
         $endpoint = env('SERVER_ENDPOINT');
         try {
             $response = Http::withToken($branchToken)
+                ->withHeaders(BranchAuthHeaderService::build())
                 ->withOptions(['verify' => config('services.http_verify_ssl')])
                 ->post($endpoint . "/pos/mobile-order/ack/{$orderNumber}");
         } catch (\Throwable $e) {

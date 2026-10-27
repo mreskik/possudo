@@ -50,6 +50,7 @@ Route::prefix('setup')->group(function () {
   Route::post('get_branch_list', [SetupController::class, 'getBranchList']);
   Route::post('get_data_branch/{branch_id}', [SetupController::class, 'getDataBranch']);
   Route::get('install_success/{status}', [SetupController::class, 'ChangeStatusInstall']);
+  Route::get('install_status', [SetupController::class, 'GetInstallStatus']);
 });
 
 // branch_id gak dikirim dari client -- mr_branch lokal cuma 1 baris (SyncController::currentBranch()).

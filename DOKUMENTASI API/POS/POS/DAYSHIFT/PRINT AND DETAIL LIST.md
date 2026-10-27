@@ -65,3 +65,5 @@ Dipanggil dari berbagai tombol "Print"/"Reprint" di `DayStartEndPage.vue` — ka
 ## Status
 
 Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifikasi ulang lewat HTTP request live di sesi ini). Logic cetak fisik (`PrintServices`) tidak ditelusuri detail — di luar scope dokumentasi API (urusan driver printer, bukan kontrak HTTP).
+
+Diupdate 2026-10-20: semua 4 fungsi print di sini (`PrintEndDay()`, `PrintReportDaysift()`, `PrintCurrentShift()`, `PrintPerShiftv2()`) dapat section baru "STAFF PAYMENT SUMMARY" (breakdown staff × payment method) — lihat detail isi section di [`REPORT AND HISTORY.md`](REPORT%20AND%20HISTORY.md#report-v2-aktif-dipakai) (field `staff_payment_summary`, sama data persis dengan yang dicetak di sini).

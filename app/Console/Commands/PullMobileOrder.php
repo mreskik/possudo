@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\BranchModel;
+use App\Services\BranchAuthHeaderService;
 use App\Services\JobHealthReporter;
 use App\Services\MobileOrderPullServices;
 use Illuminate\Console\Command;
@@ -113,7 +114,10 @@ class PullMobileOrder extends Command
         $wsUrl = preg_replace('#^http#', 'ws', env('SERVER_ENDPOINT')) . "/pos/ws/mobile-order/{$terminal->branch_id}";
 
         $client = new WebSocketClient($wsUrl, [
-            'headers' => ['Authorization' => 'Bearer ' . $branchToken],
+            'headers' => array_merge(
+                ['Authorization' => 'Bearer ' . $branchToken],
+                BranchAuthHeaderService::build()
+            ),
             // timeout PANJANG -- ini idle timeout receive() (dilempar tiap gak ada pesan masuk
             // dalam N detik, itu NORMAL/gak berarti putus, lihat catch TimeoutException di
             // bawah), BUKAN batas waktu tunggu koneksi awal.

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\BranchModel;
 use App\Models\DaySiftModel;
+use App\Services\BranchAuthHeaderService;
 use App\Services\JobHealthReporter;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -67,6 +68,7 @@ class SendHeartbeat extends Command
 
         try {
             $response = Http::withToken($branch->token)
+                ->withHeaders(BranchAuthHeaderService::build())
                 ->withOptions(['verify' => config('services.http_verify_ssl')])
                 ->post(env('SERVER_ENDPOINT') . "/pos/heartbeat/{$branch->id}");
         } catch (\Throwable $e) {

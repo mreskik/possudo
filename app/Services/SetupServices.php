@@ -68,12 +68,15 @@ class SetupServices
   // timeout(15): batas keseluruhan request (connect + tunggu response) kalau koneksi kebentuk
   // tapi server lambat/gak respon. Sebelum ini gak ada timeout sama sekali di request sync ke
   // ERP, jadi tombol Sync di frontend bisa "ngegantung" lama kalau internet mati.
-  private function syncRequest(string $username, string $password, ?string $token, string $url): \Illuminate\Http\Client\Response
+  // $extraBody (2026-10-16, sistem session POS dinamis multi-device): cuma relevan kalau $token
+  // kosong (jalur install, bukan sync rutin) -- dipakai getDatabranch() buat nyisipin
+  // device_hostname ke body POST get_data_branch, diabaikan kalau $token diisi (GET, gak ada body).
+  private function syncRequest(string $username, string $password, ?string $token, string $url, array $extraBody = []): \Illuminate\Http\Client\Response
   {
     if ($token) {
-      return Http::withToken($token)->connectTimeout(5)->timeout(15)->withOptions(['verify' => config('services.http_verify_ssl')])->get($url);
+      return Http::withToken($token)->withHeaders(BranchAuthHeaderService::build())->connectTimeout(5)->timeout(15)->withOptions(['verify' => config('services.http_verify_ssl')])->get($url);
     }
-    return Http::connectTimeout(5)->timeout(15)->withOptions(['verify' => config('services.http_verify_ssl')])->post($url, ['username' => $username, 'password' => $password]);
+    return Http::connectTimeout(5)->timeout(15)->withOptions(['verify' => config('services.http_verify_ssl')])->post($url, array_merge(['username' => $username, 'password' => $password], $extraBody));
   }
 
   // upsertRows: dipakai buat sebagian besar sync master data -- baris yang id-nya udah ada
@@ -114,7 +117,12 @@ class SetupServices
       $url = $token
         ? $this->endpoint . '/pos/sync/get_data_branch/' . $branch_id
         : $this->endpoint . '/pos/setup/get_data_branch/' . $branch_id;
-      $response = $this->syncRequest($username, $password, $token, $url);
+      // device_hostname (2026-10-16, sistem session POS dinamis multi-device) -- cuma dikirim
+      // pas install ($token kosong), server pakai ini buat ngisi
+      // master_branch_pos_session.device_hostname. Sync rutin ($token diisi) gak perlu -- token
+      // udah ada, gak ada baris session baru yang perlu diisi hostname-nya.
+      $extraBody = $token ? [] : ['device_hostname' => gethostname() ?: ''];
+      $response = $this->syncRequest($username, $password, $token, $url, $extraBody);
 
       if ($response->json('code') == 0) {
         // company_id/token itu identitas inti branch (dipakai buat semua request sync

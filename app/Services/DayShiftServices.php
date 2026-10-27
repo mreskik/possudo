@@ -329,6 +329,7 @@ class DayShiftServices
     if (!$pushFailed) {
       $branch = BranchModel::first();
       $resc = Http::withToken($branch->token)
+        ->withHeaders(BranchAuthHeaderService::build())
         ->withOptions(['verify' => config('services.http_verify_ssl')])
         ->get(env('SERVER_ENDPOINT') . "/pos/endday/jurnal/" . $branch->id . "/" . $dayshift_ulid);
       if ($resc->json('code') !== 0) {
@@ -1456,6 +1457,27 @@ class DayShiftServices
         )
         ->groupBy("staff_name")->get();
 
+      // STAFF PAYMENT SUMMARY -- breakdown 2 dimensi staff x payment method (siapa yang bikin
+      // order, dibayar pakai metode apa). JOIN tr_order_payment -> tr_order (via payment_number,
+      // BUKAN FK beneran, cuma kolom yang sama nilainya -- sama pola $list_payment_number diisi
+      // dari $orderitem->payment_number di atas) -> mr_user (via created_by, sama pola
+      // $sales_by_staff) + JOIN mr_payment_method (sama pola $payment_detail_list).
+      // staff_name/payment_method_name DIPISAH (2026-10-22, sebelumnya CONCAT jadi 1 kolom
+      // "label") -- dikonsumsi printStaffPaymentSection() yang ngelompokin per staf, butuh 2
+      // field terpisah buat bisa group-by staf dulu baru breakdown metode di dalamnya.
+      $sales_by_staff_payment = DB::table("tr_order_payment")
+        ->join("tr_order", "tr_order.payment_number", "=", "tr_order_payment.payment_number")
+        ->join("mr_user", "mr_user.id", "=", "tr_order.created_by")
+        ->join("mr_payment_method", "mr_payment_method.id", "=", "tr_order_payment.payment_method_id")
+        ->whereIn("tr_order_payment.payment_number", $list_payment_number)
+        ->select(
+          "mr_user.fullname as staff_name",
+          "mr_payment_method.name as payment_method_name",
+          DB::raw("COUNT(tr_order_payment.ulid) as qty"),
+          DB::raw("SUM(tr_order_payment.payment_amount) as amount")
+        )
+        ->groupBy("mr_user.fullname", "mr_payment_method.name")->get();
+
       // cash_in_total: filter payment_method_type_id = 1 (ID row "CASH" di mr_payment_method_type),
       // BUKAN mr_payment_method.name = 'CASH' -- konsisten sama keputusan di GetReportDayshiftorEndDay().
       $cash_in_total = DB::table("tr_order_payment")
@@ -1499,6 +1521,7 @@ class DayShiftServices
         "sales_by_visit_purpose" => $sales_by_visit_purpose,
         "sales_by_order_source" => $sales_by_order_source,
         "sales_by_staff" => $sales_by_staff,
+        "sales_by_staff_payment" => $sales_by_staff_payment,
         "cash_in_total" => $cash_in_total,
       ];
     } catch (\Throwable $e) {
@@ -1601,6 +1624,10 @@ class DayShiftServices
       "item_category_summary" => self::breakdownWithPercent($raw['sales_by_category'], "category_name", "grand_total"),
       "staff_sales_summary" => self::breakdownWithPercent($raw['sales_by_staff'], "staff_name", "total_amount"),
       "payment_method_summary" => self::breakdownWithPercent($raw['payment_recapitulation'], "payment_method_name", "payment_amount"),
+      // STAFF PAYMENT SUMMARY (baru) -- label udah digabung "Nama - Metode" dari query SQL
+      // (sales_by_staff_payment, GetReportCurrentShiftforTampilan), jadi breakdownWithPercent()
+      // dipanggil apa adanya tanpa modifikasi (sama persis pola section lain).
+      "staff_payment_summary" => self::breakdownWithPercent($raw['sales_by_staff_payment'], "label", "amount"),
       "cash_flow_summary" => [
         "starting_cash" => $startingCash,
         "cash_in" => $cashIn,
@@ -1988,6 +2015,22 @@ class DayShiftServices
         )
         ->groupBy("staff_name")->get();
 
+      // sales_by_staff_payment: dipakai section STAFF PAYMENT SUMMARY -- breakdown 2 dimensi
+      // staff x payment method. staff_name/payment_method_name DIPISAH (2026-10-22, sebelumnya
+      // CONCAT jadi 1 kolom "label") -- lihat komentar lengkap di GetReportDayshiftorEndDay().
+      $sales_by_staff_payment = DB::table("tr_order_payment")
+        ->join("tr_order", "tr_order.payment_number", "=", "tr_order_payment.payment_number")
+        ->join("mr_user", "mr_user.id", "=", "tr_order.created_by")
+        ->join("mr_payment_method", "mr_payment_method.id", "=", "tr_order_payment.payment_method_id")
+        ->whereIn("tr_order_payment.payment_number", $list_payment_number)
+        ->select(
+          "mr_user.fullname as staff_name",
+          "mr_payment_method.name as payment_method_name",
+          DB::raw("COUNT(tr_order_payment.ulid) as qty"),
+          DB::raw("SUM(tr_order_payment.payment_amount) as amount")
+        )
+        ->groupBy("mr_user.fullname", "mr_payment_method.name")->get();
+
       // cash_in_total: dipakai section CASH FLOW SUMMARY (baru, baris "Cash In") -- total
       // pembayaran METODE BERTIPE CASH selama periode dayshift ini. BUKAN dari kolom
       // tr_dayshift.system_cash_received (kolom itu gak pernah diisi/dipakai di kode manapun),
@@ -2039,6 +2082,7 @@ class DayShiftServices
         "sales_by_visit_purpose" => $sales_by_visit_purpose,
         "sales_by_order_source" => $sales_by_order_source,
         "sales_by_staff" => $sales_by_staff,
+        "sales_by_staff_payment" => $sales_by_staff_payment,
         "cash_in_total" => $cash_in_total,
       ];
     } catch (\Throwable $e) {
@@ -2402,6 +2446,21 @@ class DayShiftServices
         )
         ->groupBy("staff_name")->get();
 
+      // staff_name/payment_method_name DIPISAH (2026-10-22, sebelumnya CONCAT jadi 1 kolom
+      // "label") -- lihat komentar lengkap di GetReportDayshiftorEndDay().
+      $sales_by_staff_payment = DB::table("tr_order_payment")
+        ->join("tr_order", "tr_order.payment_number", "=", "tr_order_payment.payment_number")
+        ->join("mr_user", "mr_user.id", "=", "tr_order.created_by")
+        ->join("mr_payment_method", "mr_payment_method.id", "=", "tr_order_payment.payment_method_id")
+        ->whereIn("tr_order_payment.payment_number", $list_payment_number)
+        ->select(
+          "mr_user.fullname as staff_name",
+          "mr_payment_method.name as payment_method_name",
+          DB::raw("COUNT(tr_order_payment.ulid) as qty"),
+          DB::raw("SUM(tr_order_payment.payment_amount) as amount")
+        )
+        ->groupBy("mr_user.fullname", "mr_payment_method.name")->get();
+
       $cash_in_total = DB::table("tr_order_payment")
         ->join("mr_payment_method", "mr_payment_method.id", "=", "tr_order_payment.payment_method_id")
         ->whereIn("tr_order_payment.payment_number", $list_payment_number)
@@ -2442,6 +2501,7 @@ class DayShiftServices
         "sales_by_visit_purpose" => $sales_by_visit_purpose,
         "sales_by_order_source" => $sales_by_order_source,
         "sales_by_staff" => $sales_by_staff,
+        "sales_by_staff_payment" => $sales_by_staff_payment,
         "cash_in_total" => $cash_in_total,
       ];
     } catch (\Throwable $e) {
@@ -2821,6 +2881,21 @@ class DayShiftServices
         )
         ->groupBy("staff_name")->get();
 
+      // staff_name/payment_method_name DIPISAH (2026-10-22, sebelumnya CONCAT jadi 1 kolom
+      // "label") -- lihat komentar lengkap di GetReportDayshiftorEndDay().
+      $sales_by_staff_payment = DB::table("tr_order_payment")
+        ->join("tr_order", "tr_order.payment_number", "=", "tr_order_payment.payment_number")
+        ->join("mr_user", "mr_user.id", "=", "tr_order.created_by")
+        ->join("mr_payment_method", "mr_payment_method.id", "=", "tr_order_payment.payment_method_id")
+        ->whereIn("tr_order_payment.payment_number", $list_payment_number)
+        ->select(
+          "mr_user.fullname as staff_name",
+          "mr_payment_method.name as payment_method_name",
+          DB::raw("COUNT(tr_order_payment.ulid) as qty"),
+          DB::raw("SUM(tr_order_payment.payment_amount) as amount")
+        )
+        ->groupBy("mr_user.fullname", "mr_payment_method.name")->get();
+
       $cash_in_total = DB::table("tr_order_payment")
         ->join("mr_payment_method", "mr_payment_method.id", "=", "tr_order_payment.payment_method_id")
         ->whereIn("tr_order_payment.payment_number", $list_payment_number)
@@ -2861,6 +2936,7 @@ class DayShiftServices
         "sales_by_visit_purpose" => $sales_by_visit_purpose,
         "sales_by_order_source" => $sales_by_order_source,
         "sales_by_staff" => $sales_by_staff,
+        "sales_by_staff_payment" => $sales_by_staff_payment,
         "cash_in_total" => $cash_in_total,
       ];
     } catch (\Throwable $e) {

@@ -167,3 +167,12 @@ Saldo Sekarang      :   Rp 250.000
 
 - Jurnal akuntansi (`accounting_general_ledger` — "Hutang Saldo Member" liability, akun `2.1.07.01 MEMBER WALLET PAYABLE`) di-sweep async belakangan oleh proses background di sudocore2 (`backend/modules/memberbalancejurnal`, kolom `member_balance_ledger.jurnal_at` `NULL` = belum dijurnal), bukan bagian dari alur real-time ini.
 - Topup dari ERP (admin manual) belum diimplementasi sama sekali — belum ada tabel/modul-nya.
+
+### Perbaikan keamanan (2026-10-16)
+
+Endpoint APIANDORDER `POST /pos/member-topup/:branch_id` dan `GET /pos/member-topup/:branch_id/check-status/:reference_number` sebelumnya cuma validasi token "valid dan aktif" (`middleware.BranchTokenAuth`), **tanpa** cross-check `branch_id` di path terhadap branch pemilik token:
+
+- **CreateTopup**: device dengan token branch A yang sah bisa bikin topup finansial (cash maupun gateway/QRIS) atas nama `branch_id` manapun di path — transaksi palsu tercatat ke `member_topup_online`/`member_balance_ledger` seolah berasal dari branch lain.
+- **CheckStatus**: `branch_id` di path sebelumnya **sama sekali tidak dipakai** di handler (cuma `reference_number` yang dibaca) — device mana pun dengan token sah (branch apa pun) bisa polling status/saldo/nama+nomor HP member dari topup branch lain, asal tahu/menebak `reference_number`-nya (formatnya predictable: `TU` + kode branch + tanggal + urutan, lihat `generateTopupReference()`).
+
+Sudah diperbaiki di APIANDORDER (`membertopup_handler.go` cross-check `branch_id` path vs token lewat `helpers.MatchingBranchID()`, **plus** validasi row-level di `CheckStatus()` service — `topup.BranchID` harus cocok `branchID` yang direquest, bukan cuma lolos cross-check path) — tidak ada perubahan di sisi POS/Kiosk, token yang dikirim tetap sama seperti sebelumnya.
