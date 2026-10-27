@@ -2,6 +2,33 @@
 
 Versi lengkap dari [GERBANG AWAL APLIKASI (SIMPLE).md](GERBANG%20AWAL%20APLIKASI%20%28SIMPLE%29.md) — tiap gerbang dijelaskan sebagai **endpoint + kondisi + aksi**, buat jadi acuan migrasi ke frontend baru (bukan dokumentasi jejak kode frontend yang sedang berjalan sekarang). Dokumen ini **tidak** menyebut nama file/fungsi frontend spesifik — kontrak di sini berlaku apa pun teknologi frontend-nya nanti.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    Start([Device dibuka]) --> CekInstall["GET /api/setup/install_status"]
+
+    CekInstall -->|is_installed = false| ShowSetup[Tampilkan halaman Setup]
+    ShowSetup --> DoSync["User pilih company → branch<br/>→ tarik semua data master (sync_pull/*)"]
+    DoSync --> MarkInstalled["GET /api/setup/install_success/1<br/>(tandai instalasi berhasil)"]
+    MarkInstalled --> CekTerminal
+
+    CekInstall -->|is_installed = true| CekTerminal{"Baca state lokal device:<br/>terminal_id tersimpan?"}
+
+    CekTerminal -->|Belum ada| ShowTerminal[Tampilkan halaman Terminal Select]
+    ShowTerminal --> LoadTerminal["GET /api/terminal<br/>(ambil daftar terminal)"]
+    LoadTerminal --> PilihTerminal["User pilih 1 terminal<br/>→ simpan terminal_id/name/type<br/>ke state lokal device"]
+    PilihTerminal --> CekLogin
+
+    CekTerminal -->|Sudah ada| CekLogin{"GET /api/auth/info<br/>sudah login?"}
+
+    CekLogin -->|Belum login| ShowLockscreen[Tampilkan halaman Lockscreen]
+    ShowLockscreen --> DoLogin["POST /api/auth/login (PIN)"]
+    DoLogin --> Dashboard
+
+    CekLogin -->|Sudah login| Dashboard([Dashboard — siap kerja])
+```
+
 ## 3 Gerbang (Endpoint + Kondisi + Aksi)
 
 ### Gerbang 1 — Install
