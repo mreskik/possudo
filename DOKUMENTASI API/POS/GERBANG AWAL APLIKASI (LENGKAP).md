@@ -1,80 +1,53 @@
 # Gerbang Awal Aplikasi — Detail Teknis (Lengkap)
 
-Versi lengkap dari [GERBANG AWAL APLIKASI (SIMPLE).md](GERBANG%20AWAL%20APLIKASI%20%28SIMPLE%29.md) — behaviour akhirnya SAMA (3 gerbang linear: install → terminal → login), tapi **implementasinya tersebar di 3 titik kode berbeda** (bukan 1 router guard terpusat), dan ada **jalur "muter"** yang gak kelihatan dari behaviour doang. Dokumen ini buat developer yang bakal migrasi/refactor router — **analisa kode sudocore2 2026-10-27**, belum pernah diubah/disesuaikan selama analisa ini (murni observasi).
+Versi lengkap dari [GERBANG AWAL APLIKASI (SIMPLE).md](GERBANG%20AWAL%20APLIKASI%20%28SIMPLE%29.md) — tiap gerbang dijelaskan sebagai **endpoint + kondisi + aksi**, buat jadi acuan migrasi ke frontend baru (bukan dokumentasi jejak kode frontend yang sedang berjalan sekarang). Dokumen ini **tidak** menyebut nama file/fungsi frontend spesifik — kontrak di sini berlaku apa pun teknologi frontend-nya nanti.
 
-Semua rujukan file di bawah relatif ke repo `posv1-vue` (frontend POS, Vue 3 + Pinia), **bukan** `posv1-laravel` (backend) — dokumen ini taruh di sini (sejajar `URUTAN IMPLEMENTASI.md`) karena sifatnya cross-cutting alur aplikasi, bukan endpoint API spesifik.
+## 3 Gerbang (Endpoint + Kondisi + Aksi)
 
-## 3 Titik Keputusan (BUKAN 1 guard terpusat)
+### Gerbang 1 — Install
 
-| # | Nama | Lokasi | Ngecek apa | Redirect kalau gagal |
-|---|---|---|---|---|
-| 1 | Install check | `src/modules/setup/SetupPage.vue`, `onMounted()` | `globalstore.branch?.branch_name != null` | **TIDAK ADA** redirect kalau belum install (user emang lagi di `/setup`, dibiarkan isi form) — yang ada redirect KALAU **sudah** install (lompat ke `list-table`, **bukan** ke `/terminal`) |
-| 2 | Terminal check | `src/router/index.js`, `router.beforeEach()` (GLOBAL, semua route) | `localStorage.getItem('terminal_id')` | `{ name: 'terminal' }` — **kecuali** `to.name` ada di `bypass = ['setup', 'terminal']` |
-| 3 | Login check | `src/router/index.js`, fungsi `CekStatusLogin()`, dipasang sebagai `beforeEnter` di route `dashboard` doang | `globalstore.user?.id == null` (setelah `await globalstore.loadData()`) | `{ name: 'lockscreen' }` |
+- **Cek status**: `GET /api/setup/install_status` → `{ "data": { "is_installed": true/false } }`.
+- **Kondisi**: `is_installed == false` → tampilkan halaman **Setup** (pilih company → pilih branch → tarik semua data master, ±35 endpoint `sync_pull/get_*`, lihat [`SETUP/SETUP WIZARD.md`](SETUP/SETUP%20WIZARD.md)).
+- **Setelah sync selesai**: hit `GET /api/setup/install_success/1` — menandai instalasi ini **berhasil** di server (`flag_install_status` jadi `true`). Lanjut ke Gerbang 2.
+- **Kondisi**: `is_installed == true` → **skip** halaman Setup, langsung lanjut ke Gerbang 2.
 
-**Ketiganya independen** — gak ada 1 fungsi yang orkestrasi urutannya. Urutan yang KELIHATAN linear (install → terminal → login) itu muncul dari KOMBINASI efek sampingan masing-masing titik, bukan desain terpusat.
+### Gerbang 2 — Terminal Select
 
-**Data terminal disimpan di `localStorage` browser, BUKAN di Pinia store/server.** 3 key: `terminal_id`, `terminal_name`, `terminal_type` — ditulis sekali di `pilihTerminal()` (`TerminalPage.vue`), dibaca ulang tiap kali guard global (`router.beforeEach`) jalan. Konsekuensinya: data ini **per-browser-profile**, bukan per-device "beneran" — kalau user buka app ini di browser/profile lain di device yang SAMA, `terminal_id` dianggap kosong lagi (balik ke `/terminal`). Sebaliknya, kalau localStorage di-clear (manual, mode incognito, atau browser reset data), device itu "lupa" terminal-nya walau `branch_name` di backend tetap ada (install TIDAK ke-reset, cuma pilihan terminal-nya doang).
+- **Cek status**: baca **state lokal device** (lihat "Kontrak Penyimpanan Lokal" di bawah) — apakah `terminal_id` sudah tersimpan.
+- **Kondisi**: `terminal_id` **belum ada** → tampilkan halaman **Terminal Select**. Ambil daftar terminal lewat `GET /api/terminal` ([`MASTER/TERMINAL LIST.md`](MASTER/TERMINAL%20LIST.md)), user pilih 1.
+- **Setelah user pilih 1 terminal**: simpan `terminal_id`, `terminal_name`, `terminal_type` ke state lokal device. Lanjut ke Gerbang 3.
+- **Kondisi**: `terminal_id` **sudah ada** → **skip** halaman Terminal Select, langsung lanjut ke Gerbang 3.
 
-**Install check SEBELUMNYA tidak ada endpoint baca-balik** (cuma `flag_install_status` ditulis lewat `install_success/{status}`, tidak pernah dibaca ulang dari endpoint manapun — frontend pakai `branch_name` dari `master/branch` sebagai proxy). Ditambahkan **`GET /api/setup/install_status`** (2026-10-27, backend `posv1-laravel`) — `{ code: 0, data: { is_installed: true/false } }`, baca `setup_config.flag_install_status` (id=1, baris ini selalu ada sejak migration awal). **Murni backend, frontend BELUM diubah** untuk pakai endpoint ini — `SetupPage.vue` tetap cek `branch_name` seperti sebelumnya. Implementasi: `app/Services/ConfigService.php` (`GetInstallStatus()`), `app/Http/Controllers/SetupController.php` (`GetInstallStatus()`), route di `routes/api.php` grup `setup`. Tervalidasi live: `install_status` balik `true`/`false` sesuai nilai `flag_install_status` di DB setelah `install_success/1`/`install_success/0` dipanggil.
+### Gerbang 3 — Login
 
-## Diagram (detail titik keputusan + efek sampingan)
+- **Cek status**: hit `GET /api/auth/info` — kalau `code != 0` atau tidak ada data user, berarti **belum login**.
+- **Kondisi**: **belum login** → tampilkan halaman **Lockscreen**, user masukkan PIN lewat `POST /api/auth/login` ([`AUTH/AUTH.md`](AUTH/AUTH.md)).
+- **Setelah login berhasil**: masuk ke Dashboard.
+- **Kondisi**: **sudah login** → langsung ke Dashboard.
 
-```mermaid
-flowchart TD
-    Boot(["App boot<br/>(main.js: await globalstore.loadData())"]) --> Nav{User navigasi<br/>ke route apa?}
+Begitu ketiga gerbang lolos, device langsung ke Dashboard tiap kali dibuka ulang — **kecuali** salah satu kondisinya balik jadi "belum" (kasir logout, atau state lokal device terminal hilang).
 
-    Nav -->|/setup| SetupMount["SetupPage onMounted()<br/>cek: branch?.branch_name"]
-    SetupMount -->|branch_name ADA<br/>(sudah install)| JumpListTable["router.push('list-table')<br/>⚠️ BUKAN ke /terminal"]
-    SetupMount -->|branch_name KOSONG<br/>(belum install)| SetupForm[User isi form:<br/>company → branch → sync ±35 endpoint]
-    SetupForm --> Finish["Finish(): POST /setup/install_success/1<br/>→ localStorage.removeItem('terminal_id'/'terminal_name')<br/>→ router.push('terminal')"]
+## Kontrak Penyimpanan Lokal (WAJIB dipertahankan)
 
-    JumpListTable --> GlobalGuard
-    Finish --> GlobalGuard
-    Nav -->|route LAIN<br/>(bukan /setup)| GlobalGuard{"router.beforeEach (GLOBAL)<br/>bypass = ['setup','terminal']?"}
+Gerbang 2 (Terminal Select) **bergantung pada state yang disimpan di sisi device/browser**, bukan di server — ini keputusan arsitektur yang harus dipertahankan di frontend baru, bukan detail implementasi yang bebas diganti:
 
-    GlobalGuard -->|to.name di bypass| SkipGlobal[Lanjut, skip cek ini]
-    GlobalGuard -->|to.name BUKAN di bypass| CekTerminalId{"localStorage<br/>'terminal_id' ADA?"}
+| Key | Isi | Kapan ditulis | Kapan dibaca |
+|---|---|---|---|
+| `terminal_id` | ID terminal yang dipilih | Sekali, saat user pilih terminal di Gerbang 2 | Setiap kali mau menentukan device ini perlu ke Gerbang 2 lagi atau tidak |
+| `terminal_name` | Nama terminal (buat ditampilkan di UI) | Bersamaan `terminal_id` | Ditampilkan di UI, bukan dipakai logic gerbang |
+| `terminal_type` | Tipe terminal (POS biasa / Kiosk) | Bersamaan `terminal_id` | Kalau tipe-nya Kiosk, device diarahkan ke bundle/mode Kiosk yang terpisah dari POS biasa — **di luar scope dokumen ini** |
 
-    CekTerminalId -->|TIDAK ADA| ForceTerminal["return { name: 'terminal' }"]
-    CekTerminalId -->|ADA| CekTerminalType{"localStorage<br/>'terminal_type' == '3'?<br/>(Kiosk)"}
-    CekTerminalType -->|Ya, Kiosk| HardRedirect["window.location.href = '/kiosk'<br/>(hard redirect, keluar SPA ini)"]
-    CekTerminalType -->|Bukan Kiosk| LanjutRoute[Lanjut ke route tujuan]
+**Kenapa ini harus di state lokal device, bukan di server**: 1 branch bisa punya banyak terminal (beberapa kasir, beberapa meja kasir fisik) — status "device ini sudah pilih terminal yang mana" itu melekat ke **device itu sendiri**, bukan ke akun/sesi kasir yang login (kasir bisa logout-login ganti orang, tapi terminal yang dipakai device itu tetap sama). State ini juga **harus bertahan lintas sesi login** — begitu kasir logout lalu kasir lain login di device yang sama, device itu tidak perlu pilih ulang terminal.
 
-    ForceTerminal --> TerminalPage["TerminalPage.vue<br/>GET /api/terminal (load list)"]
-    TerminalPage --> Pilih["pilihTerminal():<br/>localStorage.setItem(terminal_id/name/type)<br/>router.push('dashboard')"]
-    Pilih --> DashboardEnter
+**Konsekuensi kalau state lokal ini hilang** (storage browser di-clear, pindah browser/profil di device yang sama, dst): device "lupa" terminal yang dipilih dan diarahkan balik ke Gerbang 2 — **walau instalasi (Gerbang 1) tidak terdampak sama sekali**, karena status install tersimpan di server, bukan di device.
 
-    LanjutRoute -->|to.name == 'dashboard'| DashboardEnter{"beforeEnter: CekStatusLogin()<br/>await loadData(); cek user?.id"}
-    DashboardEnter -->|user.id NULL| ForceLogin["return { name: 'lockscreen' }"]
-    DashboardEnter -->|user.id ADA| DashboardOk([Dashboard render])
+## Catatan Tambahan
 
-    ForceLogin --> LockscreenPage["LockscreenPage.vue<br/>POST /api/auth/login (PIN)"]
-    LockscreenPage --> DashboardOk
-
-    SkipGlobal -.->|kalau to.name == 'dashboard' juga kena DashboardEnter| DashboardEnter
-```
-
-## Jalur "Muter" yang Perlu Diperhatikan
-
-1. **Install check TIDAK pernah redirect ke `/terminal` secara langsung.** Kalau device sudah install (`branch_name` ada) tapi user entah bagaimana nyasar ke `/setup` (manual ketik URL, bookmark lama, dst), `SetupPage` lempar ke `list-table` dulu — **bukan** `/terminal`. Baru setelah itu, **guard global #2** yang nangkep (`terminal_id` kosong kalau emang belum pernah pilih terminal) dan lempar ke `/terminal`. Behaviour akhirnya SAMA kayak yang di dokumentasi Simple, tapi lewat 2 loncatan, bukan 1.
-2. **`Finish()` di SetupPage SENGAJA hapus `terminal_id`/`terminal_name`** dari localStorage sebelum push ke `/terminal` (baris 191-192, `SetupPage.vue`) — walaupun device ini mungkin PERNAH punya `terminal_id` tersimpan dari sesi lama (kasus device di-install ulang/reset data). Ini jaga-jaga biar user WAJIB pilih ulang terminal setelah install ulang, gak ke-skip gara-gara localStorage lama yang nyangkut.
-3. **Guard terminal (`router.beforeEach`) jalan buat SEMUA route kecuali 2 nama** (`setup`, `terminal`) — termasuk `lockscreen` dan `display_customer`. Jadi SECARA TEKNIS, kalau `terminal_id` somehow kehapus manual (DevTools, dst) SAAT user udah di tengah-tengah pakai app (misal lagi di halaman order), navigasi APAPUN berikutnya bakal kelempar balik ke `/terminal` — bukan cuma di awal boot.
-4. **Login check (`CekStatusLogin`) HANYA terpasang di route `dashboard`** (parent route, bukan di tiap child-nya) — child route (`order`, `payment`, `list-table`, dst) punya guard SENDIRI (`kesiapan`, cek day-shift), **TIDAK** ngecek ulang status login. Login check gak keulang di child karena Vue Router child route otomatis warisin `beforeEnter` parent-nya.
-5. **`terminal_type === '3'` (Kiosk) dicek SETELAH lolos cek `terminal_id`**, bukan sebelum — kalau device-nya memang terminal Kiosk, dia tetap kena alur Setup → Terminal Select dulu (sama kayak device POS biasa), baru SETELAH terminal_type ketahuan Kiosk, langsung di-hard-redirect (`window.location.href`) ke bundle `/kiosk` yang beda JS sepenuhnya (bukan route SPA dalam bundle `posv1-vue` ini).
-
-## File yang Relevan
-
-| File | Peran |
-|---|---|
-| `src/main.js` | `await globalstore.loadData()` dipanggil SEKALI di bootstrap, SEBELUM router mulai — ini kenapa `globalstore.branch` udah keisi duluan pas `SetupPage` di-mount |
-| `src/stores/globalstore.js` | `loadData()` — isi `branch`/`dayshift`/`user`/`shiftlist` dari 4 endpoint lokal (`master/branch`, `dayshift/get`, `auth/info`, dkk) |
-| `src/modules/setup/SetupPage.vue` | Install check (`onMounted`) + `Finish()` (trigger `install_success`, hapus terminal lama, push ke `/terminal`) |
-| `src/modules/setup/TerminalPage.vue` | List terminal (`GET /api/terminal`) + `pilihTerminal()` (tulis localStorage, push ke `dashboard`) |
-| `src/router/index.js` | Guard global (`beforeEach`, cek `terminal_id`+`terminal_type`) + `CekStatusLogin` (`beforeEnter` khusus `dashboard`) + `kesiapan` (`beforeEnter` child route, cek day-shift — DI LUAR scope dokumen ini) |
-| `src/modules/lockscreen/LockscreenPage.vue` | Form PIN, `POST /api/auth/login` |
+- **`GET /api/setup/install_status`** ditambahkan 2026-10-27 — sebelumnya **tidak ada** cara baca-balik status install dari endpoint khusus (status cuma ditulis lewat `install_success/{status}`, tidak pernah dibaca ulang). Endpoint ini murni baca, tidak ada efek samping.
+- Gerbang 2 dan Gerbang 3 **independen satu sama lain** — device bisa punya terminal terpilih tapi belum ada yang login (kasir ganti shift), atau sebaliknya tidak mungkin terjadi (harus pilih terminal dulu sebelum sampai ke tahap login, sesuai urutan di atas).
+- Status terminal (Gerbang 2) berlaku untuk **semua halaman** setelah Gerbang 1 lolos — kalau state lokalnya hilang di tengah pemakaian (bukan cuma di awal buka app), device tetap akan diarahkan balik ke Gerbang 2 kapan pun itu terdeteksi.
 
 ## Referensi
 
-- [GERBANG AWAL APLIKASI (SIMPLE).md](GERBANG%20AWAL%20APLIKASI%20%28SIMPLE%29.md) — versi behaviour, tanpa detail kode.
-- [`SETUP/SETUP WIZARD.md`](SETUP/SETUP%20WIZARD.md), [`MASTER/TERMINAL LIST.md`](MASTER/TERMINAL%20LIST.md), [`AUTH/AUTH.md`](AUTH/AUTH.md) — dokumentasi endpoint backend masing-masing gerbang.
+- [GERBANG AWAL APLIKASI (SIMPLE).md](GERBANG%20AWAL%20APLIKASI%20%28SIMPLE%29.md) — versi ringkas, diagram behaviour.
+- [`SETUP/SETUP WIZARD.md`](SETUP/SETUP%20WIZARD.md), [`MASTER/TERMINAL LIST.md`](MASTER/TERMINAL%20LIST.md), [`AUTH/AUTH.md`](AUTH/AUTH.md) — dokumentasi endpoint masing-masing gerbang.
