@@ -49,12 +49,14 @@ Response:
 ```
 
 - `TableSectionModel::where('is_active', true)->get()` — apa adanya, tanpa transformasi (`$guarded = []`, SEMUA kolom tabel `mr_table_section` ikut terkirim, bukan cuma `id`/`name`/`is_active`).
-- **`tables` (2026-10-28, BARU)** — daftar meja (`mr_table`) milik section itu, disertakan langsung nested di tiap object section. Diambil lewat **1 query** untuk semua section sekaligus (`TableModel::whereIn('table_section_id', ...)`, dikelompokkan di PHP pakai `groupBy()`) — bukan N+1 per section. Section tanpa meja sama sekali → `tables: []` (array kosong, bukan `null`). Ditambahkan supaya FE yang cuma butuh section+meja gak perlu panggil `getTableSectionTable()` (`GET /api/master/table-section-table`) terpisah lagi — endpoint itu **TIDAK dihapus/diubah**, tetap ada buat konsumer existing yang sudah pakai bentuk object `{table_section_id: [...]}`-nya.
+- **`tables` (2026-10-28, BARU)** — daftar meja (`mr_table`) milik section itu, disertakan langsung nested di tiap object section. Diambil lewat **1 query** untuk semua section sekaligus (`TableModel::whereIn('table_section_id', ...)`, dikelompokkan di PHP pakai `groupBy()`) — bukan N+1 per section. Section tanpa meja sama sekali → `tables: []` (array kosong, bukan `null`). Ditambahkan supaya FE gak perlu panggil `getTableSectionTable()` terpisah lagi — endpoint itu sekarang **DEPRECATED** (lihat bagian di bawah), **TIDAK dihapus/diubah** kodenya, tetap ada buat konsumer lama yang belum migrasi ke `tables[]` di sini.
 - **`layout_x`/`layout_y` (2026-10-28, BARU)** — posisi/offset kanvas layout, sinkron dari `master_table_section.layout_x/layout_y` di ERP (lihat `MASTER TABLE SECTION.md` sudocore2). Kolom lokal `mr_table_section.layout_x`/`layout_y` ditambah lewat migration `2026_10_28_000000_add_layout_x_y_to_mr_table_section.php`.
 - **`layout_image_src` (2026-10-28, diperbaiki)** — sekarang berisi **path lokal** hasil download (`/img/table-section/...`), bukan path mentah dari ERP. Sebelumnya field ini cuma ikut di-upsert sebagai string mentah tanpa pernah benar-benar punya file gambarnya di lokal — diperbaiki di `SetupServices::getTableSectionList()` (download via `downloadImage()`, subdir `table-section`, pola sama item/branch/master-image). Kalau field ini `null`/kosong, berarti table section itu memang belum ada gambar layout, bukan gagal sync.
 - **Catatan bug kecil**: `catch` block di controller ini balikin `'code' => 0` (bukan `100`) saat terjadi exception — error PHP akan muncul sebagai response "sukses" dengan `data` kosong/null, bukan error eksplisit. Perlu ditangani benar di implementasi FE baru (jangan asumsikan `code === 0` berarti `data` valid tanpa cek lebih lanjut).
 
-## Get Table Section Table
+## Get Table Section Table (DEPRECATED — jangan pakai)
+
+**DEPRECATED (2026-10-28)** — jangan dipakai lagi. `GET /api/master/table-section` sekarang sudah menyertakan `tables[]` nested langsung per section, jadi endpoint ini gak perlu dipanggil terpisah lagi. Endpoint ini **TIDAK dihapus** (tetap ada buat konsumer lama yang belum migrasi), tapi implementasi FE baru harus pakai `tables[]` dari `getTableSection()` saja.
 
 ```
 GET /api/master/table-section-table
@@ -83,7 +85,9 @@ Response:
 
 ## Alur Implementasi
 
-Dipanggil bersamaan saat halaman List Table dimuat (`getTableSection()` + `getTableSectionTable()`, `MasterServices.ts`) — section dipakai sebagai tab/filter, lalu meja di tiap section diambil dari object hasil `table-section-table` pakai key `section.id`.
+**Implementasi lama** (dipertahankan untuk konsumer yang belum migrasi): dipanggil bersamaan saat halaman List Table dimuat (`getTableSection()` + `getTableSectionTable()`, `MasterServices.ts`) — section dipakai sebagai tab/filter, lalu meja di tiap section diambil dari object hasil `table-section-table` pakai key `section.id`.
+
+**Implementasi baru (2026-10-28, disarankan)**: cukup panggil `getTableSection()` saja — meja tiap section sudah tersedia langsung di `tables[]`, tidak perlu panggil `getTableSectionTable()` lagi.
 
 ## Sumber
 
