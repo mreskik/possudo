@@ -136,6 +136,21 @@ class OrderServices
         if (!$tablesectionnow) {
           throw new \Exception("invalid table section!");
         }
+
+        // Guard meja-sudah-ada-order-aktif (2026-10-27) -- CUMA di jalur Create order baru
+        // (orderNumber kosong, blok if ini), BUKAN di jalur tambah-pesanan-ke-order-existing
+        // (blok else di bawah -- itu memang nambah ke order pending yang sama, bukan bikin
+        // order baru di meja yang sama). status IN ('pending', 'hold') -- konsisten sama pola
+        // yang sudah ada di SaveMoveTable()/SaveMoveItem(), bukan cuma 'pending' doang, biar
+        // order yang lagi di-hold di meja itu juga dihitung "masih aktif".
+        if (!empty($datajson->tableId)) {
+          $activeOrderOnTable = TrOrderModel::where('table_id', $datajson->tableId)
+            ->whereIn('status', ['pending', 'hold'])
+            ->first();
+          if ($activeOrderOnTable) {
+            throw new \Exception('This table already has a pending order!');
+          }
+        }
         //
         $order = [
           "dayshift_ulid" => $dayshift->ulid,
@@ -237,7 +252,14 @@ class OrderServices
         // member (yang udah dipilih) tier-nya cocok sama salah satu baris mr_promo_tier promo
         // itu. BEDA dari flag_required_member di atas: ini gak nolak "gak ada member" (itu udah
         // dicek terpisah), tapi nolak "ada member TAPI tier-nya gak cocok".
-        self::ValidatePromoTierBarrier($datajson->listOrder, $order['member_id'] ?? null);
+        //
+        // (array) cast (2026-10-27) -- $datajson->listOrder bisa null (mis. "Book Table"/"Book &
+        // Order" dari list-table page, useBookTable.js, yang booking meja kosong tanpa item sama
+        // sekali -- payload-nya emang gak punya field listOrder). ValidatePromoTierBarrier() type
+        // -hint-nya "array $listOrder" (strict), null lolos begitu aja bikin TypeError sebelum
+        // sempat masuk function body. (array) null jadi [] -- function-nya sendiri udah benar
+        // menangani list kosong (foreach 0 iterasi, $usedPromoIds tetap kosong).
+        self::ValidatePromoTierBarrier((array) $datajson->listOrder, $order['member_id'] ?? null);
 
         //pengecekan stok
         $datagrouping_ = [];

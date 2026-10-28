@@ -26,6 +26,20 @@ class MasterController extends Controller
     {
         try {
             $data = TableSectionModel::where('is_active', true)->get();
+
+            // tables (2026-10-28) -- daftar meja tiap section disertakan langsung di sini (nested
+            // "tables"), biar FE yang cuma butuh section+meja gak perlu panggil
+            // getTableSectionTable() terpisah lagi. 1 query buat semua meja (bukan N+1 per
+            // section), dikelompokkan di PHP pakai groupBy().
+            $tablesBySection = TableModel::whereIn('table_section_id', $data->pluck('id'))
+                ->get()
+                ->groupBy('table_section_id');
+
+            $data = $data->map(function ($section) use ($tablesBySection) {
+                $section->tables = $tablesBySection->get($section->id, collect())->values();
+                return $section;
+            });
+
             return response()->json([
                 'code' => 0,
                 'data' => $data

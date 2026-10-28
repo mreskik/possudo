@@ -114,6 +114,14 @@ class SetupServices
   public function getDatabranch(string $username, string $password, string $branch_id, ?string $token = null)
   {
     try {
+      // Guard install-dobel (2026-10-27) -- CUMA berlaku di jalur install ($token kosong).
+      // Jalur sync ($token udah ada) SENGAJA gak kena, karena sync rutin memang manggil ulang
+      // fungsi ini buat refresh data branch yang sama -- itu normal, bukan install dobel. Dicek
+      // SEBELUM request ke server (gak perlu hit network kalau emang bakal ditolak).
+      if (!$token && BranchModel::first() !== null) {
+        throw new \Exception('POS is already installed with this branch');
+      }
+
       $url = $token
         ? $this->endpoint . '/pos/sync/get_data_branch/' . $branch_id
         : $this->endpoint . '/pos/setup/get_data_branch/' . $branch_id;
@@ -366,7 +374,21 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(TableSectionModel::class, $response->json('data'));
+        $sections = $response->json('data');
+
+        $existingImages = TableSectionModel::whereIn('id', array_column($sections, 'id'))
+          ->pluck('layout_image_src', 'id');
+
+        foreach ($sections as &$section) {
+          $section['layout_image_src'] = $this->downloadImage(
+            $section['layout_image_src'] ?? null,
+            'table-section',
+            $existingImages[$section['id']] ?? null
+          );
+        }
+        unset($section);
+
+        $this->upsertRows(TableSectionModel::class, $sections);
       }
 
       return $response;
