@@ -144,6 +144,7 @@ Route::prefix('master')->group(function () {
   Route::get('subcategory-list', [MasterController::class, 'GetSubCategoryList']);
 
   Route::get('member-list', [MasterController::class, 'GetMemberList']);
+  Route::get('member-detail/{id}', [MasterController::class, 'GetMemberDetail']);
   Route::get('member-type-list', [MasterController::class, 'GetMemberTypeList']);
 
   Route::get('terminal-list', [MasterController::class, 'GetTerminalList']);

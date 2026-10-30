@@ -15,6 +15,7 @@ use App\Models\SubCategoryModel;
 use App\Models\TableModel;
 use App\Models\TableSectionModel;
 use App\Models\TerminalModel;
+use App\Services\MemberServices;
 use App\Services\MenuServices;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -359,6 +360,26 @@ class MasterController extends Controller
                 LEFT JOIN mr_member_type mt ON mt.id = m.member_type_id
                 ORDER BY m.name ASC
             ");
+
+            return response()->json([
+                "code" => 0,
+                "data" => $data
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 100,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
+
+    // GetMemberDetail: detail member ONLINE (butuh koneksi APIANDORDER) -- beda dari
+    // GetMemberList di atas yang murni lokal (mr_member). Lihat MemberServices::GetDetail
+    // buat alasan kenapa method ini punya timeout + pesan error "offline" eksplisit.
+    public function GetMemberDetail($id)
+    {
+        try {
+            $data = (new MemberServices())->GetDetail((int) $id);
 
             return response()->json([
                 "code" => 0,
