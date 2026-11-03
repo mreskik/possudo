@@ -136,6 +136,7 @@ Route::prefix('master')->group(function () {
   Route::get('menu-list', [MasterController::class, 'GetMasterMenuList']);
   Route::get('menu-list/{visitPurposeId}', [MasterController::class, 'GetMasterMenuListByVisitPurpose']);
   Route::get('branch', [MasterController::class, 'GetBranchDetail']);
+  Route::get('branch-configuration', [MasterController::class, 'GetBranchConfiguration']);
   Route::get('brand', [MasterController::class, 'GetBrandDetail']);
   Route::get('payment-method/{visit_purpose_id}', [MasterController::class, 'GetPaymentMethod']);
   Route::get('station-list', [MasterController::class, 'GetStationList']);

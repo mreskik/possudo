@@ -242,16 +242,42 @@ class MasterController extends Controller
         $data = BranchModel::first();
 
         if ($data) {
-            // setting (2026-09-25): mr_branch_setting SCOPE MINIMAL, cuma domain_receipt/
-            // whatsapp_template_text (bukan semua kolom setting ERP, lihat migration
-            // 2026_09_25_080000_create_table_mr_branch_setting.php) -- singleton per install,
-            // sama pola kayak $data di atas. null kalau belum pernah sync (branch lama/belum
-            // pernah setup ulang), FE yang nentuin fallback (lihat DOKUMENTASI, whatsapp_template_text
-            // kosong -> pakai template default hardcoded).
+            // setting: mr_branch_setting -- awalnya (2026-09-25) SCOPE MINIMAL cuma domain_receipt/
+            // whatsapp_template_text, SEKARANG (2026-11-03) SEMUA kolom master_branch_setting ERP
+            // (1:1, lihat migration 2026_11_03_000000_add_columns_to_mr_branch_setting.php) --
+            // singleton per install, sama pola kayak $data di atas. null kalau belum pernah sync
+            // (branch lama/belum pernah setup ulang), FE yang nentuin fallback (lihat DOKUMENTASI,
+            // whatsapp_template_text kosong -> pakai template default hardcoded).
             $setting = MasterBranchSettingModel::where('branch_id', $data->id)->first();
             $data->setting = [
                 'domain_receipt' => $setting->domain_receipt ?? '',
                 'whatsapp_template_text' => $setting->whatsapp_template_text ?? '',
+                'flag_time_out_user' => $setting->flag_time_out_user ?? false,
+                'time_out_second' => $setting->time_out_second ?? 0,
+                'flag_rounding' => $setting->flag_rounding ?? false,
+                'rounding_mode' => $setting->rounding_mode ?? '',
+                'rounding_nearst_value' => $setting->rounding_nearst_value ?? '',
+                'flag_email_report_endday' => $setting->flag_email_report_endday ?? false,
+                'email_report_endday' => $setting->email_report_endday ?? '',
+                'flag_notification_end' => $setting->flag_notification_end ?? false,
+                'notification_end' => $setting->notification_end ?? '',
+                'flag_queue' => $setting->flag_queue ?? false,
+                'queue_reset_after_each' => $setting->queue_reset_after_each ?? 0,
+                'queue_start_from' => $setting->queue_start_from ?? 0,
+                'flag_guest_comment' => $setting->flag_guest_comment ?? false,
+                // mandatory_setting (2026-11-03): flag_bill_name/flag_note_payment DIPISAH dari
+                // flat list di atas -- nested biar jelas 2 flag ini maknanya "WAJIB diisi
+                // nama/catatan pembayaran sebelum bisa lanjut bayar", beda semangat dari flag_*
+                // lain yang sifatnya "nyala/mati fitur", bukan "wajib/opsional diisi".
+                'mandatory_setting' => [
+                    'flag_bill_name' => $setting->flag_bill_name ?? false,
+                    'flag_note_payment' => $setting->flag_note_payment ?? false,
+                ],
+                // flag_online_service_mobile_customer/flag_barber_service (2026-11-03) --
+                // SENGAJA TIDAK di-expose di response ini (beda modul/scope: sudomobile &
+                // sudobarber, bukan POS). Data TETAP ke-sync & tersimpan normal di
+                // mr_branch_setting (SetupServices::getDatabranch() gak diubah) -- cuma gak
+                // dikembalikan di response API ini.
             ];
 
             return response()->json([
@@ -264,6 +290,65 @@ class MasterController extends Controller
                 'message' => "branchDetail gak muncul!"
             ]);
         }
+    }
+
+    // GetBranchConfiguration (2026-11-03): endpoint KHUSUS buat baca mr_branch_setting SENDIRIAN
+    // -- sebelumnya satu-satunya jalur baca setting ini cuma lewat GetBranchDetail() (nempel di
+    // field `setting`, bareng seluruh field Branch Detail lain). Berguna buat FE yang cuma butuh
+    // refresh setting (mis. whatsapp_template_text/domain_receipt abis diubah di ERP) tanpa perlu
+    // narik ulang SELURUH Branch Detail. Baca data LOKAL (mr_branch_setting, hasil sync terakhir),
+    // BUKAN hit APIANDORDER/ERP langsung -- kalau mau data terbaru dari ERP, sync dulu (lihat
+    // SyncGroupController::syncBranchSetting()), baru panggil endpoint ini.
+    //
+    // Nama "Configuration" (bukan "Setting") SENGAJA dipakai di path/method -- biar gak bentrok
+    // sama endpoint sync-group/branch-setting yang sudah ada (itu MEMICU SYNC ULANG, bukan baca
+    // data lokal -- 2 hal yang beda total walau nama mirip).
+    //
+    // Fallback & shape response SAMA PERSIS dengan field `setting` di GetBranchDetail() di atas
+    // (semua 19 kolom mr_branch_setting selain branch_id) -- sengaja diduplikasi langsung (bukan
+    // diekstrak jadi helper bersama) karena masih kecil, ekstrak nanti kalau makin banyak endpoint
+    // yang butuh.
+    public function GetBranchConfiguration()
+    {
+        $branch = BranchModel::first();
+
+        if (!$branch) {
+            return response()->json([
+                'code' => 100,
+                'message' => "branchDetail gak muncul!"
+            ]);
+        }
+
+        $setting = MasterBranchSettingModel::where('branch_id', $branch->id)->first();
+
+        return response()->json([
+            'code' => 0,
+            'data' => [
+                'domain_receipt' => $setting->domain_receipt ?? '',
+                'whatsapp_template_text' => $setting->whatsapp_template_text ?? '',
+                'flag_time_out_user' => $setting->flag_time_out_user ?? false,
+                'time_out_second' => $setting->time_out_second ?? 0,
+                'flag_rounding' => $setting->flag_rounding ?? false,
+                'rounding_mode' => $setting->rounding_mode ?? '',
+                'rounding_nearst_value' => $setting->rounding_nearst_value ?? '',
+                'flag_email_report_endday' => $setting->flag_email_report_endday ?? false,
+                'email_report_endday' => $setting->email_report_endday ?? '',
+                'flag_notification_end' => $setting->flag_notification_end ?? false,
+                'notification_end' => $setting->notification_end ?? '',
+                'flag_queue' => $setting->flag_queue ?? false,
+                'queue_reset_after_each' => $setting->queue_reset_after_each ?? 0,
+                'queue_start_from' => $setting->queue_start_from ?? 0,
+                'flag_guest_comment' => $setting->flag_guest_comment ?? false,
+                // mandatory_setting -- lihat catatan di GetBranchDetail() di atas, shape response
+                // DISAMAKAN 1:1 di sini.
+                'mandatory_setting' => [
+                    'flag_bill_name' => $setting->flag_bill_name ?? false,
+                    'flag_note_payment' => $setting->flag_note_payment ?? false,
+                ],
+                // flag_online_service_mobile_customer/flag_barber_service -- lihat catatan di
+                // GetBranchDetail() di atas, SENGAJA TIDAK di-expose di sini juga.
+            ]
+        ]);
     }
 
     // GetBrandDetail (2026-10-12): mr_branch singleton (sama pola GetBranchDetail() di atas) --

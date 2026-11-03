@@ -145,4 +145,8 @@ Dipanggil bersamaan (`useMember.js`) di halaman Member dan saat memilih member p
 
 ## Status
 
-Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifikasi ulang lewat HTTP request live di sesi ini).
+**Tervalidasi live** 2026-10-30 — dites langsung via `curl` ke POS Laravel lokal (`GET /api/master/member-detail/{id}`), lintas beberapa member:
+- Member dengan order `paid` histori (id=23) → `point`, `tier`, `last_order` (header flat + `item_list[]` + `payment_method_list[]`), `best_seller[]` (5 item terurut qty DESC) semua terisi benar.
+- Member belum pernah order (id=6, 16, 32, 1, 5, 11) → `last_order` semua field `null`/`[]`, `best_seller: []`, bukan error.
+- `member_id` tidak ketemu (999999) → `{"code":0,"data":null}`, bukan error.
+- Frontend (`posv1-vue`, dialog Detail di `MemberPage.vue`) sudah diimplementasikan dan di-build, siap dites manual di browser.

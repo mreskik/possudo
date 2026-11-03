@@ -167,14 +167,32 @@ class SetupServices
           'image_footer_src' => $this->downloadImage($response->json('data.ImageFooterSrc'), 'branch', $existing->image_footer_src ?? null),
         ]);
 
-        // mr_branch_setting (2026-09-25) -- SCOPE MINIMAL, cuma domain_receipt/
-        // whatsapp_template_text (bukan semua kolom setting ERP), singleton sama pola kayak
-        // mr_branch di atas (truncate+create, bukan upsert).
+        // mr_branch_setting -- awalnya (2026-09-25) SCOPE MINIMAL cuma domain_receipt/
+        // whatsapp_template_text, SEKARANG (2026-11-03) ditarik SEMUA kolom master_branch_setting
+        // ERP (1:1, lihat migration 2026_11_03_000000_add_columns_to_mr_branch_setting.php) --
+        // singleton sama pola kayak mr_branch di atas (truncate+create, bukan upsert).
         MasterBranchSettingModel::truncate();
         MasterBranchSettingModel::create([
           'branch_id' => $response->json('data.BranchID'),
           'domain_receipt' => $response->json('data.DomainReceipt'),
           'whatsapp_template_text' => $response->json('data.WhatsappTemplateText'),
+          'flag_time_out_user' => $response->json('data.FlagTimeOutUser'),
+          'time_out_second' => $response->json('data.TimeOutSecond'),
+          'flag_rounding' => $response->json('data.FlagRounding'),
+          'rounding_mode' => $response->json('data.RoundingMode'),
+          'rounding_nearst_value' => $response->json('data.RoundingNearstValue'),
+          'flag_email_report_endday' => $response->json('data.FlagEmailReportEndday'),
+          'email_report_endday' => $response->json('data.EmailReportEndday'),
+          'flag_notification_end' => $response->json('data.FlagNotificationEnd'),
+          'notification_end' => $response->json('data.NotificationEnd'),
+          'flag_queue' => $response->json('data.FlagQueue'),
+          'queue_reset_after_each' => $response->json('data.QueueResetAfterEach'),
+          'queue_start_from' => $response->json('data.QueueStartFrom'),
+          'flag_guest_comment' => $response->json('data.FlagGuestComment'),
+          'flag_bill_name' => $response->json('data.FlagBillName'),
+          'flag_note_payment' => $response->json('data.FlagNotePayment'),
+          'flag_online_service_mobile_customer' => $response->json('data.FlagOnlineServiceMobileCustomer'),
+          'flag_barber_service' => $response->json('data.FlagBarberService'),
         ]);
       }
 
