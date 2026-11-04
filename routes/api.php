@@ -188,6 +188,7 @@ Route::prefix('orderlist')->group(function () {
 
 Route::prefix("sales")->group(function () {
   Route::get('get-sales-list', [SalesController::class, 'GetSalesList']);
+  Route::get('get-sales-list-new', [SalesController::class, 'GetSalesListNew']);
   Route::get('view/{order_number}', [SalesController::class, 'ViewSales']);
   Route::get('reprint/{order_number}', [SalesController::class, 'Reprint']);
   Route::post('void', [SalesController::class, 'Void']);

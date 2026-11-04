@@ -52,6 +52,51 @@ class SalesServices
     }
   }
 
+  // GetSalesListNew (2026-11-04): endpoint BARU terpisah (get-sales-list-new), TIDAK
+  // menggantikan GetSalesList() di atas -- behavior/fungsi SAMA (exclude status
+  // pending/hold, join table_section/visit_purpose/payment_method, GROUP BY
+  // payment_number+order_number), cuma 2 beda:
+  // - filter waktu: date_start/date_end (BUKAN dayin_time dayshift aktif) -- jadi endpoint
+  //   ini bisa lihat histori LINTAS dayshift/hari, beda dari GetSalesList() yang selalu
+  //   scoped ke dayshift yang sedang jalan.
+  // - sort: created_at DESC (BUKAN order_date DESC).
+  public static function GetSalesListNew($date_start, $date_end)
+  {
+    try {
+      $data = DB::select("
+      SELECT
+
+      tro.order_number,
+      tro.payment_number,
+      tro.order_date,
+      tro.order_name,
+      tro.order_source,
+      mrts.name as table_name,
+      mvp.name as visit_purpose_name,
+      tro.total_billing,
+      tro.status,
+      GROUP_CONCAT(mpm.name SEPARATOR ', ' )as payment_method,
+      SUBSTRING_INDEX(tro.payment_at,' ',-1) as payment_time,
+      tro.chasier_name as payment_by
+
+      FROM tr_order tro
+      left JOIN mr_table_section mrts on mrts.id = tro.table_section_id
+      left join mr_visit_purpose mvp on mvp.id = tro.visit_purpose_id
+      left JOIN tr_order_payment trd on trd.payment_number = tro.payment_number
+      left JOIN mr_payment_method mpm on mpm.id = trd.payment_method_id
+      WHERE tro.status != 'pending' AND  tro.status != 'hold'
+      AND tro.order_date BETWEEN ? AND ?
+      GROUP BY payment_number,order_number
+
+      ORDER BY tro.created_at DESC
+    ", [$date_start, $date_end]);
+
+      return $data;
+    } catch (\Throwable $e) {
+      throw $e;
+    }
+  }
+
   public static function viewSales(string $order_number)
   {
 

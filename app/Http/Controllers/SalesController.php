@@ -30,6 +30,28 @@ class SalesController extends Controller
         }
     }
 
+    // GetSalesListNew (2026-11-04): endpoint BARU terpisah (get-sales-list-new), TIDAK
+    // menggantikan GetSalesList() di atas -- lihat catatan lengkap di
+    // SalesServices::GetSalesListNew().
+    public function GetSalesListNew(Request $request)
+    {
+        try {
+
+            $date_start = $request->date_start;
+            $date_end = $request->date_end;
+            $data_sales = SalesServices::GetSalesListNew($date_start, $date_end);
+            return response()->json([
+                "code" => 0,
+                "data" => $data_sales
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 100,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
+
     public function ViewSales(Request $request)
     {
         try {
