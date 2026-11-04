@@ -146,6 +146,10 @@ Route::prefix('master')->group(function () {
   Route::get('subcategory-list', [MasterController::class, 'GetSubCategoryList']);
 
   Route::get('member-list', [MasterController::class, 'GetMemberList']);
+
+  Route::get('best-seller-menu', [BestSellerController::class, 'getBestSellerMenu']);
+  Route::get('best-seller-menu-by-visit-purpose/{visit_purpose_id}', [BestSellerController::class, 'getBestSellerMenuByVisitPurpose']);
+  Route::get('best-seller-menu-by-table-section/{tablesection_id}', [BestSellerController::class, 'getBestSellerMenuByTableSection']);
   Route::get('member-detail/{id}', [MasterController::class, 'GetMemberDetail']);
   Route::post('member', [MasterController::class, 'CreateMember']);
   Route::get('member-type-list', [MasterController::class, 'GetMemberTypeList']);
@@ -182,11 +186,6 @@ Route::prefix('orderlist')->group(function () {
   Route::get('all-pending', [OrderlistController::class, 'getAllPendingOrders']);
 });
 
-Route::prefix('best-seller')->group(function () {
-  Route::get('menu', [BestSellerController::class, 'getBestSellerMenu']);
-  Route::get('menu-by-visit-purpose/{visit_purpose_id}', [BestSellerController::class, 'getBestSellerMenuByVisitPurpose']);
-  Route::get('menu-by-table-section/{tablesection_id}', [BestSellerController::class, 'getBestSellerMenuByTableSection']);
-});
 Route::prefix("sales")->group(function () {
   Route::get('get-sales-list', [SalesController::class, 'GetSalesList']);
   Route::get('view/{order_number}', [SalesController::class, 'ViewSales']);

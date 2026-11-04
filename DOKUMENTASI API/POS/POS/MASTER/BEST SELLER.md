@@ -1,6 +1,6 @@
 # Best Seller
 
-Endpoint standalone buat liat menu paling laku dalam rentang tanggal tertentu — **BUKAN** bagian dari sistem Report (dayshift report), gak ada hubungan sama `DayShiftServices`/`REPORT AND HISTORY.md`. Ada 3 versi: global, by visit purpose, by table section.
+Endpoint standalone buat liat menu paling laku dalam rentang tanggal tertentu — **BUKAN** bagian dari sistem Report (dayshift report), gak ada hubungan sama `DayShiftServices`/`REPORT AND HISTORY.md`. Masuk grup `master` (`routes/api.php`) sama kayak `menu-list`/`category-list`/dll, tapi service/controller-nya file terpisah (`BestSellerServices`/`BestSellerController`), bukan nambah ke `MasterController`/`MenuServices`. Ada 3 versi: global, by visit purpose, by table section.
 
 **Yang dihitung**: cuma item utama dari `tr_order_detail` — sub-item di dalam package (`tr_order_detail_package`) **TIDAK** diikutkan (beda dari `sales_by_menu` di Report V2 yang menggabungkan keduanya buat tujuan laporan omzet). Status order yang dihitung cuma `paid` (transaksi closed), bukan `pending`/`hold`. Item yang dibatalkan (`tod.cancel_at IS NOT NULL`) tidak dihitung.
 
@@ -9,19 +9,19 @@ Diurutkan `total_qty DESC` (paling laku di atas) langsung di query database.
 ## 1. Global
 
 ```
-GET /api/best-seller/menu?date_start=2026-11-01&date_end=2026-11-04
+GET /api/master/best-seller-menu?date_start=2026-11-01&date_end=2026-11-04
 ```
 
 ## 2. By Visit Purpose
 
 ```
-GET /api/best-seller/menu-by-visit-purpose/{visit_purpose_id}?date_start=2026-11-01&date_end=2026-11-04
+GET /api/master/best-seller-menu-by-visit-purpose/{visit_purpose_id}?date_start=2026-11-01&date_end=2026-11-04
 ```
 
 ## 3. By Table Section
 
 ```
-GET /api/best-seller/menu-by-table-section/{tablesection_id}?date_start=2026-11-01&date_end=2026-11-04
+GET /api/master/best-seller-menu-by-table-section/{tablesection_id}?date_start=2026-11-01&date_end=2026-11-04
 ```
 
 ## Response (sama shape di ketiga versi)
@@ -46,7 +46,7 @@ GET /api/best-seller/menu-by-table-section/{tablesection_id}?date_start=2026-11-
 }
 ```
 
-(Contoh di atas REAL, dari data dev lewat `GET /api/best-seller/menu?date_start=2020-01-01&date_end=2030-01-01`.)
+(Contoh di atas REAL, dari data dev lewat `GET /api/master/best-seller-menu?date_start=2020-01-01&date_end=2030-01-01`, saat endpoint masih di path `/api/best-seller/menu` sebelum dipindah ke grup `master` — isi datanya sama, cuma path yang berubah.)
 
 - `item_id`/`item_name`/`item_code`/`item_image` — resolve dari `mr_item` (via JOIN `mr_item_conv` ke `tr_order_detail.menu_id`, lihat catatan penamaan di bawah).
 - `category_name`/`subcategory_name` — `LEFT JOIN` ke `mr_category`/`mr_subcategory`, `null` kalau item gak punya kategori/subkategori.
@@ -88,20 +88,20 @@ ORDER BY total_qty DESC
 
 ## branch_id
 
-Gak ada filter/parameter `branch_id` — pola yang sama dengan endpoint `orderlist` lain, karena POS adalah instalasi lokal per cabang (`mr_branch` lokal cuma 1 baris), jadi seluruh data di DB itu otomatis sudah scoped ke 1 cabang.
+Gak ada filter/parameter `branch_id` — pola yang sama dengan endpoint `master`/`orderlist` lain, karena POS adalah instalasi lokal per cabang (`mr_branch` lokal cuma 1 baris), jadi seluruh data di DB itu otomatis sudah scoped ke 1 cabang.
 
 ## Sumber
 
 - `app/Services/BestSellerServices.php` — `getBestSellerMenu()`, `getBestSellerMenuByVisitPurpose()`, `getBestSellerMenuByTableSection()`.
 - `app/Http/Controllers/BestSellerController.php` — `getBestSellerMenu()`, `getBestSellerMenuByVisitPurpose()`, `getBestSellerMenuByTableSection()`.
-- `routes/api.php` — group `best-seller`.
+- `routes/api.php` — di dalam group `master` (bareng `menu-list`/`category-list`/dll).
 
 ## Status
 
-**Tervalidasi live (2026-11-04)**: dites via `curl` ke POS Laravel lokal (`php artisan serve --port=8098`).
+**Tervalidasi live (2026-11-04)**: dites via `curl` ke POS Laravel lokal (`php artisan serve --port=8098`), SAAT ITU path masih `/api/best-seller/menu*` (grup sendiri) sebelum dipindah ke `/api/master/best-seller-menu*` — logic/query/response-nya tidak berubah, cuma prefix route, jadi hasil test ini tetap berlaku.
 - `GET best-seller/menu?date_start=2020-01-01&date_end=2030-01-01` → 1 item real (CAPPUCCINO, qty 2) muncul benar, semua field terisi.
 - `GET best-seller/menu-by-visit-purpose/2?...` (visit_purpose_id dari order paid yang ada) → hasil sama, filter visit_purpose bekerja.
 - `GET best-seller/menu-by-table-section/18?...` (table_section_id dari order paid yang ada) → hasil sama, filter table_section bekerja.
 - `GET best-seller/menu-by-table-section/999?...` (table_section_id gak ada datanya) → `"data": []`, tidak error.
 - `GET best-seller/menu?date_start=2099-01-01&date_end=2099-01-02` (rentang tanggal tanpa order) → `"data": []`, tidak error.
-- `php -l` bersih di 3 file yang dibuat/diedit.
+- `php -l` bersih di semua file yang dibuat/diedit, termasuk setelah route dipindah ke grup `master`.
