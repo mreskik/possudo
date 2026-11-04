@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\BranchModel;
 use App\Models\DayShiftDetailModel;
+use App\Models\MasterBranchPosPrintReportSettingModel;
 use App\Models\MasterTableSectionPrintCategorySettingModel;
 use App\Models\MasterVisitPurposeModel;
 use App\Models\SessionModel;
@@ -245,6 +246,34 @@ class PrintServices
     $print->setEmphasis(true);
     $print->text(self::kirikakan("Total Staff Payment", number_format($grandTotal, 0, ',', '.'), $charPerLine));
     $print->setEmphasis(false);
+  }
+
+  // resolvePrintReportSetting (2026-11-04): ambil baris mr_branch_pos_print_report_setting
+  // (singleton 1 baris per install, pola sama mr_branch_setting). Branch yang belum pernah
+  // sync baris ini (lama, sebelum fitur ini ada) dianggap SEMUA section tampil (true) --
+  // konsisten sama default kolom di ERP/lokal, BUKAN default false kayak mr_branch_setting.
+  // Dipakai di PrintEndDay()/PrintReportDaysift() (prefix "endday_") dan
+  // PrintCurrentShift()/PrintPerShiftv2() (prefix "shift_") buat skip section yang dimatikan.
+  private static function resolvePrintReportSetting()
+  {
+    return MasterBranchPosPrintReportSettingModel::first() ?? new MasterBranchPosPrintReportSettingModel([
+      'endday_sales_summary' => true,
+      'endday_sales_type_summary' => true,
+      'endday_order_source_summary' => true,
+      'endday_item_category_summary' => true,
+      'endday_staff_sales_summary' => true,
+      'endday_payment_method_summary' => true,
+      'endday_staff_payment_summary' => true,
+      'endday_cash_flow_summary' => true,
+      'shift_sales_summary' => true,
+      'shift_sales_type_summary' => true,
+      'shift_order_source_summary' => true,
+      'shift_item_category_summary' => true,
+      'shift_staff_sales_summary' => true,
+      'shift_payment_method_summary' => true,
+      'shift_staff_payment_summary' => true,
+      'shift_cash_flow_summary' => true,
+    ]);
   }
 
   // getLoggedInUserFullname ambil nama user yang sedang login dari bearer token request,
@@ -1611,6 +1640,7 @@ class PrintServices
     if (!$data_station) {
       return;
     }
+    $printReportSetting = self::resolvePrintReportSetting();
     // Log::info($datareport);
 
     $konektor = new WindowsPrintConnector($data_station->printer_name);
@@ -1660,126 +1690,146 @@ class PrintServices
 
 
     $print->text(self::separator("-", $charPerLine));
-    $print->feed(1);
-    $print->setJustification(Printer::JUSTIFY_CENTER);
-    $print->setEmphasis();
-    $print->text("SALES SUMMARY\n");
-    $print->setEmphasis(false);
-    $print->setJustification(Printer::JUSTIFY_LEFT);
-    $print->text("\n");
-    $sales_recap = $datareport['sales_recapitulation'];
 
-    // Total Bills / Average per Bill: index 13/14 sales_recapitulation ("Number Of Bills",
-    // "Avg Netsales Per Bill") -- udah dihitung dari dulu, cuma belum pernah dicetak.
-    $print->text(self::kirikakan("Total Bills       :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Average / Bill    :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("On Hold           :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Discount          :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("VAT               :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->setEmphasis(true);
-    $print->text(self::kirikakan("Net Sales         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Gross Sales       :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(false);
-    $print->text(self::separator("-", $charPerLine));
+    // print_report_setting (2026-11-04): tiap section di bawah dibungkus toggle
+    // mr_branch_pos_print_report_setting (prefix "endday_" -- fungsi ini struk End Day). Section
+    // yang di-skip gak nyetak judul/baris apa pun sama sekali, bukan cuma dikosongin isinya.
+    if ($printReportSetting->endday_sales_summary) {
+      $print->feed(1);
+      $print->setJustification(Printer::JUSTIFY_CENTER);
+      $print->setEmphasis();
+      $print->text("SALES SUMMARY\n");
+      $print->setEmphasis(false);
+      $print->setJustification(Printer::JUSTIFY_LEFT);
+      $print->text("\n");
+      $sales_recap = $datareport['sales_recapitulation'];
 
-    // SALES TYPE SUMMARY (baru) -- breakdown per visit_purpose (Dine In/Takeaway/dst).
-    $salesTypeRows = [];
-    foreach ($datareport['sales_by_visit_purpose'] as $item) {
-      $salesTypeRows[] = ["label" => $item->visit_purpose_name, "qty" => $item->qty, "amount" => $item->total_amount];
+      // Total Bills / Average per Bill: index 13/14 sales_recapitulation ("Number Of Bills",
+      // "Avg Netsales Per Bill") -- udah dihitung dari dulu, cuma belum pernah dicetak.
+      $print->text(self::kirikakan("Total Bills       :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Average / Bill    :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("On Hold           :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+      $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("VAT               :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+      $print->setEmphasis(true);
+      $print->text(self::kirikakan("Net Sales         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Gross Sales       :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
+      $print->setEmphasis(false);
+      $print->text(self::separator("-", $charPerLine));
     }
-    self::printBreakdownSection($print, "SALES TYPE SUMMARY", $salesTypeRows, "Total Sales Type", $charPerLine);
 
-    // ORDER SOURCE SUMMARY (baru) -- 4 kategori FIXED (pos/qr/mobile/kiosk), selalu ditampilkan
-    // semua walau salah satu belum ada transaksi (0), BUKAN cuma yang ada datanya doang.
-    $orderSourceLabels = ["pos" => "POS", "qr" => "QR Order", "mobile" => "Mobile App", "kiosk" => "Kiosk"];
-    $orderSourceByKey = [];
-    foreach ($datareport['sales_by_order_source'] as $item) {
-      $orderSourceByKey[$item->order_source] = $item;
+    if ($printReportSetting->endday_sales_type_summary) {
+      // SALES TYPE SUMMARY (baru) -- breakdown per visit_purpose (Dine In/Takeaway/dst).
+      $salesTypeRows = [];
+      foreach ($datareport['sales_by_visit_purpose'] as $item) {
+        $salesTypeRows[] = ["label" => $item->visit_purpose_name, "qty" => $item->qty, "amount" => $item->total_amount];
+      }
+      self::printBreakdownSection($print, "SALES TYPE SUMMARY", $salesTypeRows, "Total Sales Type", $charPerLine);
     }
-    $orderSourceRows = [];
-    foreach ($orderSourceLabels as $key => $label) {
-      $found = $orderSourceByKey[$key] ?? null;
-      $orderSourceRows[] = [
-        "label" => $label,
-        "qty" => $found->qty ?? 0,
-        "amount" => $found->total_amount ?? 0,
-      ];
-    }
-    self::printBreakdownSection($print, "ORDER SOURCE SUMMARY", $orderSourceRows, "Total Order Source", $charPerLine);
 
-    // ITEM CATEGORY SUMMARY -- reuse sales_by_category yang UDAH ADA (dulu section ini namanya
-    // "NET SALES BY CATEGORY", di-comment-out -- sekarang diaktifkan lagi dengan format baru).
-    $itemCategoryRows = [];
-    foreach ($datareport['sales_by_category'] as $item) {
-      $itemCategoryRows[] = ["label" => $item->category_name, "qty" => $item->qty, "amount" => $item->grand_total];
+    if ($printReportSetting->endday_order_source_summary) {
+      // ORDER SOURCE SUMMARY (baru) -- 4 kategori FIXED (pos/qr/mobile/kiosk), selalu ditampilkan
+      // semua walau salah satu belum ada transaksi (0), BUKAN cuma yang ada datanya doang.
+      $orderSourceLabels = ["pos" => "POS", "qr" => "QR Order", "mobile" => "Mobile App", "kiosk" => "Kiosk"];
+      $orderSourceByKey = [];
+      foreach ($datareport['sales_by_order_source'] as $item) {
+        $orderSourceByKey[$item->order_source] = $item;
+      }
+      $orderSourceRows = [];
+      foreach ($orderSourceLabels as $key => $label) {
+        $found = $orderSourceByKey[$key] ?? null;
+        $orderSourceRows[] = [
+          "label" => $label,
+          "qty" => $found->qty ?? 0,
+          "amount" => $found->total_amount ?? 0,
+        ];
+      }
+      self::printBreakdownSection($print, "ORDER SOURCE SUMMARY", $orderSourceRows, "Total Order Source", $charPerLine);
     }
-    self::printBreakdownSection($print, "ITEM CATEGORY SUMMARY", $itemCategoryRows, "Total Item Category", $charPerLine);
 
-    // STAFF SALES SUMMARY (baru) -- breakdown per created_by (user yang login pas order dibuat).
-    $staffRows = [];
-    foreach ($datareport['sales_by_staff'] as $item) {
-      $staffRows[] = ["label" => $item->staff_name, "qty" => $item->qty, "amount" => $item->total_amount];
+    if ($printReportSetting->endday_item_category_summary) {
+      // ITEM CATEGORY SUMMARY -- reuse sales_by_category yang UDAH ADA (dulu section ini namanya
+      // "NET SALES BY CATEGORY", di-comment-out -- sekarang diaktifkan lagi dengan format baru).
+      $itemCategoryRows = [];
+      foreach ($datareport['sales_by_category'] as $item) {
+        $itemCategoryRows[] = ["label" => $item->category_name, "qty" => $item->qty, "amount" => $item->grand_total];
+      }
+      self::printBreakdownSection($print, "ITEM CATEGORY SUMMARY", $itemCategoryRows, "Total Item Category", $charPerLine);
     }
-    self::printBreakdownSection($print, "STAFF SALES SUMMARY", $staffRows, "Total Staff Sales", $charPerLine);
 
-    // PAYMENT METHOD SUMMARY -- reuse payment_recapitulation yang UDAH ADA, sekarang pakai
-    // format+persentase yang sama kayak section breakdown lain (dulu formatnya beda sendiri).
-    $paymentRows = [];
-    foreach ($datareport['payment_recapitulation'] as $item) {
-      $paymentRows[] = ["label" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->payment_amount];
+    if ($printReportSetting->endday_staff_sales_summary) {
+      // STAFF SALES SUMMARY (baru) -- breakdown per created_by (user yang login pas order dibuat).
+      $staffRows = [];
+      foreach ($datareport['sales_by_staff'] as $item) {
+        $staffRows[] = ["label" => $item->staff_name, "qty" => $item->qty, "amount" => $item->total_amount];
+      }
+      self::printBreakdownSection($print, "STAFF SALES SUMMARY", $staffRows, "Total Staff Sales", $charPerLine);
     }
-    self::printBreakdownSection($print, "PAYMENT METHOD SUMMARY", $paymentRows, "Total Payment", $charPerLine);
 
-    // STAFF PAYMENT SUMMARY -- dikelompokkan PER STAF (2026-10-22, lihat printStaffPaymentSection()).
-    $staffPaymentRows = [];
-    foreach ($datareport['sales_by_staff_payment'] as $item) {
-      $staffPaymentRows[] = ["staff_name" => $item->staff_name, "payment_method_name" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->amount];
+    if ($printReportSetting->endday_payment_method_summary) {
+      // PAYMENT METHOD SUMMARY -- reuse payment_recapitulation yang UDAH ADA, sekarang pakai
+      // format+persentase yang sama kayak section breakdown lain (dulu formatnya beda sendiri).
+      $paymentRows = [];
+      foreach ($datareport['payment_recapitulation'] as $item) {
+        $paymentRows[] = ["label" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->payment_amount];
+      }
+      self::printBreakdownSection($print, "PAYMENT METHOD SUMMARY", $paymentRows, "Total Payment", $charPerLine);
     }
-    self::printStaffPaymentSection($print, $staffPaymentRows, $charPerLine);
 
-    // CASH FLOW SUMMARY (baru) -- starting/actual cash dari tr_dayshift (diinput manual pas
-    // Start Day/End Day), cash_in dihitung on-the-fly dari tr_order_payment metode CASH. cash_out
-    // HARDCODE 0 -- BELUM ada tabel pencatatan pengeluaran kas di sistem ini (fitur lanjutan,
-    // di luar scope sekarang), expected/variance tetap dihitung dari cash_out=0 biar formula &
-    // strukturnya udah siap begitu fitur pencatatan pengeluaran beneran ada.
-    $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
-    $cashIn = (float) ($datareport['cash_in_total'] ?? 0);
-    $cashOut = 0;
-    $expectedCash = $startingCash + $cashIn - $cashOut;
-    $actualCash = (float) ($datareport['dayshift']->dayout_total ?? 0);
-    $variance = $actualCash - $expectedCash;
-    $closingNote = $datareport['dayshift']->dayout_notes ?? '';
-
-    $print->setJustification(Printer::JUSTIFY_CENTER);
-    $print->setEmphasis(true);
-    $print->feed(1);
-    $print->text("CASH FLOW SUMMARY\n");
-    $print->setEmphasis(false);
-    $print->setJustification(Printer::JUSTIFY_LEFT);
-    $print->text("\n");
-    $print->text(self::kirikakan("Starting Cash     :", number_format($startingCash, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Cash In           :", number_format($cashIn, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Cash Out          :", number_format($cashOut, 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->text(self::kirikakan("Expected Cash     :", number_format($expectedCash, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Actual Cash       :", number_format($actualCash, 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(true);
-    $print->text(self::kirikakan("Variance (Diff)   :", number_format($variance, 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(false);
-    $print->text(self::separator("-", $charPerLine));
-    $print->text("Closing Note      :\n");
-    if ($closingNote !== '') {
-      $print->text($closingNote . "\n");
+    if ($printReportSetting->endday_staff_payment_summary) {
+      // STAFF PAYMENT SUMMARY -- dikelompokkan PER STAF (2026-10-22, lihat printStaffPaymentSection()).
+      $staffPaymentRows = [];
+      foreach ($datareport['sales_by_staff_payment'] as $item) {
+        $staffPaymentRows[] = ["staff_name" => $item->staff_name, "payment_method_name" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->amount];
+      }
+      self::printStaffPaymentSection($print, $staffPaymentRows, $charPerLine);
     }
-    $print->text(self::separator("-", $charPerLine));
+
+    if ($printReportSetting->endday_cash_flow_summary) {
+      // CASH FLOW SUMMARY (baru) -- starting/actual cash dari tr_dayshift (diinput manual pas
+      // Start Day/End Day), cash_in dihitung on-the-fly dari tr_order_payment metode CASH. cash_out
+      // HARDCODE 0 -- BELUM ada tabel pencatatan pengeluaran kas di sistem ini (fitur lanjutan,
+      // di luar scope sekarang), expected/variance tetap dihitung dari cash_out=0 biar formula &
+      // strukturnya udah siap begitu fitur pencatatan pengeluaran beneran ada.
+      $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
+      $cashIn = (float) ($datareport['cash_in_total'] ?? 0);
+      $cashOut = 0;
+      $expectedCash = $startingCash + $cashIn - $cashOut;
+      $actualCash = (float) ($datareport['dayshift']->dayout_total ?? 0);
+      $variance = $actualCash - $expectedCash;
+      $closingNote = $datareport['dayshift']->dayout_notes ?? '';
+
+      $print->setJustification(Printer::JUSTIFY_CENTER);
+      $print->setEmphasis(true);
+      $print->feed(1);
+      $print->text("CASH FLOW SUMMARY\n");
+      $print->setEmphasis(false);
+      $print->setJustification(Printer::JUSTIFY_LEFT);
+      $print->text("\n");
+      $print->text(self::kirikakan("Starting Cash     :", number_format($startingCash, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Cash In           :", number_format($cashIn, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Cash Out          :", number_format($cashOut, 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+      $print->text(self::kirikakan("Expected Cash     :", number_format($expectedCash, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Actual Cash       :", number_format($actualCash, 0, ',', '.'), $charPerLine));
+      $print->setEmphasis(true);
+      $print->text(self::kirikakan("Variance (Diff)   :", number_format($variance, 0, ',', '.'), $charPerLine));
+      $print->setEmphasis(false);
+      $print->text(self::separator("-", $charPerLine));
+      $print->text("Closing Note      :\n");
+      if ($closingNote !== '') {
+        $print->text($closingNote . "\n");
+      }
+      $print->text(self::separator("-", $charPerLine));
+    }
 
     $print->feed(1);
     $print->setJustification(Printer::JUSTIFY_CENTER);
@@ -1818,6 +1868,7 @@ class PrintServices
     if (!$data_station) {
       return;
     }
+    $printReportSetting = self::resolvePrintReportSetting();
 
     $konektor = new WindowsPrintConnector($data_station->printer_name);
     $print = new Printer($konektor);
@@ -1843,112 +1894,131 @@ class PrintServices
     $print->text("Day End          : " . $datareport['dayshift']->dayout_time . "\n");
 
     $print->text(self::separator("-", $charPerLine));
-    $print->feed(1);
-    $print->setJustification(Printer::JUSTIFY_CENTER);
-    $print->setEmphasis(true);
-    $print->text("SALES SUMMARY\n");
-    $print->setEmphasis(false);
-    $print->setJustification(Printer::JUSTIFY_LEFT);
-    $print->text("\n");
-    $sales_recap = $datareport['sales_recapitulation'];
 
-    $print->text(self::kirikakan("Total Bills       :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Average / Bill    :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("On Hold           :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Discount          :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("VAT               :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->setEmphasis(true);
-    $print->text(self::kirikakan("Net Sales         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Gross Sales       :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(false);
-    $print->text(self::separator("-", $charPerLine));
+    // print_report_setting (2026-11-04): SAMA PERSIS pola PrintEndDay() (prefix "endday_" juga
+    // -- fungsi ini struk End Day versi multi-cashier), lihat komentar lengkap di sana.
+    if ($printReportSetting->endday_sales_summary) {
+      $print->feed(1);
+      $print->setJustification(Printer::JUSTIFY_CENTER);
+      $print->setEmphasis(true);
+      $print->text("SALES SUMMARY\n");
+      $print->setEmphasis(false);
+      $print->setJustification(Printer::JUSTIFY_LEFT);
+      $print->text("\n");
+      $sales_recap = $datareport['sales_recapitulation'];
 
-    $salesTypeRows = [];
-    foreach ($datareport['sales_by_visit_purpose'] as $item) {
-      $salesTypeRows[] = ["label" => $item->visit_purpose_name, "qty" => $item->qty, "amount" => $item->total_amount];
+      $print->text(self::kirikakan("Total Bills       :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Average / Bill    :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("On Hold           :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+      $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("VAT               :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+      $print->setEmphasis(true);
+      $print->text(self::kirikakan("Net Sales         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Gross Sales       :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
+      $print->setEmphasis(false);
+      $print->text(self::separator("-", $charPerLine));
     }
-    self::printBreakdownSection($print, "SALES TYPE SUMMARY", $salesTypeRows, "Total Sales Type", $charPerLine);
 
-    $orderSourceLabels = ["pos" => "POS", "qr" => "QR Order", "mobile" => "Mobile App", "kiosk" => "Kiosk"];
-    $orderSourceByKey = [];
-    foreach ($datareport['sales_by_order_source'] as $item) {
-      $orderSourceByKey[$item->order_source] = $item;
+    if ($printReportSetting->endday_sales_type_summary) {
+      $salesTypeRows = [];
+      foreach ($datareport['sales_by_visit_purpose'] as $item) {
+        $salesTypeRows[] = ["label" => $item->visit_purpose_name, "qty" => $item->qty, "amount" => $item->total_amount];
+      }
+      self::printBreakdownSection($print, "SALES TYPE SUMMARY", $salesTypeRows, "Total Sales Type", $charPerLine);
     }
-    $orderSourceRows = [];
-    foreach ($orderSourceLabels as $key => $label) {
-      $found = $orderSourceByKey[$key] ?? null;
-      $orderSourceRows[] = [
-        "label" => $label,
-        "qty" => $found->qty ?? 0,
-        "amount" => $found->total_amount ?? 0,
-      ];
-    }
-    self::printBreakdownSection($print, "ORDER SOURCE SUMMARY", $orderSourceRows, "Total Order Source", $charPerLine);
 
-    $itemCategoryRows = [];
-    foreach ($datareport['sales_by_category'] as $item) {
-      $itemCategoryRows[] = ["label" => $item->category_name, "qty" => $item->qty, "amount" => $item->grand_total];
+    if ($printReportSetting->endday_order_source_summary) {
+      $orderSourceLabels = ["pos" => "POS", "qr" => "QR Order", "mobile" => "Mobile App", "kiosk" => "Kiosk"];
+      $orderSourceByKey = [];
+      foreach ($datareport['sales_by_order_source'] as $item) {
+        $orderSourceByKey[$item->order_source] = $item;
+      }
+      $orderSourceRows = [];
+      foreach ($orderSourceLabels as $key => $label) {
+        $found = $orderSourceByKey[$key] ?? null;
+        $orderSourceRows[] = [
+          "label" => $label,
+          "qty" => $found->qty ?? 0,
+          "amount" => $found->total_amount ?? 0,
+        ];
+      }
+      self::printBreakdownSection($print, "ORDER SOURCE SUMMARY", $orderSourceRows, "Total Order Source", $charPerLine);
     }
-    self::printBreakdownSection($print, "ITEM CATEGORY SUMMARY", $itemCategoryRows, "Total Item Category", $charPerLine);
 
-    $staffRows = [];
-    foreach ($datareport['sales_by_staff'] as $item) {
-      $staffRows[] = ["label" => $item->staff_name, "qty" => $item->qty, "amount" => $item->total_amount];
+    if ($printReportSetting->endday_item_category_summary) {
+      $itemCategoryRows = [];
+      foreach ($datareport['sales_by_category'] as $item) {
+        $itemCategoryRows[] = ["label" => $item->category_name, "qty" => $item->qty, "amount" => $item->grand_total];
+      }
+      self::printBreakdownSection($print, "ITEM CATEGORY SUMMARY", $itemCategoryRows, "Total Item Category", $charPerLine);
     }
-    self::printBreakdownSection($print, "STAFF SALES SUMMARY", $staffRows, "Total Staff Sales", $charPerLine);
 
-    $paymentRows = [];
-    foreach ($datareport['payment_recapitulation'] as $item) {
-      $paymentRows[] = ["label" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->payment_amount];
+    if ($printReportSetting->endday_staff_sales_summary) {
+      $staffRows = [];
+      foreach ($datareport['sales_by_staff'] as $item) {
+        $staffRows[] = ["label" => $item->staff_name, "qty" => $item->qty, "amount" => $item->total_amount];
+      }
+      self::printBreakdownSection($print, "STAFF SALES SUMMARY", $staffRows, "Total Staff Sales", $charPerLine);
     }
-    self::printBreakdownSection($print, "PAYMENT METHOD SUMMARY", $paymentRows, "Total Payment", $charPerLine);
 
-    // STAFF PAYMENT SUMMARY -- dikelompokkan PER STAF, lihat printStaffPaymentSection() (2026-10-22).
-    $staffPaymentRows = [];
-    foreach ($datareport['sales_by_staff_payment'] as $item) {
-      $staffPaymentRows[] = ["staff_name" => $item->staff_name, "payment_method_name" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->amount];
+    if ($printReportSetting->endday_payment_method_summary) {
+      $paymentRows = [];
+      foreach ($datareport['payment_recapitulation'] as $item) {
+        $paymentRows[] = ["label" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->payment_amount];
+      }
+      self::printBreakdownSection($print, "PAYMENT METHOD SUMMARY", $paymentRows, "Total Payment", $charPerLine);
     }
-    self::printStaffPaymentSection($print, $staffPaymentRows, $charPerLine);
 
-    // CASH FLOW SUMMARY -- SAMA PERSIS pola PrintEndDay(), lihat komentar di sana.
-    $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
-    $cashIn = (float) ($datareport['cash_in_total'] ?? 0);
-    $cashOut = 0;
-    $expectedCash = $startingCash + $cashIn - $cashOut;
-    $actualCash = (float) ($datareport['dayshift']->dayout_total ?? 0);
-    $variance = $actualCash - $expectedCash;
-    $closingNote = $datareport['dayshift']->dayout_notes ?? '';
-
-    $print->setJustification(Printer::JUSTIFY_CENTER);
-    $print->setEmphasis(true);
-    $print->feed(1);
-    $print->text("CASH FLOW SUMMARY\n");
-    $print->setEmphasis(false);
-    $print->setJustification(Printer::JUSTIFY_LEFT);
-    $print->text("\n");
-    $print->text(self::kirikakan("Starting Cash     :", number_format($startingCash, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Cash In           :", number_format($cashIn, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Cash Out          :", number_format($cashOut, 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->text(self::kirikakan("Expected Cash     :", number_format($expectedCash, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Actual Cash       :", number_format($actualCash, 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(true);
-    $print->text(self::kirikakan("Variance (Diff)   :", number_format($variance, 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(false);
-    $print->text(self::separator("-", $charPerLine));
-    $print->text("Closing Note      :\n");
-    if ($closingNote !== '') {
-      $print->text($closingNote . "\n");
+    if ($printReportSetting->endday_staff_payment_summary) {
+      // STAFF PAYMENT SUMMARY -- dikelompokkan PER STAF, lihat printStaffPaymentSection() (2026-10-22).
+      $staffPaymentRows = [];
+      foreach ($datareport['sales_by_staff_payment'] as $item) {
+        $staffPaymentRows[] = ["staff_name" => $item->staff_name, "payment_method_name" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->amount];
+      }
+      self::printStaffPaymentSection($print, $staffPaymentRows, $charPerLine);
     }
-    $print->text(self::separator("-", $charPerLine));
+
+    if ($printReportSetting->endday_cash_flow_summary) {
+      // CASH FLOW SUMMARY -- SAMA PERSIS pola PrintEndDay(), lihat komentar di sana.
+      $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
+      $cashIn = (float) ($datareport['cash_in_total'] ?? 0);
+      $cashOut = 0;
+      $expectedCash = $startingCash + $cashIn - $cashOut;
+      $actualCash = (float) ($datareport['dayshift']->dayout_total ?? 0);
+      $variance = $actualCash - $expectedCash;
+      $closingNote = $datareport['dayshift']->dayout_notes ?? '';
+
+      $print->setJustification(Printer::JUSTIFY_CENTER);
+      $print->setEmphasis(true);
+      $print->feed(1);
+      $print->text("CASH FLOW SUMMARY\n");
+      $print->setEmphasis(false);
+      $print->setJustification(Printer::JUSTIFY_LEFT);
+      $print->text("\n");
+      $print->text(self::kirikakan("Starting Cash     :", number_format($startingCash, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Cash In           :", number_format($cashIn, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Cash Out          :", number_format($cashOut, 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+      $print->text(self::kirikakan("Expected Cash     :", number_format($expectedCash, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Actual Cash       :", number_format($actualCash, 0, ',', '.'), $charPerLine));
+      $print->setEmphasis(true);
+      $print->text(self::kirikakan("Variance (Diff)   :", number_format($variance, 0, ',', '.'), $charPerLine));
+      $print->setEmphasis(false);
+      $print->text(self::separator("-", $charPerLine));
+      $print->text("Closing Note      :\n");
+      if ($closingNote !== '') {
+        $print->text($closingNote . "\n");
+      }
+      $print->text(self::separator("-", $charPerLine));
+    }
 
     $print->feed(1);
     $print->setJustification(Printer::JUSTIFY_CENTER);
@@ -1978,6 +2048,7 @@ class PrintServices
     if (!$data_station) {
       return;
     }
+    $printReportSetting = self::resolvePrintReportSetting();
     // Log::info($datareport);
 
     $konektor = new WindowsPrintConnector($data_station->printer_name);
@@ -2040,118 +2111,137 @@ class PrintServices
 
 
     $print->text(self::separator("-", $charPerLine));
-    $print->feed(1);
-    $print->setJustification(Printer::JUSTIFY_CENTER);
-    $print->setEmphasis();
-    $print->text("SALES SUMMARY\n");
-    $print->setEmphasis(false);
-    $print->setJustification(Printer::JUSTIFY_LEFT);
-    $print->text("\n");
-    $sales_recap = $datareport['sales_recapitulation'];
 
-    $print->text(self::kirikakan("Total Bills       :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Average / Bill    :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("On Hold           :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Discount          :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("VAT               :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->setEmphasis(true);
-    $print->text(self::kirikakan("Net Sales         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Gross Sales       :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(false);
-    $print->text(self::separator("-", $charPerLine));
+    // print_report_setting (2026-11-04): prefix "shift_" -- fungsi ini struk Shift Report
+    // (shift MASIH BERJALAN). Lihat komentar lengkap di PrintEndDay().
+    if ($printReportSetting->shift_sales_summary) {
+      $print->feed(1);
+      $print->setJustification(Printer::JUSTIFY_CENTER);
+      $print->setEmphasis();
+      $print->text("SALES SUMMARY\n");
+      $print->setEmphasis(false);
+      $print->setJustification(Printer::JUSTIFY_LEFT);
+      $print->text("\n");
+      $sales_recap = $datareport['sales_recapitulation'];
 
-    $salesTypeRows = [];
-    foreach ($datareport['sales_by_visit_purpose'] as $item) {
-      $salesTypeRows[] = ["label" => $item->visit_purpose_name, "qty" => $item->qty, "amount" => $item->total_amount];
+      $print->text(self::kirikakan("Total Bills       :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Average / Bill    :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("On Hold           :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+      $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("VAT               :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+      $print->setEmphasis(true);
+      $print->text(self::kirikakan("Net Sales         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Gross Sales       :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
+      $print->setEmphasis(false);
+      $print->text(self::separator("-", $charPerLine));
     }
-    self::printBreakdownSection($print, "SALES TYPE SUMMARY", $salesTypeRows, "Total Sales Type", $charPerLine);
 
-    $orderSourceLabels = ["pos" => "POS", "qr" => "QR Order", "mobile" => "Mobile App", "kiosk" => "Kiosk"];
-    $orderSourceByKey = [];
-    foreach ($datareport['sales_by_order_source'] as $item) {
-      $orderSourceByKey[$item->order_source] = $item;
+    if ($printReportSetting->shift_sales_type_summary) {
+      $salesTypeRows = [];
+      foreach ($datareport['sales_by_visit_purpose'] as $item) {
+        $salesTypeRows[] = ["label" => $item->visit_purpose_name, "qty" => $item->qty, "amount" => $item->total_amount];
+      }
+      self::printBreakdownSection($print, "SALES TYPE SUMMARY", $salesTypeRows, "Total Sales Type", $charPerLine);
     }
-    $orderSourceRows = [];
-    foreach ($orderSourceLabels as $key => $label) {
-      $found = $orderSourceByKey[$key] ?? null;
-      $orderSourceRows[] = [
-        "label" => $label,
-        "qty" => $found->qty ?? 0,
-        "amount" => $found->total_amount ?? 0,
-      ];
-    }
-    self::printBreakdownSection($print, "ORDER SOURCE SUMMARY", $orderSourceRows, "Total Order Source", $charPerLine);
 
-    $itemCategoryRows = [];
-    foreach ($datareport['sales_by_category'] as $item) {
-      $itemCategoryRows[] = ["label" => $item->category_name, "qty" => $item->qty, "amount" => $item->grand_total];
+    if ($printReportSetting->shift_order_source_summary) {
+      $orderSourceLabels = ["pos" => "POS", "qr" => "QR Order", "mobile" => "Mobile App", "kiosk" => "Kiosk"];
+      $orderSourceByKey = [];
+      foreach ($datareport['sales_by_order_source'] as $item) {
+        $orderSourceByKey[$item->order_source] = $item;
+      }
+      $orderSourceRows = [];
+      foreach ($orderSourceLabels as $key => $label) {
+        $found = $orderSourceByKey[$key] ?? null;
+        $orderSourceRows[] = [
+          "label" => $label,
+          "qty" => $found->qty ?? 0,
+          "amount" => $found->total_amount ?? 0,
+        ];
+      }
+      self::printBreakdownSection($print, "ORDER SOURCE SUMMARY", $orderSourceRows, "Total Order Source", $charPerLine);
     }
-    self::printBreakdownSection($print, "ITEM CATEGORY SUMMARY", $itemCategoryRows, "Total Item Category", $charPerLine);
 
-    $staffRows = [];
-    foreach ($datareport['sales_by_staff'] as $item) {
-      $staffRows[] = ["label" => $item->staff_name, "qty" => $item->qty, "amount" => $item->total_amount];
+    if ($printReportSetting->shift_item_category_summary) {
+      $itemCategoryRows = [];
+      foreach ($datareport['sales_by_category'] as $item) {
+        $itemCategoryRows[] = ["label" => $item->category_name, "qty" => $item->qty, "amount" => $item->grand_total];
+      }
+      self::printBreakdownSection($print, "ITEM CATEGORY SUMMARY", $itemCategoryRows, "Total Item Category", $charPerLine);
     }
-    self::printBreakdownSection($print, "STAFF SALES SUMMARY", $staffRows, "Total Staff Sales", $charPerLine);
 
-    $paymentRows = [];
-    foreach ($datareport['payment_recapitulation'] as $item) {
-      $paymentRows[] = ["label" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->payment_amount];
+    if ($printReportSetting->shift_staff_sales_summary) {
+      $staffRows = [];
+      foreach ($datareport['sales_by_staff'] as $item) {
+        $staffRows[] = ["label" => $item->staff_name, "qty" => $item->qty, "amount" => $item->total_amount];
+      }
+      self::printBreakdownSection($print, "STAFF SALES SUMMARY", $staffRows, "Total Staff Sales", $charPerLine);
     }
-    self::printBreakdownSection($print, "PAYMENT METHOD SUMMARY", $paymentRows, "Total Payment", $charPerLine);
 
-    // STAFF PAYMENT SUMMARY -- dikelompokkan PER STAF, lihat printStaffPaymentSection() (2026-10-22).
-    $staffPaymentRows = [];
-    foreach ($datareport['sales_by_staff_payment'] as $item) {
-      $staffPaymentRows[] = ["staff_name" => $item->staff_name, "payment_method_name" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->amount];
+    if ($printReportSetting->shift_payment_method_summary) {
+      $paymentRows = [];
+      foreach ($datareport['payment_recapitulation'] as $item) {
+        $paymentRows[] = ["label" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->payment_amount];
+      }
+      self::printBreakdownSection($print, "PAYMENT METHOD SUMMARY", $paymentRows, "Total Payment", $charPerLine);
     }
-    self::printStaffPaymentSection($print, $staffPaymentRows, $charPerLine);
 
-    // CASH FLOW SUMMARY -- SAMA POLA PrintEndDay()/PrintReportDaysift(), TAPI starting_cash/
-    // actual_cash di sini SUMBERNYA TETAP LEVEL DAYSHIFT (tr_dayshift.dayin_total/dayout_total,
-    // BUKAN per-shift -- gak ada kolom "kas awal per shift" di skema, cuma "kas awal per hari").
-    // Konsekuensinya: kalau 1 hari ada beberapa shift, Starting Cash bakal SAMA di laporan tiap
-    // shift-nya. Actual Cash cuma keisi kalau harinya UDAH di-EndDay (dayout_total baru diisi
-    // pas EndDay) -- PrintCurrentShift() (shift MASIH BERJALAN) otomatis selalu dapet 0 di sini,
-    // itu bukan bug, memang belum ada nilai buat "kas akhir" selama hari belum ditutup.
-    $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
-    $cashIn = (float) ($datareport['cash_in_total'] ?? 0);
-    $cashOut = 0;
-    $expectedCash = $startingCash + $cashIn - $cashOut;
-    $actualCash = (float) ($datareport['dayshift']->dayout_total ?? 0);
-    $variance = $actualCash - $expectedCash;
-    $closingNote = $datareport['dayshift']->dayout_notes ?? '';
-
-    $print->setJustification(Printer::JUSTIFY_CENTER);
-    $print->setEmphasis(true);
-    $print->feed(1);
-    $print->text("CASH FLOW SUMMARY\n");
-    $print->setEmphasis(false);
-    $print->setJustification(Printer::JUSTIFY_LEFT);
-    $print->text("\n");
-    $print->text(self::kirikakan("Starting Cash     :", number_format($startingCash, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Cash In           :", number_format($cashIn, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Cash Out          :", number_format($cashOut, 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->text(self::kirikakan("Expected Cash     :", number_format($expectedCash, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Actual Cash       :", number_format($actualCash, 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(true);
-    $print->text(self::kirikakan("Variance (Diff)   :", number_format($variance, 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(false);
-    $print->text(self::separator("-", $charPerLine));
-    $print->text("Closing Note      :\n");
-    if ($closingNote !== '') {
-      $print->text($closingNote . "\n");
+    if ($printReportSetting->shift_staff_payment_summary) {
+      // STAFF PAYMENT SUMMARY -- dikelompokkan PER STAF, lihat printStaffPaymentSection() (2026-10-22).
+      $staffPaymentRows = [];
+      foreach ($datareport['sales_by_staff_payment'] as $item) {
+        $staffPaymentRows[] = ["staff_name" => $item->staff_name, "payment_method_name" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->amount];
+      }
+      self::printStaffPaymentSection($print, $staffPaymentRows, $charPerLine);
     }
-    $print->text(self::separator("-", $charPerLine));
+
+    if ($printReportSetting->shift_cash_flow_summary) {
+      // CASH FLOW SUMMARY -- SAMA POLA PrintEndDay()/PrintReportDaysift(), TAPI starting_cash/
+      // actual_cash di sini SUMBERNYA TETAP LEVEL DAYSHIFT (tr_dayshift.dayin_total/dayout_total,
+      // BUKAN per-shift -- gak ada kolom "kas awal per shift" di skema, cuma "kas awal per hari").
+      // Konsekuensinya: kalau 1 hari ada beberapa shift, Starting Cash bakal SAMA di laporan tiap
+      // shift-nya. Actual Cash cuma keisi kalau harinya UDAH di-EndDay (dayout_total baru diisi
+      // pas EndDay) -- PrintCurrentShift() (shift MASIH BERJALAN) otomatis selalu dapet 0 di sini,
+      // itu bukan bug, memang belum ada nilai buat "kas akhir" selama hari belum ditutup.
+      $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
+      $cashIn = (float) ($datareport['cash_in_total'] ?? 0);
+      $cashOut = 0;
+      $expectedCash = $startingCash + $cashIn - $cashOut;
+      $actualCash = (float) ($datareport['dayshift']->dayout_total ?? 0);
+      $variance = $actualCash - $expectedCash;
+      $closingNote = $datareport['dayshift']->dayout_notes ?? '';
+
+      $print->setJustification(Printer::JUSTIFY_CENTER);
+      $print->setEmphasis(true);
+      $print->feed(1);
+      $print->text("CASH FLOW SUMMARY\n");
+      $print->setEmphasis(false);
+      $print->setJustification(Printer::JUSTIFY_LEFT);
+      $print->text("\n");
+      $print->text(self::kirikakan("Starting Cash     :", number_format($startingCash, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Cash In           :", number_format($cashIn, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Cash Out          :", number_format($cashOut, 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+      $print->text(self::kirikakan("Expected Cash     :", number_format($expectedCash, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Actual Cash       :", number_format($actualCash, 0, ',', '.'), $charPerLine));
+      $print->setEmphasis(true);
+      $print->text(self::kirikakan("Variance (Diff)   :", number_format($variance, 0, ',', '.'), $charPerLine));
+      $print->setEmphasis(false);
+      $print->text(self::separator("-", $charPerLine));
+      $print->text("Closing Note      :\n");
+      if ($closingNote !== '') {
+        $print->text($closingNote . "\n");
+      }
+      $print->text(self::separator("-", $charPerLine));
+    }
 
     $print->feed(1);
     $print->setJustification(Printer::JUSTIFY_CENTER);
@@ -2183,6 +2273,7 @@ class PrintServices
     if (!$data_station) {
       return;
     }
+    $printReportSetting = self::resolvePrintReportSetting();
     // Log::info($datareport);
 
     $konektor = new WindowsPrintConnector($data_station->printer_name);
@@ -2259,114 +2350,133 @@ class PrintServices
 
 
     $print->text(self::separator("-", $charPerLine));
-    $print->feed(1);
-    $print->setJustification(Printer::JUSTIFY_CENTER);
-    $print->setEmphasis();
-    $print->text("SALES SUMMARY\n");
-    $print->setEmphasis(false);
-    $print->setJustification(Printer::JUSTIFY_LEFT);
-    $print->text("\n");
-    $sales_recap = $datareport['sales_recapitulation'];
 
-    $print->text(self::kirikakan("Total Bills       :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Average / Bill    :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("On Hold           :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Discount          :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("VAT               :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->setEmphasis(true);
-    $print->text(self::kirikakan("Net Sales         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Gross Sales       :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(false);
-    $print->text(self::separator("-", $charPerLine));
+    // print_report_setting (2026-11-04): prefix "shift_" -- SAMA PERSIS pola
+    // PrintCurrentShift(), lihat komentar lengkap di PrintEndDay().
+    if ($printReportSetting->shift_sales_summary) {
+      $print->feed(1);
+      $print->setJustification(Printer::JUSTIFY_CENTER);
+      $print->setEmphasis();
+      $print->text("SALES SUMMARY\n");
+      $print->setEmphasis(false);
+      $print->setJustification(Printer::JUSTIFY_LEFT);
+      $print->text("\n");
+      $sales_recap = $datareport['sales_recapitulation'];
 
-    $salesTypeRows = [];
-    foreach ($datareport['sales_by_visit_purpose'] as $item) {
-      $salesTypeRows[] = ["label" => $item->visit_purpose_name, "qty" => $item->qty, "amount" => $item->total_amount];
+      $print->text(self::kirikakan("Total Bills       :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Average / Bill    :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("On Hold           :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+      $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("VAT               :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+      $print->setEmphasis(true);
+      $print->text(self::kirikakan("Net Sales         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Gross Sales       :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
+      $print->setEmphasis(false);
+      $print->text(self::separator("-", $charPerLine));
     }
-    self::printBreakdownSection($print, "SALES TYPE SUMMARY", $salesTypeRows, "Total Sales Type", $charPerLine);
 
-    $orderSourceLabels = ["pos" => "POS", "qr" => "QR Order", "mobile" => "Mobile App", "kiosk" => "Kiosk"];
-    $orderSourceByKey = [];
-    foreach ($datareport['sales_by_order_source'] as $item) {
-      $orderSourceByKey[$item->order_source] = $item;
+    if ($printReportSetting->shift_sales_type_summary) {
+      $salesTypeRows = [];
+      foreach ($datareport['sales_by_visit_purpose'] as $item) {
+        $salesTypeRows[] = ["label" => $item->visit_purpose_name, "qty" => $item->qty, "amount" => $item->total_amount];
+      }
+      self::printBreakdownSection($print, "SALES TYPE SUMMARY", $salesTypeRows, "Total Sales Type", $charPerLine);
     }
-    $orderSourceRows = [];
-    foreach ($orderSourceLabels as $key => $label) {
-      $found = $orderSourceByKey[$key] ?? null;
-      $orderSourceRows[] = [
-        "label" => $label,
-        "qty" => $found->qty ?? 0,
-        "amount" => $found->total_amount ?? 0,
-      ];
-    }
-    self::printBreakdownSection($print, "ORDER SOURCE SUMMARY", $orderSourceRows, "Total Order Source", $charPerLine);
 
-    $itemCategoryRows = [];
-    foreach ($datareport['sales_by_category'] as $item) {
-      $itemCategoryRows[] = ["label" => $item->category_name, "qty" => $item->qty, "amount" => $item->grand_total];
+    if ($printReportSetting->shift_order_source_summary) {
+      $orderSourceLabels = ["pos" => "POS", "qr" => "QR Order", "mobile" => "Mobile App", "kiosk" => "Kiosk"];
+      $orderSourceByKey = [];
+      foreach ($datareport['sales_by_order_source'] as $item) {
+        $orderSourceByKey[$item->order_source] = $item;
+      }
+      $orderSourceRows = [];
+      foreach ($orderSourceLabels as $key => $label) {
+        $found = $orderSourceByKey[$key] ?? null;
+        $orderSourceRows[] = [
+          "label" => $label,
+          "qty" => $found->qty ?? 0,
+          "amount" => $found->total_amount ?? 0,
+        ];
+      }
+      self::printBreakdownSection($print, "ORDER SOURCE SUMMARY", $orderSourceRows, "Total Order Source", $charPerLine);
     }
-    self::printBreakdownSection($print, "ITEM CATEGORY SUMMARY", $itemCategoryRows, "Total Item Category", $charPerLine);
 
-    $staffRows = [];
-    foreach ($datareport['sales_by_staff'] as $item) {
-      $staffRows[] = ["label" => $item->staff_name, "qty" => $item->qty, "amount" => $item->total_amount];
+    if ($printReportSetting->shift_item_category_summary) {
+      $itemCategoryRows = [];
+      foreach ($datareport['sales_by_category'] as $item) {
+        $itemCategoryRows[] = ["label" => $item->category_name, "qty" => $item->qty, "amount" => $item->grand_total];
+      }
+      self::printBreakdownSection($print, "ITEM CATEGORY SUMMARY", $itemCategoryRows, "Total Item Category", $charPerLine);
     }
-    self::printBreakdownSection($print, "STAFF SALES SUMMARY", $staffRows, "Total Staff Sales", $charPerLine);
 
-    $paymentRows = [];
-    foreach ($datareport['payment_recapitulation'] as $item) {
-      $paymentRows[] = ["label" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->payment_amount];
+    if ($printReportSetting->shift_staff_sales_summary) {
+      $staffRows = [];
+      foreach ($datareport['sales_by_staff'] as $item) {
+        $staffRows[] = ["label" => $item->staff_name, "qty" => $item->qty, "amount" => $item->total_amount];
+      }
+      self::printBreakdownSection($print, "STAFF SALES SUMMARY", $staffRows, "Total Staff Sales", $charPerLine);
     }
-    self::printBreakdownSection($print, "PAYMENT METHOD SUMMARY", $paymentRows, "Total Payment", $charPerLine);
 
-    // STAFF PAYMENT SUMMARY -- dikelompokkan PER STAF, lihat printStaffPaymentSection() (2026-10-22).
-    $staffPaymentRows = [];
-    foreach ($datareport['sales_by_staff_payment'] as $item) {
-      $staffPaymentRows[] = ["staff_name" => $item->staff_name, "payment_method_name" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->amount];
+    if ($printReportSetting->shift_payment_method_summary) {
+      $paymentRows = [];
+      foreach ($datareport['payment_recapitulation'] as $item) {
+        $paymentRows[] = ["label" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->payment_amount];
+      }
+      self::printBreakdownSection($print, "PAYMENT METHOD SUMMARY", $paymentRows, "Total Payment", $charPerLine);
     }
-    self::printStaffPaymentSection($print, $staffPaymentRows, $charPerLine);
 
-    // CASH FLOW SUMMARY -- SAMA PERSIS pola PrintCurrentShift(), lihat komentar di sana.
-    // Starting/Actual Cash level dayshift (bukan per-shift), Actual Cash bisa 0 kalau harinya
-    // belum di-EndDay pas shift ini dicetak.
-    $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
-    $cashIn = (float) ($datareport['cash_in_total'] ?? 0);
-    $cashOut = 0;
-    $expectedCash = $startingCash + $cashIn - $cashOut;
-    $actualCash = (float) ($datareport['dayshift']->dayout_total ?? 0);
-    $variance = $actualCash - $expectedCash;
-    $closingNote = $datareport['dayshift']->dayout_notes ?? '';
-
-    $print->setJustification(Printer::JUSTIFY_CENTER);
-    $print->setEmphasis(true);
-    $print->feed(1);
-    $print->text("CASH FLOW SUMMARY\n");
-    $print->setEmphasis(false);
-    $print->setJustification(Printer::JUSTIFY_LEFT);
-    $print->text("\n");
-    $print->text(self::kirikakan("Starting Cash     :", number_format($startingCash, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Cash In           :", number_format($cashIn, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Cash Out          :", number_format($cashOut, 0, ',', '.'), $charPerLine));
-    $print->text(self::separator("-", $charPerLine));
-    $print->text(self::kirikakan("Expected Cash     :", number_format($expectedCash, 0, ',', '.'), $charPerLine));
-    $print->text(self::kirikakan("Actual Cash       :", number_format($actualCash, 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(true);
-    $print->text(self::kirikakan("Variance (Diff)   :", number_format($variance, 0, ',', '.'), $charPerLine));
-    $print->setEmphasis(false);
-    $print->text(self::separator("-", $charPerLine));
-    $print->text("Closing Note      :\n");
-    if ($closingNote !== '') {
-      $print->text($closingNote . "\n");
+    if ($printReportSetting->shift_staff_payment_summary) {
+      // STAFF PAYMENT SUMMARY -- dikelompokkan PER STAF, lihat printStaffPaymentSection() (2026-10-22).
+      $staffPaymentRows = [];
+      foreach ($datareport['sales_by_staff_payment'] as $item) {
+        $staffPaymentRows[] = ["staff_name" => $item->staff_name, "payment_method_name" => $item->payment_method_name, "qty" => $item->qty, "amount" => $item->amount];
+      }
+      self::printStaffPaymentSection($print, $staffPaymentRows, $charPerLine);
     }
-    $print->text(self::separator("-", $charPerLine));
+
+    if ($printReportSetting->shift_cash_flow_summary) {
+      // CASH FLOW SUMMARY -- SAMA PERSIS pola PrintCurrentShift(), lihat komentar di sana.
+      // Starting/Actual Cash level dayshift (bukan per-shift), Actual Cash bisa 0 kalau harinya
+      // belum di-EndDay pas shift ini dicetak.
+      $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
+      $cashIn = (float) ($datareport['cash_in_total'] ?? 0);
+      $cashOut = 0;
+      $expectedCash = $startingCash + $cashIn - $cashOut;
+      $actualCash = (float) ($datareport['dayshift']->dayout_total ?? 0);
+      $variance = $actualCash - $expectedCash;
+      $closingNote = $datareport['dayshift']->dayout_notes ?? '';
+
+      $print->setJustification(Printer::JUSTIFY_CENTER);
+      $print->setEmphasis(true);
+      $print->feed(1);
+      $print->text("CASH FLOW SUMMARY\n");
+      $print->setEmphasis(false);
+      $print->setJustification(Printer::JUSTIFY_LEFT);
+      $print->text("\n");
+      $print->text(self::kirikakan("Starting Cash     :", number_format($startingCash, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Cash In           :", number_format($cashIn, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Cash Out          :", number_format($cashOut, 0, ',', '.'), $charPerLine));
+      $print->text(self::separator("-", $charPerLine));
+      $print->text(self::kirikakan("Expected Cash     :", number_format($expectedCash, 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Actual Cash       :", number_format($actualCash, 0, ',', '.'), $charPerLine));
+      $print->setEmphasis(true);
+      $print->text(self::kirikakan("Variance (Diff)   :", number_format($variance, 0, ',', '.'), $charPerLine));
+      $print->setEmphasis(false);
+      $print->text(self::separator("-", $charPerLine));
+      $print->text("Closing Note      :\n");
+      if ($closingNote !== '') {
+        $print->text($closingNote . "\n");
+      }
+      $print->text(self::separator("-", $charPerLine));
+    }
 
     $print->feed(1);
     $print->setJustification(Printer::JUSTIFY_CENTER);

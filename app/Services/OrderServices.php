@@ -365,7 +365,11 @@ class OrderServices
 
         // order dari Kiosk belum tentu jadi dimasak (nunggu bayar dulu) -- print kitchen-nya
         // ditunda sampai payment sukses (lihat PaymentServices::SavePayment()), bukan di sini.
-        if ($order['order_source'] !== 'kiosk') {
+        // print_checker_on (2026-11-04): print checker SEKARANG cuma jalan di save-order kalau
+        // table section-nya di-set 'save_order' (default) -- kalau 'save_payment', print checker
+        // dipindah ke PaymentServices::SavePayment() (sama pola kayak Kiosk, tapi general per
+        // table section, bukan cuma Kiosk doang).
+        if ($order['order_source'] !== 'kiosk' && $tablesectionnow->print_checker_on === 'save_order') {
           PrintServices::PrintTableChecker2($tablesectionnow->id, $order_number);
           PrintServices::PrintMainChecker2($tablesectionnow->id, $order_number);
           PrintServices::PrintPriparationStation($tablesectionnow->id, $order_number);
@@ -564,7 +568,10 @@ class OrderServices
           TrOrderDetailPackageModel::insert($order_detail_package);
 
           // sama kayak order baru -- Kiosk nunda print kitchen sampai payment sukses.
-          if ($current_table_order->order_source !== 'kiosk') {
+          // print_checker_on (2026-11-04): sama kayak jalur order baru di atas -- cuma jalan di
+          // save-order kalau table section-nya 'save_order' (default).
+          $tablesection_current_order = TableSectionModel::where('id', $current_table_order->table_section_id)->first();
+          if ($current_table_order->order_source !== 'kiosk' && $tablesection_current_order && $tablesection_current_order->print_checker_on === 'save_order') {
             PrintServices::PrintTableChecker2($current_table_order->table_section_id, $current_table_order->order_number);
             PrintServices::PrintMainChecker2($current_table_order->table_section_id, $current_table_order->order_number);
             PrintServices::PrintPriparationStation($current_table_order->table_section_id, $current_table_order->order_number);

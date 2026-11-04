@@ -137,6 +137,31 @@ Dicek **sekali** di awal `SaveOrder()` (bukan per-baris), kumpulkan semua `promo
 
 **Yang TIDAK divalidasi ulang server**: target promo (`promo_for`/`targetIds`), `min_buy_amount`, `apply_limit_per_day`/`apply_limit_per_item`, nilai diskon itu sendiri. Kalau frontend baru salah hitung atau sengaja dimanipulasi, server akan menyimpan nilai yang salah tanpa mendeteksinya — **kecuali** 2 barrier di atas.
 
+## Print Checker — kapan di-trigger (2026-11-04)
+
+3 fungsi print checker (`PrintServices::PrintTableChecker2()`, `PrintMainChecker2()`, `PrintPriparationStation()`) dipanggil bareng di 2 titik di `SaveOrder()` (order baru DAN tambah item ke order existing) — tapi **sekarang kondisional**, berdasar kolom baru `mr_table_section.print_checker_on` (`'save_order'` atau `'save_payment'`, default `'save_order'`, ditarik dari ERP `master_table_section.print_checker_on` lewat sync, lihat `DOKUMENTASI API/backend/MASTER/MASTER TABLE SECTION.md` repo sudocore2):
+
+```php
+if ($order_source !== 'kiosk' && $tablesection->print_checker_on === 'save_order') {
+  // PrintTableChecker2() + PrintMainChecker2() + PrintPriparationStation()
+}
+```
+
+- **`print_checker_on === 'save_order'`** (default) — print checker jalan **di sini** (`SaveOrder()`), SAMA seperti perilaku lama sebelum field ini ada.
+- **`print_checker_on === 'save_payment'`** — print checker **TIDAK** jalan di `SaveOrder()`, dipindah ke [`../PAYMENT/SAVE EDIT VIEW PAYMENT.md`](../PAYMENT/SAVE%20EDIT%20VIEW%20PAYMENT.md) (`PaymentServices::SavePayment()`) — baru nge-print pas pembayaran sukses, bukan pas order disimpan.
+- **Kiosk** — independen dari `print_checker_on`, **selalu** ditunda ke `SavePayment()` (perilaku lama, sudah ada sebelum field ini — nunggu kepastian bayar dulu karena order Kiosk belum tentu jadi dibayar).
+
+4 kombinasi hasil (`order_source` × `print_checker_on`):
+
+| order_source | print_checker_on | Print di `SaveOrder()`? | Print di `SavePayment()`? |
+|---|---|---|---|
+| pos (non-kiosk) | `save_order` | ✅ | ❌ |
+| pos (non-kiosk) | `save_payment` | ❌ | ✅ |
+| kiosk | `save_order` | ❌ | ✅ |
+| kiosk | `save_payment` | ❌ | ✅ |
+
+**Tervalidasi (2026-11-04)**: logic kondisi disimulasikan langsung pakai `TableSectionModel` real (table section id 27) dengan tiap kombinasi `print_checker_on`/`order_source` — hasil cocok 100% dengan tabel di atas. Belum dites lewat HTTP `SaveOrder()` penuh (butuh payload request kompleks + autentikasi, risiko salah bentuk payload), tapi kondisi boolean-nya sendiri sudah diverifikasi benar dengan data table section asli.
+
 ## Alur Implementasi (non-promo)
 
 1. Kasir pilih meja kosong (lihat [`LIST TABLE BY SECTION.md`](LIST%20TABLE%20BY%20SECTION.md)) atau meja yang sudah ada order pending.

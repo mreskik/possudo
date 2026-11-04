@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BranchModel;
 use App\Models\CategoryModel;
 use App\Models\MasterBranchOpsSettingModel;
+use App\Models\MasterBranchPosPrintReportSettingModel;
 use App\Models\MasterBranchSettingModel;
 use App\Models\MasterImageCustomerDisplayModel;
 use App\Models\MasterImageKioskModel;
@@ -193,6 +194,31 @@ class SetupServices
           'flag_note_payment' => $response->json('data.FlagNotePayment'),
           'flag_online_service_mobile_customer' => $response->json('data.FlagOnlineServiceMobileCustomer'),
           'flag_barber_service' => $response->json('data.FlagBarberService'),
+        ]);
+
+        // mr_branch_pos_print_report_setting (2026-11-04) -- TABEL TERPISAH dari
+        // mr_branch_setting di atas (sama kayak di ERP, master_branch_pos_print_report_setting
+        // vs master_branch_setting beda tabel), toggle 16 section cetak struk End Day/Shift
+        // Report. Singleton sama pola (truncate+create, bukan upsert).
+        MasterBranchPosPrintReportSettingModel::truncate();
+        MasterBranchPosPrintReportSettingModel::create([
+          'branch_id' => $response->json('data.BranchID'),
+          'endday_sales_summary' => $response->json('data.EnddaySalesSummary'),
+          'endday_sales_type_summary' => $response->json('data.EnddaySalesTypeSummary'),
+          'endday_order_source_summary' => $response->json('data.EnddayOrderSourceSummary'),
+          'endday_item_category_summary' => $response->json('data.EnddayItemCategorySummary'),
+          'endday_staff_sales_summary' => $response->json('data.EnddayStaffSalesSummary'),
+          'endday_payment_method_summary' => $response->json('data.EnddayPaymentMethodSummary'),
+          'endday_staff_payment_summary' => $response->json('data.EnddayStaffPaymentSummary'),
+          'endday_cash_flow_summary' => $response->json('data.EnddayCashFlowSummary'),
+          'shift_sales_summary' => $response->json('data.ShiftSalesSummary'),
+          'shift_sales_type_summary' => $response->json('data.ShiftSalesTypeSummary'),
+          'shift_order_source_summary' => $response->json('data.ShiftOrderSourceSummary'),
+          'shift_item_category_summary' => $response->json('data.ShiftItemCategorySummary'),
+          'shift_staff_sales_summary' => $response->json('data.ShiftStaffSalesSummary'),
+          'shift_payment_method_summary' => $response->json('data.ShiftPaymentMethodSummary'),
+          'shift_staff_payment_summary' => $response->json('data.ShiftStaffPaymentSummary'),
+          'shift_cash_flow_summary' => $response->json('data.ShiftCashFlowSummary'),
         ]);
       }
 

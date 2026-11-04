@@ -21,7 +21,7 @@ GET /api/sync_pull/get_xxx
 
 | Endpoint | Model/Tabel lokal | Strategi |
 |---|---|---|
-| `get_data_branch` | `BranchModel` (`mr_branch`) + `MasterBranchSettingModel` | Truncate+create (1 baris) |
+| `get_data_branch` | `BranchModel` (`mr_branch`) + `MasterBranchSettingModel` + `MasterBranchPosPrintReportSettingModel` (BARU 2026-11-04, tabel terpisah) | Truncate+create (1 baris) |
 | `get_station_list` | `StationModel` | Upsert by `id` |
 | `get_category_list` | `CategoryModel` | Upsert by `id` |
 | `get_subcategory_list` | `SubCategoryModel` | Upsert by `id` |

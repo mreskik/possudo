@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BranchModel;
 use App\Models\MasterMemberModel;
 use App\Models\MasterPaymentMethodModel;
+use App\Models\TableSectionModel;
 use App\Models\TrOrderDetailModel;
 use App\Models\TrOrderModel;
 use App\Models\TrOrderPaymentModel;
@@ -122,7 +123,14 @@ class PaymentServices
       // lihat OrderServices::SaveOrder()) -- baru di sini, abis payment sukses. Ini SELALU
       // jalan buat kiosk, gak kepengaruh flag_printer_frontend -- dapur tetap butuh tau apa
       // yang harus dimasak, terlepas dari cara struk customer di-print.
-      if ($dataorder_current->order_source === 'kiosk') {
+      // print_checker_on (2026-11-04): SELAIN Kiosk, non-Kiosk yang table section-nya di-set
+      // 'save_payment' juga nge-print checker di sini (bukan di SaveOrder(), lihat
+      // OrderServices::SaveOrder()) -- 2 kondisi independen, digabung OR.
+      $tablesection_current_payment = TableSectionModel::where('id', $dataorder_current->table_section_id)->first();
+      if (
+        $dataorder_current->order_source === 'kiosk'
+        || ($tablesection_current_payment && $tablesection_current_payment->print_checker_on === 'save_payment')
+      ) {
         PrintServices::PrintTableChecker2($dataorder_current->table_section_id, $datajson->order_number);
         PrintServices::PrintMainChecker2($dataorder_current->table_section_id, $datajson->order_number);
         PrintServices::PrintPriparationStation($dataorder_current->table_section_id, $datajson->order_number);
