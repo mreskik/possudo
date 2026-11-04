@@ -432,6 +432,10 @@ class OrderServices
 
         //pengecekan stok
         $datagrouping_ = [];
+        // hasNewItem (2026-11-04): true kalau di request ini ADA item BARU (belum punya ulid)
+        // ditambahkan -- dipakai buat reset print_ke di bawah (lihat penjelasannya di situ).
+        // Item yang CUMA diupdate (udah punya ulid, cabang if) TIDAK bikin ini true.
+        $hasNewItem = false;
         foreach ($datajson->listOrder as $item) {
 
 
@@ -453,6 +457,7 @@ class OrderServices
               ]);
           } else {
             // item baru (belum punya ulid)
+            $hasNewItem = true;
             $ida = $item['menuPricelistId'];
             $datagrouping_[$ida] = ($datagrouping_[$ida] ?? 0) + $item['qty'];
 
@@ -537,6 +542,18 @@ class OrderServices
               'flag_soldout' => (($itemStockRow[0]->stok_qty - $qtye) === 0)
             ]);
           }
+        }
+
+        // print_ke reset (2026-11-04): begitu ada item BARU ditambahkan ke order yang udah
+        // pernah di-print bill (print_ke > 0), bill lama itu udah gak merepresentasikan isi
+        // order terbaru -- reset ke 0 biar status table (OrderlistServices::resolveStatusTable)
+        // balik ke "dining" lagi (bukan nyangkut "billed" selamanya). SENGAJA cuma kalau ada
+        // item BARU (bukan tiap kali save order) -- update item yang SUDAH ADA doang (qty/promo/
+        // discount) gak bikin bill lama jadi gak valid, jadi print_ke dibiarkan apa adanya.
+        // Konsekuensi yang disetujui: label "COPY n" di re-print bill (PrintServices.php, TIDAK
+        // diubah) ikut mulai dari 1 lagi setelah ini -- wajar, bukan bug.
+        if ($hasNewItem) {
+          $order_update['print_ke'] = 0;
         }
 
         TrOrderModel::where('order_number', $order_number)

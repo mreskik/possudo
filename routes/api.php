@@ -177,6 +177,7 @@ Route::prefix('order-notif')->group(function () {
 
 Route::prefix('orderlist')->group(function () {
   Route::any('by-tablesection/{tablesection_id}', [OrderlistController::class, 'getOrderlist']);
+  Route::get('by-tablesection-new/{tablesection_id}', [OrderlistController::class, 'getOrderlistNew']);
   Route::get('all-pending', [OrderlistController::class, 'getAllPendingOrders']);
 });
 Route::prefix("sales")->group(function () {
