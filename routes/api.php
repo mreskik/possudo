@@ -146,6 +146,7 @@ Route::prefix('master')->group(function () {
 
   Route::get('member-list', [MasterController::class, 'GetMemberList']);
   Route::get('member-detail/{id}', [MasterController::class, 'GetMemberDetail']);
+  Route::post('member', [MasterController::class, 'CreateMember']);
   Route::get('member-type-list', [MasterController::class, 'GetMemberTypeList']);
 
   Route::get('terminal-list', [MasterController::class, 'GetTerminalList']);

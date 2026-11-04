@@ -478,6 +478,49 @@ class MasterController extends Controller
         }
     }
 
+    // CreateMember (2026-11-04): daftarin member BARU dari kasir, SELALU ONLINE (butuh koneksi
+    // APIANDORDER -> INSERT ke master_member ERP) -- TIDAK ada fallback simpan lokal dulu. code/
+    // name/phone_number wajib (defense in depth -- APIANDORDER juga validasi ulang 3 field ini).
+    // Lihat MemberServices::Create buat alasan kenapa method ini punya timeout + pesan error
+    // "offline" eksplisit (pola sama GetMemberDetail/GetDetail di atas).
+    public function CreateMember(Request $request)
+    {
+        $code = trim((string) $request->input('code'));
+        $name = trim((string) $request->input('name'));
+        $phoneNumber = trim((string) $request->input('phone_number'));
+
+        if ($code === '') {
+            return response()->json(["code" => 100, "message" => "code wajib diisi"]);
+        }
+        if ($name === '') {
+            return response()->json(["code" => 100, "message" => "name wajib diisi"]);
+        }
+        if ($phoneNumber === '') {
+            return response()->json(["code" => 100, "message" => "phone_number wajib diisi"]);
+        }
+
+        try {
+            $data = (new MemberServices())->Create([
+                'code' => $code,
+                'name' => $name,
+                'phone_number' => $phoneNumber,
+                'gender' => $request->input('gender'),
+                'birth_date' => $request->input('birth_date'),
+                'description' => $request->input('description'),
+            ]);
+
+            return response()->json([
+                "code" => 0,
+                "data" => $data
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 100,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
+
     public function GetMemberTypeList()
     {
         try {

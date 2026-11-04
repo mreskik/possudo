@@ -61,7 +61,7 @@ Route `/dashboard/member` — `src/modules/dashboard/member/MemberPage.vue`
 
 | Endpoint | Dok |
 |---|---|
-| `GET /master/member-list` | [`MASTER/MEMBER LIST.md`](MASTER/MEMBER%20LIST.md) — satu-satunya call, halaman read-only |
+| `GET /master/member-list` | [`MASTER/MEMBER.md`](MASTER/MEMBER.md) — satu-satunya call, halaman read-only |
 
 ## Order (POS kasir — halaman paling kompleks)
 
@@ -70,7 +70,7 @@ Route `/dashboard/order/:order_number?` — `src/modules/dashboard/order/orderPa
 | Endpoint | Dok |
 |---|---|
 | `GET /master/visit-purpose`, `GET /master/menu-list` | refresh cache IndexedDB saat halaman dibuka |
-| `GET /master/member-list` | [`MASTER/MEMBER LIST.md`](MASTER/MEMBER%20LIST.md) — dialog Select Member |
+| `GET /master/member-list` | [`MASTER/MEMBER.md`](MASTER/MEMBER.md) — dialog Select Member |
 | `GET /master/promo-list/{visit_purpose_id}?member_type_id=` | [`MASTER/PROMO LIST.md`](MASTER/PROMO%20LIST.md) — dialog Apply Promo, baca [`ORDER/SAVE ORDER.md`](ORDER/SAVE%20ORDER.md) untuk alur lengkap kalkulasi+split-remainder |
 | `GET /order/view-order/{order_number}` | [`ORDER/VIEW ORDER.md`](ORDER/VIEW%20ORDER.md) — mode edit order existing |
 | `POST /order/save-order` | [`ORDER/SAVE ORDER.md`](ORDER/SAVE%20ORDER.md) — tombol Save Order → redirect ke Payment |
@@ -91,7 +91,7 @@ Route `/dashboard/payment/:order_number?/:action?` — `src/modules/dashboard/pa
 |---|---|
 | `GET /order/view-order/{order_number}` | [`ORDER/VIEW ORDER.md`](ORDER/VIEW%20ORDER.md) |
 | `GET /master/payment-method/{visit_purpose_id}` | [`MASTER/PAYMENT METHOD.md`](MASTER/PAYMENT%20METHOD.md) |
-| `GET /master/member-list` | [`MASTER/MEMBER LIST.md`](MASTER/MEMBER%20LIST.md) |
+| `GET /master/member-list` | [`MASTER/MEMBER.md`](MASTER/MEMBER.md) |
 | `GET /payment/view-payment/{order_number}` | [`PAYMENT/SAVE EDIT VIEW PAYMENT.md`](PAYMENT/SAVE%20EDIT%20VIEW%20PAYMENT.md) — hanya mode `action=edit`, atau refresh pasca QRIS sukses |
 | `POST /payment/save-payment` | [`PAYMENT/SAVE EDIT VIEW PAYMENT.md`](PAYMENT/SAVE%20EDIT%20VIEW%20PAYMENT.md) |
 | `POST /payment/edit-payment` | [`PAYMENT/SAVE EDIT VIEW PAYMENT.md`](PAYMENT/SAVE%20EDIT%20VIEW%20PAYMENT.md) — mode edit, redirect ke Sales setelah sukses |

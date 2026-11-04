@@ -119,6 +119,40 @@ Response:
 - **Error koneksi (APIANDORDER/jaringan tidak terjangkau)** → `{"code": 100, "message": "POS sedang offline, tidak bisa mengambil data member terkini"}` — pesan ini SENGAJA dibedakan dari error logis APIANDORDER (yang passthrough pesan asli dari server), lewat deteksi `\Illuminate\Http\Client\ConnectionException` khusus di `MemberServices::GetDetail` (beda dari method lain di file itu yang belum punya penanganan ini).
 - Timeout eksplisit `connectTimeout(5)`+`timeout(15)` detik — method lain (`CheckByPhone` dkk) di `MemberServices.php` belum punya timeout sama sekali, method ini sengaja lebih defensif karena akan dipanggil interaktif dari halaman Member Detail.
 
+## Create Member (BARU, 2026-11-04 — ONLINE, butuh koneksi ke APIANDORDER)
+
+```
+POST /api/master/member
+Content-Type: application/json
+```
+
+**SELALU online, SAMA prinsip dengan Member Detail di atas** — dipanggil kasir buat daftarin member baru langsung dari POS, langsung INSERT ke `master_member` ERP (lewat APIANDORDER, yang konek ke Postgres yang sama — bukan proxy HTTP ke endpoint REST sudocore2). **TIDAK ADA fallback simpan ke `mr_member` lokal dulu** — kalau APIANDORDER/jaringan tidak terjangkau, request ini **harus gagal jelas**, bukan "sukses" tapi datanya cuma numpuk lokal nunggu sync (karena `mr_member` cuma cache hasil sync, bukan sumber kebenaran).
+
+Body:
+```json
+{
+  "code": "MBR099",
+  "name": "Siti Aminah",
+  "gender": "female",
+  "phone_number": "081234567899",
+  "birth_date": "1998-07-15",
+  "description": "Daftar langsung di kasir"
+}
+```
+
+- `code`, `name`, `phone_number` **WAJIB diisi** (divalidasi di 2 tempat: POS Laravel sebelum dikirim, dan APIANDORDER lagi sebelum insert — defense in depth) — kosong/tidak dikirim ditolak `{"code":100,"message":"code wajib diisi"}` (atau `name`/`phone_number` sesuai yang kosong).
+- `gender` opsional, cuma terima `"male"`/`"female"` — divalidasi **CHECK constraint di DB** (`master_member_gender_check`, SAMA constraint yang dipakai Create Member manual di sudocore2 `MASTER MEMBER.md`), nilai lain ditolak `{"code":100,"message":"gender harus male atau female"}` (APIANDORDER translate pesan constraint-nya, bukan bocorin error Postgres mentah).
+- `birth_date` opsional, format **`"YYYY-MM-DD"`** — format salah ditolak `{"code":100,"message":"format tanggal tidak valid, harus YYYY-MM-DD"}` (divalidasi app-level di APIANDORDER SEBELUM insert, biar error-nya jelas).
+- `description` opsional, bebas teks.
+- Field lain di `master_member` (`member_type_id`, `contact_name`, `email`, `profile_photo_src`, `shift_id`, `attendance_branch_setting`, `pin`) **TIDAK diisi lewat endpoint ini** — di luar scope 6 field yang dibutuhkan kasir, dibiarkan default (`is_active=true`, `tier_level=1`, sisanya `NULL`). Member yang dibuat lewat sini bisa dilengkapi field itu belakangan lewat Update manual di sudocore2.
+
+Response sukses:
+```json
+{ "code": 0, "data": { "id": 45 } }
+```
+
+**Error koneksi (APIANDORDER/jaringan tidak terjangkau)** → `{"code": 100, "message": "POS sedang offline, tidak bisa membuat member baru"}` — pola SAMA PERSIS `GetDetail()` (lihat catatan error koneksi di section Member Detail di atas), lewat `MemberServices::Create()` yang juga pakai `connectTimeout(5)`+`timeout(15)` detik + catch `\Illuminate\Http\Client\ConnectionException` khusus.
+
 ## Member Type List
 
 ```
@@ -138,9 +172,9 @@ Dipanggil bersamaan (`useMember.js`) di halaman Member dan saat memilih member p
 
 ## Sumber
 
-- `app/Http/Controllers/MasterController.php` — `GetMemberList()`, `GetMemberDetail()`, `GetMemberTypeList()`.
-- `app/Services/MemberServices.php` — `GetDetail()` (online, APIANDORDER), `BranchAuthHeaderService::build()`.
-- APIANDORDER: `backend/modules/apipos/member/member_handler.go` (`GetDetail`), `member_service.go`, `member_detail_dto.go`. Route: `GET /pos/member/:branch_id/detail/:member_id` (`backend/modules/apipos/apipos_router.go`).
+- `app/Http/Controllers/MasterController.php` — `GetMemberList()`, `GetMemberDetail()`, `CreateMember()`, `GetMemberTypeList()`.
+- `app/Services/MemberServices.php` — `GetDetail()`/`Create()` (online, APIANDORDER), `BranchAuthHeaderService::build()`.
+- APIANDORDER: `backend/modules/apipos/member/member_handler.go` (`GetDetail`, `CreateMember`), `member_service.go`, `member_detail_dto.go`. Route: `GET /pos/member/:branch_id/detail/:member_id`, `POST /pos/member/:branch_id` (`backend/modules/apipos/apipos_router.go`).
 - Frontend: `src/composables/useMember.js`.
 
 ## Status
@@ -150,3 +184,9 @@ Dipanggil bersamaan (`useMember.js`) di halaman Member dan saat memilih member p
 - Member belum pernah order (id=6, 16, 32, 1, 5, 11) → `last_order` semua field `null`/`[]`, `best_seller: []`, bukan error.
 - `member_id` tidak ketemu (999999) → `{"code":0,"data":null}`, bukan error.
 - Frontend (`posv1-vue`, dialog Detail di `MemberPage.vue`) sudah diimplementasikan dan di-build, siap dites manual di browser.
+
+**Create Member — tervalidasi live (2026-11-04)**, dites 2 tahap:
+1. **Langsung ke APIANDORDER** (`POST /pos/member/27`, token branch valid): `code`/`name`/`phone_number` kosong masing-masing ditolak jelas. `gender: "other"` → ditolak `"gender harus male atau female"` (bukan error Postgres mentah). `birth_date: "20-03-1995"` → ditolak `"format tanggal tidak valid, harus YYYY-MM-DD"`. Create lengkap semua field → sukses, dikonfirmasi lewat `GET .../detail/:id` data tersimpan benar (code/name/phone_number/birth_date/description semua match). Create cuma 3 field wajib (gender/birth_date/description dikosongkan) → sukses juga.
+2. **Lewat POS Laravel end-to-end** (`POST /api/master/member`, `php artisan serve` lokal, `SERVER_ENDPOINT` diarahkan ke APIANDORDER test): validasi wajib lolos di layer POS. Create sukses → `id` baru dikonfirmasi ada di `master_member` ERP via endpoint Detail. Simulasi **APIANDORDER unreachable** (`SERVER_ENDPOINT` diarahkan ke port yang gak jalan) → response `{"code":100,"message":"POS sedang offline, tidak bisa membuat member baru"}`, BUKAN error cURL mentah, dan **dikonfirmasi TIDAK ada baris baru ke-insert** di ERP (request gagal sebelum sampai APIANDORDER).
+
+Semua data test (member id 43, 44, 45 di DB dev) dinonaktifkan (`change-status`) setelah verifikasi — tidak ada endpoint Delete fisik untuk Member, konsisten modul lain.

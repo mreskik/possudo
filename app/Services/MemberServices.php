@@ -45,7 +45,7 @@ class MemberServices
   // (connectTimeout 5s, timeout 15s -- angka sama pola SetupServices.php) + catch khusus
   // ConnectionException, supaya kalau APIANDORDER/jaringan gak bisa dihubungi, pesan yang nyampe
   // ke FE jelas "POS sedang offline" -- bukan bocoran pesan cURL mentah kayak method2 lama
-  // (yang gak ada penanganan khusus ini, lihat catatan di MEMBER LIST.md).
+  // (yang gak ada penanganan khusus ini, lihat catatan di MEMBER.md).
   public function GetDetail(int $memberId): ?array
   {
     $branch = BranchModel::first();
@@ -61,6 +61,35 @@ class MemberServices
         ->get($this->endpoint . '/pos/member/' . $branch->id . '/detail/' . $memberId);
     } catch (\Illuminate\Http\Client\ConnectionException $e) {
       throw new \Exception('POS sedang offline, tidak bisa mengambil data member terkini');
+    }
+
+    if ($response->json('code') !== 0) {
+      throw new \Exception($response->json('message'));
+    }
+
+    return $response->json('data');
+  }
+
+  // Create: daftarin member BARU langsung dari kasir POS -- SELALU online (langsung ke
+  // APIANDORDER -> INSERT ke master_member ERP), SENGAJA TIDAK ada fallback simpan-lokal-dulu
+  // (mr_member cuma cache hasil sync, bukan sumber kebenaran) -- kalau offline/timeout, kasir
+  // HARUS tahu gagal, bukan keliatan "berhasil" padahal data cuma numpuk lokal nunggu sync.
+  // Pola timeout+ConnectionException SAMA PERSIS GetDetail() di atas (lihat catatan di situ).
+  public function Create(array $data): ?array
+  {
+    $branch = BranchModel::first();
+    if (!$branch) {
+      throw new \Exception('branch has not been selected/saved, please complete setup first');
+    }
+
+    try {
+      $response = Http::connectTimeout(5)->timeout(15)
+        ->withToken($branch->token)
+        ->withHeaders(BranchAuthHeaderService::build())
+        ->withOptions(['verify' => config('services.http_verify_ssl')])
+        ->post($this->endpoint . '/pos/member/' . $branch->id, $data);
+    } catch (\Illuminate\Http\Client\ConnectionException $e) {
+      throw new \Exception('POS sedang offline, tidak bisa membuat member baru');
     }
 
     if ($response->json('code') !== 0) {
