@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BestSellerController;
 use App\Http\Controllers\BranchMenuController;
 use App\Http\Controllers\CheckerController;
 use App\Http\Controllers\DayShiftController;
@@ -179,6 +180,12 @@ Route::prefix('orderlist')->group(function () {
   Route::any('by-tablesection/{tablesection_id}', [OrderlistController::class, 'getOrderlist']);
   Route::get('by-tablesection-new/{tablesection_id}', [OrderlistController::class, 'getOrderlistNew']);
   Route::get('all-pending', [OrderlistController::class, 'getAllPendingOrders']);
+});
+
+Route::prefix('best-seller')->group(function () {
+  Route::get('menu', [BestSellerController::class, 'getBestSellerMenu']);
+  Route::get('menu-by-visit-purpose/{visit_purpose_id}', [BestSellerController::class, 'getBestSellerMenuByVisitPurpose']);
+  Route::get('menu-by-table-section/{tablesection_id}', [BestSellerController::class, 'getBestSellerMenuByTableSection']);
 });
 Route::prefix("sales")->group(function () {
   Route::get('get-sales-list', [SalesController::class, 'GetSalesList']);
