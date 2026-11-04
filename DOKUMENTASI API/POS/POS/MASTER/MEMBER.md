@@ -140,18 +140,21 @@ Body:
 }
 ```
 
-- `code`, `name`, `phone_number` **WAJIB diisi** (divalidasi di 2 tempat: POS Laravel sebelum dikirim, dan APIANDORDER lagi sebelum insert — defense in depth) — kosong/tidak dikirim ditolak `{"code":100,"message":"code wajib diisi"}` (atau `name`/`phone_number` sesuai yang kosong).
-- `gender` opsional, cuma terima `"male"`/`"female"` — divalidasi **CHECK constraint di DB** (`master_member_gender_check`, SAMA constraint yang dipakai Create Member manual di sudocore2 `MASTER MEMBER.md`), nilai lain ditolak `{"code":100,"message":"gender harus male atau female"}` (APIANDORDER translate pesan constraint-nya, bukan bocorin error Postgres mentah).
-- `birth_date` opsional, format **`"YYYY-MM-DD"`** — format salah ditolak `{"code":100,"message":"format tanggal tidak valid, harus YYYY-MM-DD"}` (divalidasi app-level di APIANDORDER SEBELUM insert, biar error-nya jelas).
+- `code`, `name`, `phone_number` **WAJIB diisi** (divalidasi di 2 tempat: POS Laravel sebelum dikirim, dan APIANDORDER lagi sebelum insert — defense in depth) — kosong/tidak dikirim ditolak `{"code":100,"message":"code is required"}` (atau `name`/`phone_number` sesuai yang kosong).
+- `gender` opsional, cuma terima `"male"`/`"female"` — divalidasi **CHECK constraint di DB** (`master_member_gender_check`, SAMA constraint yang dipakai Create Member manual di sudocore2 `MASTER MEMBER.md`), nilai lain ditolak `{"code":100,"message":"gender must be male or female"}` (APIANDORDER translate pesan constraint-nya, bukan bocorin error Postgres mentah).
+- `birth_date` opsional, format **`"YYYY-MM-DD"`** — format salah ditolak `{"code":100,"message":"invalid date format, must be YYYY-MM-DD"}` (divalidasi app-level di APIANDORDER SEBELUM insert, biar error-nya jelas).
 - `description` opsional, bebas teks.
-- Field lain di `master_member` (`member_type_id`, `contact_name`, `email`, `profile_photo_src`, `shift_id`, `attendance_branch_setting`, `pin`) **TIDAK diisi lewat endpoint ini** — di luar scope 6 field yang dibutuhkan kasir, dibiarkan default (`is_active=true`, `tier_level=1`, sisanya `NULL`). Member yang dibuat lewat sini bisa dilengkapi field itu belakangan lewat Update manual di sudocore2.
+- `member_type_id` **DEFAULT ke Member Type "Customer" (`id=3`, HARDCODE — bukan lookup by nama)** — member yang didaftarkan kasir langsung dari POS secara natural adalah customer baru. Sengaja hardcode by `id` (bukan `WHERE name = 'Customer'`): "Customer" adalah data default bawaan sistem yang `id`-nya tidak akan berubah, sementara NAMA-nya berisiko diganti ke depan (mis. jadi "Cust") — lookup by nama malah rawan salah assign kalau itu terjadi. Lihat konstanta `defaultMemberTypeIDCustomer` di `member_handler.go`.
+- Field lain di `master_member` (`contact_name`, `email`, `profile_photo_src`, `shift_id`, `attendance_branch_setting`, `pin`) **TIDAK diisi lewat endpoint ini** — di luar scope 6 field yang dibutuhkan kasir, dibiarkan default (`is_active=true`, `tier_level=1`, sisanya `NULL`). Member yang dibuat lewat sini bisa dilengkapi field itu belakangan lewat Update manual di sudocore2.
+
+**Pesan response dalam Bahasa Inggris (2026-11-04)** — konsisten konvensi proyek (chat/komentar kode Indonesia, tapi string response API customer-facing pakai English, lihat juga `MASTER COA.md`/dokumen lain di sudocore2) — berlaku untuk SEMUA pesan yang baru ditulis di endpoint ini (POS maupun APIANDORDER), TIDAK menyentuh pesan di endpoint Member LAMA (Member Detail/List/Type List masih Bahasa Indonesia, scope-nya di luar perubahan ini).
 
 Response sukses:
 ```json
-{ "code": 0, "data": { "id": 45 } }
+{ "code": 0, "message": "Member created successfully", "data": { "id": 45 } }
 ```
 
-**Error koneksi (APIANDORDER/jaringan tidak terjangkau)** → `{"code": 100, "message": "POS sedang offline, tidak bisa membuat member baru"}` — pola SAMA PERSIS `GetDetail()` (lihat catatan error koneksi di section Member Detail di atas), lewat `MemberServices::Create()` yang juga pakai `connectTimeout(5)`+`timeout(15)` detik + catch `\Illuminate\Http\Client\ConnectionException` khusus.
+**Error koneksi (APIANDORDER/jaringan tidak terjangkau)** → `{"code": 100, "message": "POS is currently offline, unable to create a new member"}` — pola SAMA PERSIS `GetDetail()` (lihat catatan error koneksi di section Member Detail di atas), lewat `MemberServices::Create()` yang juga pakai `connectTimeout(5)`+`timeout(15)` detik + catch `\Illuminate\Http\Client\ConnectionException` khusus.
 
 ## Member Type List
 
@@ -189,4 +192,8 @@ Dipanggil bersamaan (`useMember.js`) di halaman Member dan saat memilih member p
 1. **Langsung ke APIANDORDER** (`POST /pos/member/27`, token branch valid): `code`/`name`/`phone_number` kosong masing-masing ditolak jelas. `gender: "other"` → ditolak `"gender harus male atau female"` (bukan error Postgres mentah). `birth_date: "20-03-1995"` → ditolak `"format tanggal tidak valid, harus YYYY-MM-DD"`. Create lengkap semua field → sukses, dikonfirmasi lewat `GET .../detail/:id` data tersimpan benar (code/name/phone_number/birth_date/description semua match). Create cuma 3 field wajib (gender/birth_date/description dikosongkan) → sukses juga.
 2. **Lewat POS Laravel end-to-end** (`POST /api/master/member`, `php artisan serve` lokal, `SERVER_ENDPOINT` diarahkan ke APIANDORDER test): validasi wajib lolos di layer POS. Create sukses → `id` baru dikonfirmasi ada di `master_member` ERP via endpoint Detail. Simulasi **APIANDORDER unreachable** (`SERVER_ENDPOINT` diarahkan ke port yang gak jalan) → response `{"code":100,"message":"POS sedang offline, tidak bisa membuat member baru"}`, BUKAN error cURL mentah, dan **dikonfirmasi TIDAK ada baris baru ke-insert** di ERP (request gagal sebelum sampai APIANDORDER).
 
-Semua data test (member id 43, 44, 45 di DB dev) dinonaktifkan (`change-status`) setelah verifikasi — tidak ada endpoint Delete fisik untuk Member, konsisten modul lain.
+**Default `member_type_id` — tervalidasi live (2026-11-04, perubahan susulan)**: Create tanpa kirim `member_type_id` sama sekali (field ini emang gak ada di body endpoint ini) → dikonfirmasi lewat `GET /backend/data/master/member/:id` (sudocore2 langsung) hasilnya `"member_type_id":3` — cocok dengan Member Type `"Customer"` yang dicek lebih dulu via `GET /backend/data/master/member-type` (`{"id":3,"name":"Customer","is_active":true}`). Default ini HARDCODE by id (`defaultMemberTypeIDCustomer = 3` di `member_handler.go`), bukan lookup dinamis by nama.
+
+**Pesan English — tervalidasi live (2026-11-04, perubahan susulan)**: semua pesan yang ditulis khusus buat endpoint ini (bukan pesan lama) diganti ke English. Re-test lengkap: `code`/`gender`/`birth_date` invalid di APIANDORDER langsung → `"code is required"`/`"gender must be male or female"`/`"invalid date format, must be YYYY-MM-DD"`. Lewat POS → `"code is required"` (passthrough), sukses → `"Member created successfully"`, simulasi offline → `"POS is currently offline, unable to create a new member"`. Pesan di endpoint Member LAIN (Detail/List/Type List) TIDAK disentuh, masih Bahasa Indonesia seperti sebelumnya.
+
+Semua data test (member id 43, 44, 45, 46, 48, 49 di DB dev) dinonaktifkan (`change-status`) setelah verifikasi — tidak ada endpoint Delete fisik untuk Member, konsisten modul lain.

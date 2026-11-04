@@ -89,7 +89,7 @@ class MemberServices
         ->withOptions(['verify' => config('services.http_verify_ssl')])
         ->post($this->endpoint . '/pos/member/' . $branch->id, $data);
     } catch (\Illuminate\Http\Client\ConnectionException $e) {
-      throw new \Exception('POS sedang offline, tidak bisa membuat member baru');
+      throw new \Exception('POS is currently offline, unable to create a new member');
     }
 
     if ($response->json('code') !== 0) {

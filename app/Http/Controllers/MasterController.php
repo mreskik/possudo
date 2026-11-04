@@ -490,13 +490,13 @@ class MasterController extends Controller
         $phoneNumber = trim((string) $request->input('phone_number'));
 
         if ($code === '') {
-            return response()->json(["code" => 100, "message" => "code wajib diisi"]);
+            return response()->json(["code" => 100, "message" => "code is required"]);
         }
         if ($name === '') {
-            return response()->json(["code" => 100, "message" => "name wajib diisi"]);
+            return response()->json(["code" => 100, "message" => "name is required"]);
         }
         if ($phoneNumber === '') {
-            return response()->json(["code" => 100, "message" => "phone_number wajib diisi"]);
+            return response()->json(["code" => 100, "message" => "phone_number is required"]);
         }
 
         try {
@@ -511,6 +511,7 @@ class MasterController extends Controller
 
             return response()->json([
                 "code" => 0,
+                "message" => "Member created successfully",
                 "data" => $data
             ]);
         } catch (\Throwable $e) {
