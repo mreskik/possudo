@@ -13,6 +13,7 @@ use App\Models\StationModel;
 use App\Models\TableModel;
 use App\Models\DaySiftModel;
 use App\Models\TableSectionModel;
+use App\Models\TerminalModel;
 use App\Models\TrOrderDetailPackageModel;
 use App\Models\TrOrderModel;
 use App\Models\TrPaymentModel;
@@ -288,6 +289,31 @@ class PrintServices
       if (!$session) return null;
       $user = json_decode($session->data);
       return $user->fullname ?? $user->username ?? null;
+    } catch (\Throwable $e) {
+      return null;
+    }
+  }
+
+  // RetrieveReceiptStationIdFromSession: resolve receipt_station_id printer yang relevan buat
+  // kasir YANG SEDANG LOGIN SEKARANG (2026-11-12, pengganti mr_setting.default_station global) --
+  // BUKAN dari tr_order.terminal_id, karena kasir bisa reprint/cancel order dari terminal lain,
+  // struk harus keluar di printer tempat dia berdiri SEKARANG, bukan ketarik ke printer terminal
+  // yang dulu bikin order itu. session -> terminal_id (wajib diisi sejak AuthController::login())
+  // -> mr_terminal.receipt_station_id. null di langkah manapun (token/session/terminal_id/
+  // terminal/receipt_station_id gak ketemu) -- caller WAJIB guard null sama pola StationModel
+  // check yang sudah ada di PrintPayment()/PrintBill() (print di-skip, bukan exception).
+  public static function RetrieveReceiptStationIdFromSession($request): ?int
+  {
+    try {
+      $token = $request?->bearerToken();
+      if (!$token) return null;
+      $session = SessionModel::where('session_id', $token)->first();
+      if (!$session) return null;
+      $user = json_decode($session->data);
+      $terminalId = $user->terminal_id ?? null;
+      if (!$terminalId) return null;
+      $terminal = TerminalModel::where('id', $terminalId)->first();
+      return $terminal->receipt_station_id ?? null;
     } catch (\Throwable $e) {
       return null;
     }
@@ -892,7 +918,12 @@ class PrintServices
   }
 
 
-  public static function PrintPayment(string $order_number)
+  // PrintPayment: $station_id (2026-11-12, pengganti mr_setting.default_station) WAJIB
+  // di-resolve caller SEBELUM manggil ini -- POS pakai RetrieveReceiptStationIdFromSession(),
+  // MobileOrderPullServices pakai $terminal->receipt_station_id langsung (gak ada session di
+  // proses background itu). null -> no-op (gak print), SAMA perilaku lama kalau station gak
+  // ketemu, cuma sumbernya sekarang dari parameter bukan query default_station sendiri.
+  public static function PrintPayment(string $order_number, ?int $station_id)
   {
     try {
 
@@ -905,8 +936,7 @@ class PrintServices
         Log::info("table section tidak ditemukan!");
         return;
       }
-      $settingan = SettingModel::first();
-      $data_station = StationModel::where('id', $settingan->default_station)->first();
+      $data_station = StationModel::where('id', $station_id)->first();
 
       if (!$data_station) {
         return;
@@ -1267,7 +1297,9 @@ class PrintServices
     }
   }
 
-  public static function PrintBill(string $order_number)
+  // PrintBill: $station_id (2026-11-12, pengganti mr_setting.default_station) WAJIB di-resolve
+  // caller SEBELUM manggil ini -- sama pola & alasan seperti PrintPayment() di atas.
+  public static function PrintBill(string $order_number, ?int $station_id)
   {
     try {
       $data_order = TrOrderModel::leftJoin('mr_member', 'tr_order.member_id', '=', 'mr_member.id')
@@ -1280,8 +1312,7 @@ class PrintServices
         return;
       }
 
-      $settingan = SettingModel::first();
-      $data_station = StationModel::where('id', $settingan->default_station)->first();
+      $data_station = StationModel::where('id', $station_id)->first();
 
       if (!$data_station) {
         return;
@@ -1611,7 +1642,10 @@ class PrintServices
   //   $print->cut();
   //   $print->close();
   // }
-  static function PrintEndDay($dayshift_ulid)
+  // PrintEndDay: $request (2026-11-12, pengganti mr_setting.default_station) dipakai resolve
+  // station_id lewat RetrieveReceiptStationIdFromSession() -- caller tetap WAJIB bisa manggil ini
+  // tanpa $request (fallback null -> RetrieveReceiptStationIdFromSession null-safe -> no-op).
+  static function PrintEndDay($dayshift_ulid, $request = null)
   {
     $datareport = null;
 
@@ -1635,8 +1669,8 @@ class PrintServices
 
 
     $branch = BranchModel::first();
-    $setting = SettingModel::first();
-    $data_station = StationModel::where('id', $setting->default_station)->first();
+    $station_id = self::RetrieveReceiptStationIdFromSession($request);
+    $data_station = StationModel::where('id', $station_id)->first();
     if (!$data_station) {
       return;
     }
@@ -1863,8 +1897,8 @@ class PrintServices
     $cashier_print_fullname = self::getLoggedInUserFullname($request) ?? '';
 
     $branch = BranchModel::first();
-    $setting = SettingModel::first();
-    $data_station = StationModel::where('id', $setting->default_station)->first();
+    $station_id = self::RetrieveReceiptStationIdFromSession($request);
+    $data_station = StationModel::where('id', $station_id)->first();
     if (!$data_station) {
       return;
     }
@@ -2043,8 +2077,8 @@ class PrintServices
 
 
     $branch = BranchModel::first();
-    $setting = SettingModel::first();
-    $data_station = StationModel::where('id', $setting->default_station)->first();
+    $station_id = self::RetrieveReceiptStationIdFromSession($request);
+    $data_station = StationModel::where('id', $station_id)->first();
     if (!$data_station) {
       return;
     }
@@ -2252,7 +2286,7 @@ class PrintServices
     $print->close();
   }
 
-  static function PrintPerShiftv2($dayshift_detail_ulid)
+  static function PrintPerShiftv2($dayshift_detail_ulid, $request = null)
   {
     $datareport = null;
     $shiftcurent = DayShiftDetailModel::where("ulid", $dayshift_detail_ulid)->first();
@@ -2268,8 +2302,8 @@ class PrintServices
 
 
     $branch = BranchModel::first();
-    $setting = SettingModel::first();
-    $data_station = StationModel::where('id', $setting->default_station)->first();
+    $station_id = self::RetrieveReceiptStationIdFromSession($request);
+    $data_station = StationModel::where('id', $station_id)->first();
     if (!$data_station) {
       return;
     }

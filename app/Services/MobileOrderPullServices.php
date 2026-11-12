@@ -300,7 +300,10 @@ class MobileOrderPullServices
         $this->printOne($order['order_number'], 'table_checker', fn() => PrintServices::PrintTableChecker2($tableSection->id, $order['order_number']));
         $this->printOne($order['order_number'], 'main_checker', fn() => PrintServices::PrintMainChecker2($tableSection->id, $order['order_number']));
         $this->printOne($order['order_number'], 'preparation_station', fn() => PrintServices::PrintPriparationStation($tableSection->id, $order['order_number']));
-        $this->printOne($order['order_number'], 'payment', fn() => PrintServices::PrintPayment($order['order_number']));
+        // station_id (2026-11-12, pengganti mr_setting.default_station): worker ini gak ada
+        // session kasir sama sekali (background job), pakai $terminal->receipt_station_id
+        // LANGSUNG (resolveWorkerTerminal() udah nyediain), TIDAK lewat RetrieveReceiptStationIdFromSession().
+        $this->printOne($order['order_number'], 'payment', fn() => PrintServices::PrintPayment($order['order_number'], $terminal->receipt_station_id));
 
         TrOrderDetailModel::where('order_number', $order['order_number'])->update(['done_print' => true]);
     }

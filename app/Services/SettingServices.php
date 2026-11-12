@@ -14,14 +14,12 @@ class SettingServices
   {
     try {
       Log::info($data);
-      $default_station = $data['defaultStation'] ?? null;
       $use_customer_display = $data['useCustomerDisplay'] ?? null;
       $use_virtual_keyboard = $data['useVirtualKeyboard'] ?? null;
       $first_time_warning = $data['firstTimeWarning'] ?? 0;
       $second_time_warning = $data['secondTimeWarning'] ?? 0;
 
       SettingModel::where('id', 1)->update([
-        'default_station' => $default_station,
         'use_customer_display' => $use_customer_display,
         'use_virtual_keyboard' => $use_virtual_keyboard,
         'first_time_warning' => $first_time_warning,

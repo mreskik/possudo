@@ -300,7 +300,7 @@ class DayShiftServices
       throw $e;
     }
 
-    PrintServices::PrintEndDay($dayshift_ulid);
+    PrintServices::PrintEndDay($dayshift_ulid, $request);
 
     // 3. PUSH -- try/catch LOKAL, BUKAN nge-throw ke luar (beda dari sebelumnya). Push gagal gak
     // boleh bikin EndDay keliatan gagal ke frontend -- SAVE di atas udah aman kesimpen.

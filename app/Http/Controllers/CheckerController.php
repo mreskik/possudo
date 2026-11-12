@@ -19,8 +19,9 @@ class CheckerController extends Controller
             // PrintServices::PrintMainChecker2(14, "TOTB1779717210");
             // PrintServices::PrintPriparationStation(14, "TOTB1779865370", true);
 
-            PrintServices::PrintBill("NOTB202605301457");
-            // PrintServices::PrintPayment(14, "TOTB1779759269");
+            // kode uji manual -- station_id hardcode buat testing, bukan dari session.
+            PrintServices::PrintBill("NOTB202605301457", 1);
+            // PrintServices::PrintPayment("TOTB1779759269", 1);
             return response("");
         } catch (\Throwable $e) {
             Log::info($e);

@@ -49,7 +49,7 @@ class OrderController extends Controller
 
             $message = OrderServices::CancelOrder($order_number, $notes);
 
-            PrintServices::PrintBill($order_number);
+            PrintServices::PrintBill($order_number, PrintServices::RetrieveReceiptStationIdFromSession($request));
             return response()->json([
                 'code' => 0,
                 'message' => $message
@@ -109,7 +109,7 @@ class OrderController extends Controller
         // if ($table_section == null || $order == null) {
         //     return 'error';
         // }
-        PrintServices::PrintBill($order);
+        PrintServices::PrintBill($order, PrintServices::RetrieveReceiptStationIdFromSession($request));
         return '';
     }
 

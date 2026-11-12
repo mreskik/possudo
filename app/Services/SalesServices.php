@@ -177,15 +177,15 @@ class SalesServices
     }
   }
 
-  public static function ReprintPayment(string $order_number)
+  public static function ReprintPayment(string $order_number, $request = null)
   {
     try {
-      PrintServices::PrintPayment($order_number);
+      PrintServices::PrintPayment($order_number, PrintServices::RetrieveReceiptStationIdFromSession($request));
     } catch (\Throwable $e) {
     }
   }
 
-  public static function Void(string $order_number, string $notes)
+  public static function Void(string $order_number, string $notes, $request = null)
   {
     try {
 
@@ -209,7 +209,7 @@ class SalesServices
       ]);
       DB::commit();
 
-      PrintServices::PrintPayment($data_order->order_number);
+      PrintServices::PrintPayment($data_order->order_number, PrintServices::RetrieveReceiptStationIdFromSession($request));
 
       return "void $order_number success";
     } catch (\Throwable $e) {

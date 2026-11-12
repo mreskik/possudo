@@ -116,7 +116,17 @@ class PaymentServices
         && $terminal->flag_printer_frontend;
 
       if (!$skipReceiptPrint) {
-        PrintServices::PrintPayment($datajson->order_number);
+        // station_id (2026-11-12, pengganti mr_setting.default_station): Kiosk/payment-gateway
+        // callback manggil SavePayment() pakai $fakeRequest kosong (TANPA bearer token, lihat
+        // PaymentGatewayServices::confirmPayment()) -- gak ada session kasir buat order_source
+        // ini, jadi WAJIB dari $terminal->receipt_station_id (sudah di tangan, baris di atas).
+        // POS (ada bearer token kasir asli) tetap dari session yang SEDANG LOGIN, bisa beda dari
+        // $terminal yang tercatat di order (reprint/cetak dari terminal lain tetap keluar di
+        // printer tempat kasir berdiri sekarang, lihat PrintServices::RetrieveReceiptStationIdFromSession()).
+        $station_id = $dataorder_current->order_source === 'kiosk'
+          ? ($terminal->receipt_station_id ?? null)
+          : PrintServices::RetrieveReceiptStationIdFromSession($datajson);
+        PrintServices::PrintPayment($datajson->order_number, $station_id);
       }
 
       // order Kiosk sengaja gak nge-print kitchen pas SaveOrder (nunggu kepastian bayar dulu,

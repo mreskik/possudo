@@ -12,7 +12,6 @@ POST /api/setting/save
 ```json
 {
   "general_setting": {
-    "defaultStation": 1,
     "useCustomerDisplay": true,
     "useVirtualKeyboard": true,
     "firstTimeWarning": 15,
@@ -30,7 +29,8 @@ POST /api/setting/save
 ```
 
 - **Deteksi section via `$request->has('general_setting')`/`$request->has('terminal')`** — kirim body kosong sama sekali (tidak ada section manapun) → `{ "code": 100, "message": "No section was sent (general_setting/terminal)." }`.
-- `general_setting` — update singleton `SettingModel` (`id = 1`) — `defaultStation`/`useCustomerDisplay`/`useVirtualKeyboard`/`firstTimeWarning`/`secondTimeWarning`. Field yang tidak dikirim (`?? null`, kecuali `firstTimeWarning`/`secondTimeWarning` yang `?? 0`) akan **ditimpa** — ini **bukan** partial update per-field, kirim ulang section ini berarti kirim semua field-nya, bukan cuma yang berubah.
+- `general_setting` — update singleton `SettingModel` (`id = 1`) — `useCustomerDisplay`/`useVirtualKeyboard`/`firstTimeWarning`/`secondTimeWarning`. Field yang tidak dikirim (`?? null`, kecuali `firstTimeWarning`/`secondTimeWarning` yang `?? 0`) akan **ditimpa** — ini **bukan** partial update per-field, kirim ulang section ini berarti kirim semua field-nya, bukan cuma yang berubah.
+- **`defaultStation`/`default_station` DIHAPUS (2026-11-12)** — kolom `mr_setting.default_station` (1 printer global untuk semua terminal) sudah di-drop. Printer struk order/bill (`PrintPayment`/`PrintBill`) dan struk laporan shift/endday sekarang resolve **per-terminal dari session kasir yang sedang login** (`mr_session.data.terminal_id` → `mr_terminal.receipt_station_id`), bukan lagi 1 nilai singleton di `mr_setting`. Lihat [`AUTH.md`](../AUTH/AUTH.md) untuk field `terminal_id` wajib baru di endpoint login.
 - `firstTimeWarning`/`secondTimeWarning` (ditambah 2026-10-14, kolom DB `first_time_warning`/`second_time_warning`, integer, default `0`) — durasi reminder (dalam **menit**) untuk meja yang masih open ("First Time Warning"/"Second Time Warning" di tab General, UI-nya sebelumnya cuma input hardcode `value="0"` tanpa `v-model`, sekarang sudah tersambung). **Belum ada logic reminder-nya sendiri** di sisi mana pun (backend/frontend) — field ini baru menyimpan nilainya, belum ada yang membaca ulang nilai ini untuk benar-benar memunculkan reminder/notifikasi di halaman Order saat meja open melewati durasi tersebut.
 - `terminal` — array **semua terminal** langsung (semua `pos_type`, bukan cuma Kiosk — key section-nya dulu bernama `kiosk.terminal` nested, sudah direname & diratakan 2026-10-14 karena menyesatkan: tab UI-nya ("Terminal Setting") dan datanya memang untuk semua jenis terminal, dan nesting `{ list: [...] }` tidak perlu karena section-nya sendiri sudah bernama `terminal`), update `table_section_id`/`receipt_station_id` per terminal. Array **kosong** dianggap valid (no-op, bukan error) — sengaja, supaya form yang selalu mengirim section ini (walau branch belum punya terminal) tidak ikut gagal. Setiap baris **wajib** punya `id` → kosong → `"terminal id is required in every terminal row."`.
 
@@ -42,7 +42,7 @@ GET /api/setting/load
 
 **⚠️ Dipakai GLOBAL STATE, bukan khusus halaman Setting** — `globalstore.js`, di-bootstrap guard router `CekStatusLogin` setiap kali masuk area dashboard (lihat `PETA HALAMAN.md`), dibaca **flat** di banyak komponen (contoh: `Navbar.vue` → `globalstore.setting?.use_customer_display`). **Strukturnya TIDAK boleh diubah jadi nested/section-based** — akan merusak semua pemakai `globalstore.setting` di seluruh app. Kalau butuh bentuk section (simetris dengan `Save`), pakai [`Load Detail`](#load-detail) di bawah.
 
-Response: `{ "code": 0, "data": { "id": 1, "default_station": 1, "use_customer_display": true, "use_virtual_keyboard": true, "first_time_warning": 15, "second_time_warning": 30 } }`
+Response: `{ "code": 0, "data": { "id": 1, "use_customer_display": true, "use_virtual_keyboard": true, "first_time_warning": 15, "second_time_warning": 30 } }`
 
 Singleton `SettingModel::first()` apa adanya — snake_case (**beda konvensi** dari body `Save` yang camelCase di `general_setting`). Kolom `customer_display_left`/`customer_display_top`/`customer_display_name` **sengaja disembunyikan** dari response (`makeHidden()`) — dead field peninggalan fitur "pilih monitor untuk Customer Display" yang picker UI-nya (`<Select v-model="dataSetting.customerDisplay" :options="displayList">`) dan jalur `exec()`-nya sudah lama di-comment-out/dihapus (lihat [`TEST PRINT.md`](TEST%20PRINT.md)), tidak ada efek apapun ke perilaku aplikasi. Kolomnya sendiri masih ada di DB (tidak dihapus/migration baru), cuma tidak lagi diekspos lewat API maupun dibaca/ditulis dari frontend.
 
@@ -66,7 +66,7 @@ Response:
 {
   "code": 0,
   "data": {
-    "general_setting": { "id": 1, "default_station": 0, "use_customer_display": true, "use_virtual_keyboard": false, "first_time_warning": 15, "second_time_warning": 30 },
+    "general_setting": { "id": 1, "use_customer_display": true, "use_virtual_keyboard": false, "first_time_warning": 15, "second_time_warning": 30 },
     "terminal": [
       {
         "id": 1, "name": "TERMINAL 11", "table_section_id": null, "receipt_station_id": null,

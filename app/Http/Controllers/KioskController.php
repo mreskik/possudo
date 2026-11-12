@@ -667,7 +667,8 @@ class KioskController extends Controller
 
         // Station di-resolve dari $terminal->receipt_station_id (row yang SAMA yang barusan
         // dipakai buat cek flag_printer_frontend, gak query ulang) -- BEDA dari struk order
-        // (PrintPayment/PrintBill, yang pakai SettingModel::first()->default_station global).
+        // (PrintPayment/PrintBill, yang sejak 2026-11-12 resolve dari SESSION KASIR yang sedang
+        // login, bukan lagi mr_setting.default_station global -- lihat PrintServices::RetrieveReceiptStationIdFromSession()).
         // Top-up disengajain per-terminal karena terminal_id-nya emang udah wajib ada di titik
         // ini. Kalau terminal gak ketemu ATAU receipt_station_id-nya belum di-set -- PrintTopup()
         // bakal no-op sendiri (guard StationModel di dalamnya), gak error, cuma gak nyetak.

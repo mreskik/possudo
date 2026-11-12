@@ -178,7 +178,7 @@ class DayShiftController extends Controller
     {
         try {
             $dayshift_detail_ulid = $request->dayshift_detail_ulid;
-            PrintServices::PrintPerShiftv2($dayshift_detail_ulid);
+            PrintServices::PrintPerShiftv2($dayshift_detail_ulid, $request);
             return response()->json([
                 "code" => 0,
                 "message" => "ashiappp"
@@ -212,7 +212,7 @@ class DayShiftController extends Controller
     {
         try {
             $dayshift_ulid = $request->dayshift_ulid;
-            PrintServices::PrintEndDay($dayshift_ulid);
+            PrintServices::PrintEndDay($dayshift_ulid, $request);
             return response()->json([
                 "code" => 0,
                 "message" => "success print endday report"

@@ -76,10 +76,11 @@ class SalesController extends Controller
 
             $order_number = $request->order_number;
             $dataorder = TrOrderModel::where("order_number", $order_number)->first();
+            $station_id = PrintServices::RetrieveReceiptStationIdFromSession($request);
             if ($dataorder->status == 'cancel') {
-                PrintServices::PrintBill($order_number);
+                PrintServices::PrintBill($order_number, $station_id);
             } else if ($dataorder->status == 'paid' || $dataorder->status == 'void') {
-                PrintServices::PrintPayment($order_number);
+                PrintServices::PrintPayment($order_number, $station_id);
             }
 
             return response()->json([
@@ -101,7 +102,7 @@ class SalesController extends Controller
             $order_number = $request->input('order_number');
             $notes = $request->input('notes');
 
-            $message = SalesServices::Void($order_number, $notes);
+            $message = SalesServices::Void($order_number, $notes, $request);
 
             return response()->json([
                 "code" => 0,
