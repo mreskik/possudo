@@ -816,7 +816,9 @@ class PrintServices
           }
         }
         if ($item->notes && $item->notes != '') {
-          $ngeprintasek->setText(' notes : ' . $item->notes);
+          // font "TSS24.BF2" (2026-11-13) -- font bawaan TSC yang miring, biar notes item beda
+          // tampilan dari baris lain (italic), lihat GeneralLabel::setText()/sikat().
+          $ngeprintasek->setText(' *' . $item->notes, "TSS24.BF2");
         }
         $ngeprintasek->sikat();
         $itungan_item = $itungan_item + 1;

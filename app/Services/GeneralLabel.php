@@ -25,9 +25,11 @@ class GeneralLabel
     }
   }
 
-  public function setText(string $text)
+  // $font: kode font TSPL command TEXT (lihat sikat()) -- default "2" sama kayak sebelumnya,
+  // pakai "TSS24.BF2" (font bawaan TSC yang miring) buat baris yang mau dicetak italic.
+  public function setText(string $text, string $font = "2")
   {
-    $this->textnya[] = $text;
+    $this->textnya[] = ["text" => $text, "font" => $font];
   }
   public function setMargin(int $left, int $top)
   {
@@ -50,7 +52,7 @@ class GeneralLabel
       CLS\n
       ";
       foreach ($this->textnya as $i) {
-        $inisialisasi = $inisialisasi . "TEXT $this->left,$this->top,\"2\",0,1,1,\"$i\"\n ";
+        $inisialisasi = $inisialisasi . "TEXT $this->left,$this->top,\"{$i['font']}\",0,1,1,\"{$i['text']}\"\n ";
         $this->top += 25; //jarak antar spasi teks
       }
 
