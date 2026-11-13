@@ -1640,6 +1640,91 @@ class DayShiftServices
     ];
   }
 
+  // GetReportSummaryV3 (2026-11-13) -- SAMA PERSIS V2, cuma minus "sales_by_menu" & "sales_by_table"
+  // dari response (2 field itu dipakai DayStartEndPage.vue render tabel Sales By Menu/Sales By
+  // Table di frontend, tapi gak kepake di consumer baru yang cuma butuh section summary-nya doang).
+  static function GetReportSummaryV3($dayshift_ulid)
+  {
+    $raw = self::GetReportCurrentShiftforTampilan($dayshift_ulid);
+    $recap = $raw['sales_recapitulation'];
+    $amountAt = function (int $i) use ($recap) {
+      return (float) ($recap[$i]['amount'] ?? 0);
+    };
+
+    // ORDER SOURCE SUMMARY: 4 kategori FIXED (pos/qr/mobile/kiosk), selalu ditampilkan semua
+    // walau salah satu belum ada transaksi (0) -- sama pola PrintServices::PrintEndDay().
+    $orderSourceLabels = ["pos" => "POS", "qr" => "QR Order", "mobile" => "Mobile App", "kiosk" => "Kiosk"];
+    $orderSourceByKey = [];
+    foreach ($raw['sales_by_order_source'] as $item) {
+      $orderSourceByKey[$item->order_source] = $item;
+    }
+    $orderSourceTotal = 0;
+    foreach ($orderSourceByKey as $item) {
+      $orderSourceTotal += (float) $item->total_amount;
+    }
+    $orderSourceSummary = [];
+    foreach ($orderSourceLabels as $key => $label) {
+      $found = $orderSourceByKey[$key] ?? null;
+      $amount = (float) ($found->total_amount ?? 0);
+      $orderSourceSummary[] = [
+        "label" => $label,
+        "qty" => (int) ($found->qty ?? 0),
+        "amount" => $amount,
+        "percent" => $orderSourceTotal > 0 ? round(($amount / $orderSourceTotal) * 100) : 0,
+      ];
+    }
+
+    $startingCash = (float) ($raw['dayshift']->dayin_total ?? 0);
+    $cashIn = (float) ($raw['cash_in_total'] ?? 0);
+    $cashOut = 0;
+    $expectedCash = $startingCash + $cashIn - $cashOut;
+    $actualCash = (float) ($raw['dayshift']->dayout_total ?? 0);
+
+    return [
+      "dayshift" => $raw['dayshift'],
+      "dayin_user_name" => $raw['dayin_user_name'],
+      "dayshift_detail" => $raw['dayshift_detail'],
+
+      // blok "report_detail" (2026-11-13, baru di V3) -- membungkus 8 section (7 sales +
+      // cash_flow_summary), sebelumnya semua ini flat di top-level sama kayak V2.
+      "report_detail" => [
+        "sales_summary" => [
+          "total_bills" => $amountAt(13),
+          "average_per_bill" => $amountAt(14),
+          "on_hold" => $amountAt(0),
+          "pending" => $amountAt(1),
+          "sales_subtotal" => $amountAt(2),
+          "discount" => $amountAt(18),
+          "dpp" => (float) ($raw['dpp_total'] ?? 0),
+          "service_charge" => $amountAt(5),
+          "pb1" => $amountAt(7),
+          "vat" => $amountAt(8),
+          "total_tax" => (float) ($raw['total_tax_total'] ?? 0),
+          "net_sales" => $amountAt(2),
+          "gross_sales" => $amountAt(9),
+        ],
+        "sales_type_summary" => self::breakdownWithPercent($raw['sales_by_visit_purpose'], "visit_purpose_name", "total_amount"),
+        "order_source_summary" => $orderSourceSummary,
+        "item_category_summary" => self::breakdownWithPercent($raw['sales_by_category'], "category_name", "grand_total"),
+        "staff_sales_summary" => self::breakdownWithPercent($raw['sales_by_staff'], "staff_name", "total_amount"),
+        "payment_method_summary" => self::breakdownWithPercent($raw['payment_recapitulation'], "payment_method_name", "payment_amount"),
+        // STAFF PAYMENT SUMMARY (baru) -- label udah digabung "Nama - Metode" dari query SQL
+        // (sales_by_staff_payment, GetReportCurrentShiftforTampilan), jadi breakdownWithPercent()
+        // dipanggil apa adanya tanpa modifikasi (sama persis pola section lain).
+        "staff_payment_summary" => self::breakdownWithPercent($raw['sales_by_staff_payment'], "label", "amount"),
+        "cash_flow_summary" => [
+          "starting_cash" => $startingCash,
+          "cash_in" => $cashIn,
+          "cash_out" => $cashOut,
+          "expected_cash" => $expectedCash,
+          "actual_cash" => $actualCash,
+          "variance" => $actualCash - $expectedCash,
+          "closing_note" => $raw['dayshift']->dayout_notes ?? '',
+        ],
+      ],
+    ];
+  }
+
 
   static function GetReportDayshiftorEndDay($dayshift_ulid)
   {

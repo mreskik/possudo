@@ -98,6 +98,67 @@ Response (struktur ringkas — isi lengkap sangat panjang, lihat kode untuk deta
 - `cash_flow_summary.cash_out` — **selalu `0`** di kode saat ini (field placeholder, belum ada sumber data "uang keluar" yang diimplementasikan).
 - Field passthrough (`dayshift`, `dayin_user_name`, `dayshift_detail`, `sales_by_menu`, `sales_by_table`) — dari `GetReportCurrentShiftforTampilan()` (fungsi laporan v1), diikutkan supaya `DayStartEndPage.vue` tidak perlu panggil 2 endpoint terpisah.
 
+## Report V3 (2026-11-13, baru)
+
+```
+GET /api/dayshift/report-v3/{dayshift_ulid}
+```
+
+**Sama persis [`Report V2`](#report-v2-aktif-dipakai)** — isi/formula semua section identik (reuse logic yang sama) — bedanya 2 hal:
+1. **Minus 2 field passthrough**: `sales_by_menu` dan `sales_by_table` **tidak ada** di response.
+2. **8 section dibungkus** dalam 1 blok baru `"report_detail"` (7 section sales + `cash_flow_summary`) — sebelumnya semua ini flat di top-level sama kayak V2.
+
+Response (struktur ringkas — isi lengkap sangat panjang, lihat kode untuk detail per-field):
+```json
+{
+  "code": 0,
+  "data": {
+    "dayshift": { "ulid": "...", "dayin_total": "500000.00", "dayout_total": "480000.00" },
+    "dayin_user_name": "Kasir 1",
+    "dayshift_detail": [ { "shift_number": 1, "shift_time": "..." } ],
+    "report_detail": {
+      "sales_summary": {
+        "total_bills": 0,
+        "average_per_bill": 0,
+        "on_hold": 0,
+        "pending": 0,
+        "sales_subtotal": 0,
+        "discount": 0,
+        "dpp": 0,
+        "service_charge": 0,
+        "pb1": 0,
+        "vat": 0,
+        "total_tax": 0,
+        "net_sales": 0,
+        "gross_sales": 0
+      },
+      "sales_type_summary": [ { "label": "Dine In", "amount": 0, "percent": 0 } ],
+      "order_source_summary": [
+        { "label": "POS", "qty": 0, "amount": 0, "percent": 0 },
+        { "label": "QR Order", "qty": 0, "amount": 0, "percent": 0 },
+        { "label": "Mobile App", "qty": 0, "amount": 0, "percent": 0 },
+        { "label": "Kiosk", "qty": 0, "amount": 0, "percent": 0 }
+      ],
+      "item_category_summary": [...],
+      "staff_sales_summary": [...],
+      "payment_method_summary": [...],
+      "staff_payment_summary": [ { "label": "Kasir 1 - CASH", "qty": 0, "amount": 0, "percent": 0 } ],
+      "cash_flow_summary": {
+        "starting_cash": 500000,
+        "cash_in": 0,
+        "cash_out": 0,
+        "expected_cash": 500000,
+        "actual_cash": 480000
+      }
+    }
+  }
+}
+```
+
+Dibanding response Report V2 di atas: **tidak ada** key `sales_by_menu`/`sales_by_table`, dan 8 section (`sales_summary`, `sales_type_summary`, `order_source_summary`, `item_category_summary`, `staff_sales_summary`, `payment_method_summary`, `staff_payment_summary`, `cash_flow_summary`) sekarang **nested** di bawah key `report_detail` — bukan flat di top-level seperti V2. Field passthrough (`dayshift`, `dayin_user_name`, `dayshift_detail`) tetap di top-level, sama posisinya seperti V2.
+
+Dibuat untuk consumer yang cuma butuh section summary (gak perlu render tabel Sales By Menu/Sales By Table) — bukan pengganti V2, V2 tetap dipakai `DayStartEndPage.vue` apa adanya.
+
 ## Pending Order
 
 ```
@@ -118,8 +179,8 @@ Dipakai saat End Day — kalau masih ada order pending yang belum selesai, biasa
 
 ## Sumber
 
-- `app/Http/Controllers/DayShiftController.php` — `DayShiftList()`, `Report()`, `ReportV2()`, `pendingOrder()`.
-- `app/Services/DayShiftServices.php` — `GetDayshiftList()`, `GetReport()` (v1), `GetReportCurrentShiftforTampilan()`, `GetReportSummaryV2()`, `breakdownWithPercent()` (private).
+- `app/Http/Controllers/DayShiftController.php` — `DayShiftList()`, `Report()`, `ReportV2()`, `ReportV3()`, `pendingOrder()`.
+- `app/Services/DayShiftServices.php` — `GetDayshiftList()`, `GetReport()` (v1), `GetReportCurrentShiftforTampilan()`, `GetReportSummaryV2()`, `GetReportSummaryV3()`, `breakdownWithPercent()` (private).
 - Frontend: `src/services/DayshiftServices.ts`, `src/modules/dashboard/shiftlog/ShiftLogPage.vue`, `src/modules/dashboard/daystart_end/DayStartEndPage.vue`.
 
 ## Status
@@ -127,3 +188,5 @@ Dipakai saat End Day — kalau masih ada order pending yang belum selesai, biasa
 Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifikasi ulang lewat HTTP request live di sesi ini). Report V2 sangat kompleks (ratusan baris kalkulasi) — ringkasan ini struktural, disarankan baca `GetReportSummaryV2()`/`GetReportCurrentShiftforTampilan()` langsung kalau butuh detail formula tiap angka.
 
 Diupdate 2026-10-20: ditambahkan section `staff_payment_summary` — perubahan dilakukan konsisten di 4 fungsi sumber data (`GetReportCurrentShiftforTampilan()`, `GetReportDayshiftorEndDay()`, `GetReportCurrentShift()`, `GetReportPerShift()`), `GetReportSummaryV2()`, dan 4 fungsi print (`PrintEndDay()`, `PrintReportDaysift()`, `PrintCurrentShift()`, `PrintPerShiftv2()` — lihat [`PRINT AND DETAIL LIST.md`](PRINT%20AND%20DETAIL%20LIST.md)). FE (`DayStartEndPage.vue`, repo `posv1-vue`) ditambahkan card baru "Staff Payment Summary".
+
+Diupdate 2026-11-13: ditambahkan `report-v3` — `GetReportSummaryV3()` membangun ulang response yang sama persis dengan `GetReportSummaryV2()` (dipanggil `GetReportCurrentShiftforTampilan()` secara independen, bukan memanggil V2 lalu `unset()`), minus field `sales_by_menu`/`sales_by_table`. Belum ada verifikasi live/HTTP di sesi ini, sudah dicek `php -l` bersih di 3 file (`DayShiftServices.php`, `DayShiftController.php`, `routes/api.php`).

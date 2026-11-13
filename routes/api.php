@@ -228,6 +228,8 @@ Route::prefix('dayshift')->group(function () {
   // BUKAN array numeric-index kayak Report()/GetReportCurrentShiftforTampilan() (endpoint lama
   // TETAP ADA, gak dihapus, cuma gak dipakai lagi sama DayStartEndPage.vue).
   Route::get("report-v2/{dayshift_ulid}", [DayShiftController::class, 'ReportV2']);
+  // Report V3 (2026-11-13) -- sama persis V2, minus "sales_by_menu"/"sales_by_table".
+  Route::get("report-v3/{dayshift_ulid}", [DayShiftController::class, 'ReportV3']);
   Route::get("dayshift-list", [DayShiftController::class, 'DayShiftList']);
   Route::get("print-report/{dayshift_ulid}", [DayShiftController::class, 'printReport']);
   Route::get("print-endday-report/{dayshift_ulid}", [DayShiftController::class, 'printEndayReport']);

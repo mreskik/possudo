@@ -140,6 +140,26 @@ class DayShiftController extends Controller
         }
     }
 
+    // ReportV3 (2026-11-13) -- SAMA PERSIS ReportV2, cuma minus "sales_by_menu" & "sales_by_table"
+    // dari response (lihat DayShiftServices::GetReportSummaryV3()).
+    function ReportV3(Request $request)
+    {
+        try {
+
+            $data = DayShiftServices::GetReportSummaryV3($request->dayshift_ulid);
+
+            return response()->json([
+                "code" => 0,
+                "data" => $data
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "code" => 0,
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
+
     function DayShiftList(Request $request)
     {
         try {
