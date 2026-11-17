@@ -39,7 +39,7 @@ return new class extends Migration
             $table->unsignedBigInteger("member_id")->nullable();
             $table->unsignedBigInteger("visit_purpose_id");
             $table->unsignedBigInteger("pax")->default(1);
-            $table->string("status"); // pending, hold, cancel, paid, void, moved, not_paid
+            $table->string("status"); // pending, hold, cancel, paid, void, moved, not_paid, other_cost (2026-11-17, BARU, belum ada implementasi/logic apa pun yang memakai status ini -- cuma dicatat dulu di komentar, konteks/alurnya menyusul)
 
             $table->string("waiter_name")->nullable();
             $table->string("sender_name")->nullable();

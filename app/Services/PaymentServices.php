@@ -7,6 +7,7 @@ use App\Models\MasterMemberModel;
 use App\Models\MasterPaymentMethodModel;
 use App\Models\TableSectionModel;
 use App\Models\TrOrderDetailModel;
+use App\Models\TrOrderDetailPackageModel;
 use App\Models\TrOrderModel;
 use App\Models\TrOrderPaymentModel;
 use Illuminate\Http\Request;
@@ -66,17 +67,71 @@ class PaymentServices
         return $response;
       }
 
+      // Guard payment type OTHER gak boleh digabung (2026-11-17) -- kalau payment_detail lebih
+      // dari 1 baris (split payment) DAN salah satu baris itu payment_method_id-nya tergolong
+      // payment_method_type_id = 4 (OTHER), tolak total SEBELUM payment_number di-generate/
+      // transaksi dibuka -- OTHER harus berdiri sendiri (1 baris doang), gak boleh split sama
+      // metode lain apa pun.
+      if (count($datajson->payment_detail) > 1) {
+        foreach ($datajson->payment_detail as $item) {
+          $paymentMethod = MasterPaymentMethodModel::find($item['payment_method_id']);
+          if ($paymentMethod && (int) $paymentMethod->payment_method_type_id === 4) {
+            $response->message = "payment method type other harus 1 tidak boleh digabung";
+            return $response;
+          }
+        }
+      }
+
+      // Guard payment type OTHER gak boleh dipakai kalau ada item yang ke-apply discount
+      // (2026-11-17) -- walau cuma 1 baris (lolos guard di atas), kalau salah satu baris
+      // payment_detail-nya type OTHER, DAN order ini punya item (tr_order_detail) ATAU
+      // sub-item package (tr_order_detail_package) yang discount_amount > 0, tolak total.
+      // Dicek SEBELUM payment_number di-generate/transaksi dibuka, sama pola guard di atas.
+      //
+      // $isOtherPayment (2026-11-17, BARU) -- ke-set true di loop yang SAMA (guard OTHER di
+      // atas udah mastiin payment_detail PASTI cuma 1 baris kalau ada OTHER, jadi lookup di
+      // sini aman dipakai buat nentuin status order di bawah -- TANPA lookup ulang).
+      $isOtherPayment = false;
+      foreach ($datajson->payment_detail as $item) {
+        $paymentMethod = MasterPaymentMethodModel::find($item['payment_method_id']);
+        if ($paymentMethod && (int) $paymentMethod->payment_method_type_id === 4) {
+          $hasDiscountItem = TrOrderDetailModel::where('order_number', $datajson->order_number)
+            ->where('discount_amount', '>', 0)
+            ->exists();
+          $hasDiscountPackage = TrOrderDetailPackageModel::whereIn(
+            'tr_order_detail_ulid',
+            TrOrderDetailModel::where('order_number', $datajson->order_number)->pluck('ulid')
+          )->where('discount_amount', '>', 0)->exists();
+
+          if ($hasDiscountItem || $hasDiscountPackage) {
+            $response->message = "payment method type other cannot be applied to a discounted order";
+            return $response;
+          }
+          $isOtherPayment = true;
+          break;
+        }
+      }
+
       $payment_number = self::GenerateOrderNumber($dataorder_current->terminal_id);
 
       DB::beginTransaction();
 
+      // member_id SENGAJA TIDAK ditulis di sini lagi (2026-11-17, keputusan user) -- member_id
+      // order sepenuhnya cuma dari SaveOrder() (dipilih di halaman Order), bukan bisa
+      // diubah/dipilih lagi pas Save Payment. Kalau client tetap kirim member_id di body,
+      // field itu diabaikan sepenuhnya.
+      // status order 'other_cost' (2026-11-17, BARU) -- MENGGANTIKAN 'paid' kalau payment-nya
+      // type OTHER (bukan status TAMBAHAN di luar paid). Order yang dibayar pakai OTHER TIDAK
+      // PERNAH tercatat status=paid sama sekali. Konsekuensi: modul lain yang filter
+      // status='paid' (laporan sales, EndDay, dll) TIDAK akan ikut menghitung order ini --
+      // keputusan sadar user, scope perubahan ini CUMA status order, modul lain MENYUSUL
+      // terpisah kalau memang perlu nanti.
       TrOrderModel::where('order_number', $datajson->order_number)->update([
         'payment_number' => $payment_number,
-        'status' => 'paid',
+        'status' => $isOtherPayment ? 'other_cost' : 'paid',
         'order_out' => now(),
         'payment_at' => now(),
         'sync_at' => null,
-        'member_id' => $datajson->member_id
       ]);
 
 
@@ -182,6 +237,16 @@ class PaymentServices
       if (!$dataorder) {
         throw new \Exception("order number $datajson->order_number not found!");
       }
+
+      // Guard order status='other_cost' TIDAK BISA diedit sama sekali (2026-11-17) -- dicek
+      // PALING AWAL (sebelum guard payment_number/total_billing lain), order yang statusnya
+      // other_cost (dibayar pakai payment type OTHER, lihat SavePayment()) gak bisa diubah
+      // payment-nya lewat endpoint ini, titik -- gak ada skenario valid buat edit order jenis
+      // ini balik lagi.
+      if ($dataorder->status === 'other_cost') {
+        throw new \Exception("order with other cost status cannot be edited");
+      }
+
       if ($dataorder->payment_number == null || $dataorder->payment_number == '') {
         throw new \Exception("order number $datajson->order_number has never been paid!");
       }
@@ -192,6 +257,39 @@ class PaymentServices
       if ($dataorder->total_billing != $datajson->total_payment) {
         throw new \Exception("Payment amount does not match the order!");
       }
+
+      // Guard payment type OTHER gak boleh digabung (2026-11-17) -- sama pola persis
+      // SavePayment(), dipasang juga di sini biar Edit Payment gak bisa dipakai buat
+      // "ngelewatin" guard yang udah ada di Save Payment.
+      if (count($datajson->payment_detail) > 1) {
+        foreach ($datajson->payment_detail as $item) {
+          $paymentMethod = MasterPaymentMethodModel::find($item['payment_method_id']);
+          if ($paymentMethod && (int) $paymentMethod->payment_method_type_id === 4) {
+            throw new \Exception("payment method type other harus 1 tidak boleh digabung");
+          }
+        }
+      }
+
+      // Guard payment type OTHER gak boleh dipakai kalau ada item yang ke-apply discount
+      // (2026-11-17) -- sama pola persis SavePayment().
+      foreach ($datajson->payment_detail as $item) {
+        $paymentMethod = MasterPaymentMethodModel::find($item['payment_method_id']);
+        if ($paymentMethod && (int) $paymentMethod->payment_method_type_id === 4) {
+          $hasDiscountItem = TrOrderDetailModel::where('order_number', $datajson->order_number)
+            ->where('discount_amount', '>', 0)
+            ->exists();
+          $hasDiscountPackage = TrOrderDetailPackageModel::whereIn(
+            'tr_order_detail_ulid',
+            TrOrderDetailModel::where('order_number', $datajson->order_number)->pluck('ulid')
+          )->where('discount_amount', '>', 0)->exists();
+
+          if ($hasDiscountItem || $hasDiscountPackage) {
+            throw new \Exception("payment method type other cannot be applied to a discounted order");
+          }
+          break;
+        }
+      }
+
       DB::beginTransaction();
       $datapaymentlama = TrOrderPaymentModel::where('payment_number', $dataorder->payment_number)->delete();
 
