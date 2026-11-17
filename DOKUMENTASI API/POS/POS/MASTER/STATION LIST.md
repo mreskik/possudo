@@ -4,48 +4,91 @@
 GET /api/master/station-list
 ```
 
-Semua station (printer/dapur/bar, dsb) — `StationModel::get()` apa adanya, tanpa filter `is_active`.
+Semua station (printer/dapur/bar, dsb) — `mr_station` apa adanya (SELURUH kolom, tidak ada whitelist) + 3 kolom lookup nama (2026-11-17, baru), tanpa filter `is_active`.
 
-Response:
+Response (data real dari DB dev, branch 27):
 ```json
 {
   "code": 0,
   "data": [
     {
       "id": 12,
-      "branch_id": 51,
+      "branch_id": 27,
       "name": "KASIR",
       "printer_name": "RECIPT",
       "printer_type": 1,
+      "printer_type_name": "Thermal Printer",
       "printer_connection": 1,
-      "printing_mode": null,
-      "port": null,
-      "auto_cut": null,
-      "cash_drawer": null,
-      "line_character": null,
-      "is_active": true
+      "printer_connection_name": "Windows Printer Connection",
+      "printing_mode": 1,
+      "printing_mode_name": "Standar Printing",
+      "port": "",
+      "auto_cut": false,
+      "cash_drawer": true,
+      "line_character": 48,
+      "created_at": null,
+      "updated_at": null
     },
     {
       "id": 15,
-      "branch_id": 51,
+      "branch_id": 27,
       "name": "HALO",
-      "printer_name": "192.168.1.50",
+      "printer_name": "asd",
       "printer_type": 1,
+      "printer_type_name": "Thermal Printer",
       "printer_connection": 2,
-      "printing_mode": null,
-      "port": "9100",
-      "auto_cut": null,
-      "cash_drawer": null,
-      "line_character": null,
-      "is_active": true
+      "printer_connection_name": "Network Printer Connection",
+      "printing_mode": 1,
+      "printing_mode_name": "Standar Printing",
+      "port": "1233",
+      "auto_cut": true,
+      "cash_drawer": true,
+      "line_character": 123,
+      "created_at": null,
+      "updated_at": null
+    },
+    {
+      "id": 13,
+      "branch_id": 27,
+      "name": "BEVERAGE",
+      "printer_name": "LABEL",
+      "printer_type": 2,
+      "printer_type_name": "Epson Sticker",
+      "printer_connection": 1,
+      "printer_connection_name": "Windows Printer Connection",
+      "printing_mode": 1,
+      "printing_mode_name": "Standar Printing",
+      "port": "",
+      "auto_cut": false,
+      "cash_drawer": true,
+      "line_character": 30,
+      "created_at": null,
+      "updated_at": null
     }
   ]
 }
 ```
 
-- `StationModel::get()` apa adanya — SELURUH kolom `mr_station` ikut dikirim, tidak ada whitelist.
-- **Tidak difilter `is_active`** (beda dari [`TABLE SECTION.md`](TABLE%20SECTION.md) yang filter aktif) — semua station ikut dibalikin, termasuk yang nonaktif. FE perlu filter sendiri kalau cuma mau yang aktif.
-- Data kosong sama sekali (bukan error) → `{ "code": 100, "message": "station gak muncul!" }` — **perilaku tidak umum**: array kosong dianggap kegagalan, bukan hasil valid "belum ada station" (beda dari kebanyakan endpoint List lain yang balikin `[]` dengan `code: 0`).
+- **Field lama** (`s.*`, langsung dari `mr_station`) — SELURUH kolom tabel ikut dikirim apa adanya, tidak ada whitelist. **Tidak difilter `is_active`** (beda dari [`TABLE SECTION.md`](TABLE%20SECTION.md) yang filter aktif) — semua station ikut dibalikin, termasuk yang nonaktif. FE perlu filter sendiri kalau cuma mau yang aktif.
+- **3 field lookup baru (2026-11-17)** — `printer_type_name`/`printer_connection_name`/`printing_mode_name`, hasil `LEFT JOIN` ke `mr_printer_type`/`mr_printer_connection`/`mr_printing_mode` by id (`pty.id = s.printer_type`, dst) — pola sama persis yang sudah dipakai `KioskController::GetTerminalDetail()` (field `receipt_station`). `LEFT JOIN` (bukan `JOIN`) — station yang kolom lookupnya masih `NULL`/belum pernah di-set tetap muncul, cuma `*_name`-nya ikut `null`, bukan baris station-nya hilang. Lihat tabel referensi `printer_type` dan `printer_connection` di bawah.
+- **`auto_cut`/`cash_drawer` di-cast ke boolean (2026-11-17)** — kolomnya `tinyint(1)` di DB, `DB::table()->get()` yang dipakai sekarang (ganti dari `StationModel::get()`) gak auto-cast ke boolean PHP seperti Eloquent `$casts` — di-cast manual (`(bool)`) sebelum dikirim, jadi response beneran `true`/`false`, bukan `0`/`1` mentah.
+- Data kosong sama sekali (bukan error) → `{ "code": 100, "message": "station gak muncul!" }` — **perilaku tidak umum**: array kosong dianggap kegagalan, bukan hasil valid "belum ada station" (beda dari kebanyakan endpoint List lain yang balikin `[]` dengan `code: 0`). **(2026-11-17, bug lama dibenerin sekalian)**: kode SEBELUMNYA pakai `if ($data)` ke Eloquent Collection hasil `StationModel::get()` — Collection SELALU truthy walau isinya kosong, jadi cabang `else` ini **sebenarnya mati/gak pernah tercapai** sebelum perubahan ini. Sekarang pakai `$data->isNotEmpty()` yang benar-benar mengecek isi Collection.
+
+### `printer_type` (referensi `mr_printer_type`)
+
+| `id` | `name` |
+|---|---|
+| 1 | Thermal Printer |
+| 2 | Epson Sticker |
+| 3 | GPrinter Sticker |
+
+### `printing_mode` (referensi `mr_printing_mode`)
+
+| `id` | `name` |
+|---|---|
+| 1 | Standar Printing |
+| 2 | Single Menu Printing |
+| 3 | Qty Menu Printing |
 
 ### `printer_connection` (referensi `mr_printer_connection`)
 
@@ -72,7 +115,7 @@ Dipakai di tab Setting (routing print per station) dan saat Test Print (pilih st
 
 ## Sumber
 
-- `app/Http/Controllers/MasterController.php` — `GetStationList()`.
+- `app/Http/Controllers/MasterController.php` — `GetStationList()` (diubah 2026-11-17, dari `StationModel::get()` jadi raw query + 2 LEFT JOIN tambahan, plus cast boolean `auto_cut`/`cash_drawer`).
 - `app/Services/PrintServices.php` — `resolvePrintConnector()` (baru, 2026-11-17, private) — dipakai 10 lokasi (semua fungsi print ESC/POS thermal yang sebelumnya `new WindowsPrintConnector($data_station->printer_name)` langsung).
 - `app/Services/GeneralLabel.php` — `setNamePrinter()` (diselaraskan 2026-11-17, signature berubah jadi terima objek station, plus fix bug null pre-existing di catch block).
 - Frontend: `src/services/MasterServices.ts` (`getStationList`).
@@ -82,3 +125,5 @@ Dipakai di tab Setting (routing print per station) dan saat Test Print (pilih st
 Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifikasi ulang lewat HTTP request live di sesi ini).
 
 Diupdate 2026-11-17: **Network Printer Connection diimplementasikan** — `PrintServices.php` sebelumnya SELALU pakai `WindowsPrintConnector`, walau kolom `printer_connection`/`port` sudah ada di skema sejak awal (gak pernah dibaca logic print manapun, cuma dipakai buat lookup nama di Kiosk). Sekarang 10 lokasi `new WindowsPrintConnector($data_station->printer_name)` diganti panggil `self::resolvePrintConnector($data_station)`, yang membaca `printer_connection` dan pilih connector yang sesuai. `GeneralLabel::setNamePrinter()` (dipakai `PrintPriparationStation()`/`PrintTest()` buat label/stiker, jalur TSPL terpisah dari thermal) juga diselaraskan + 1 bug pre-existing ditemukan+diperbaiki sekaligus (lihat section `printer_connection` di atas). `php -l` bersih di kedua file, tervalidasi via test langsung (reflection ke `resolvePrintConnector()`, instansiasi langsung `GeneralLabel::setNamePrinter()` dengan 3 skenario: string backward-compat, connection=1, connection=2) — **belum ada test cetak fisik ke printer network sungguhan** di sesi ini (gak ada printer network tersedia buat dites).
+
+Diupdate 2026-11-17, lanjutan: **`printer_type_name`/`printer_connection_name`/`printing_mode_name` ditambahkan** ke response — `GetStationList()` diubah dari `StationModel::get()` jadi raw query (`DB::table('mr_station as s')`) + 3 `LEFT JOIN` ke tabel referensi, pola sama persis `KioskController::GetTerminalDetail()`. Sekalian cast `auto_cut`/`cash_drawer` (`tinyint(1)` di DB) ke boolean PHP asli, dan ganti guard array-kosong dari `if ($data)` (bug lama — Eloquent Collection selalu truthy, cabang gagal gak pernah tercapai) jadi `$data->isNotEmpty()` yang benar. **Tervalidasi live**: hit `GetStationList()` langsung lewat tinker, response berisi 3 station real (branch 27) dengan `printer_type_name`/`printer_connection_name`/`printing_mode_name` terisi benar sesuai lookup id-nya, `auto_cut`/`cash_drawer` tampil `true`/`false` (bukan `0`/`1`). `php -l` bersih.

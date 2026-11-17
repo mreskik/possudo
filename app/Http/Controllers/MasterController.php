@@ -401,8 +401,31 @@ class MasterController extends Controller
 
     public function GetStationList()
     {
-        $data = StationModel::get();
-        if ($data) {
+        // printer_type_name/printer_connection_name/printing_mode_name (2026-11-17, baru) --
+        // LEFT JOIN 3 tabel referensi (mr_printer_type/mr_printer_connection/mr_printing_mode),
+        // pola sama persis yang sudah dipakai KioskController::GetTerminalDetail()
+        // (receipt_station). LEFT JOIN (bukan JOIN) -- station yang kolom lookup-nya masih
+        // NULL (belum pernah di-set) tetap muncul, cuma *_name-nya ikut null.
+        $data = DB::table('mr_station as s')
+            ->leftJoin('mr_printer_type as pty', 'pty.id', '=', 's.printer_type')
+            ->leftJoin('mr_printer_connection as pc', 'pc.id', '=', 's.printer_connection')
+            ->leftJoin('mr_printing_mode as pm', 'pm.id', '=', 's.printing_mode')
+            ->select(
+                's.*',
+                'pty.name as printer_type_name',
+                'pc.name as printer_connection_name',
+                'pm.name as printing_mode_name'
+            )
+            ->get();
+
+        if ($data->isNotEmpty()) {
+            // auto_cut/cash_drawer kolomnya tinyint(1) -- DB::table()->get() gak auto-cast ke
+            // boolean PHP (beda dari Eloquent $casts), jadi di-cast manual di sini biar
+            // response API beneran true/false, bukan 0/1 (2026-11-17).
+            foreach ($data as $station) {
+                $station->auto_cut = (bool) $station->auto_cut;
+                $station->cash_drawer = (bool) $station->cash_drawer;
+            }
 
             return response()->json([
                 'code' => 0,
