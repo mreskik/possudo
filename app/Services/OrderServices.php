@@ -120,6 +120,17 @@ class OrderServices
           throw new \Exception("dayshift is not active, cannot create order!");
         }
 
+        // Guard tanggal start day (2026-11-17) -- CUMA berlaku buat order BARU (orderNumber
+        // kosong), BUKAN buat nambah item ke order existing (blok itu beda, lihat else di
+        // bawah). Kalau dayin_time dayshift yang sedang aktif BUKAN tanggal hari ini (misal
+        // shift kemarin belum di-end-day, jam komputer udah ganti hari), order baru ditolak --
+        // harus End Day dulu sebelum bisa bikin order baru di hari berikutnya. Mencegah
+        // order_date baru "nyambung" ke dayshift kemarin yang lupa ditutup (laporan End Day
+        // jadi gak akurat kalau terus dibiarkan).
+        if (\Carbon\Carbon::parse($dayshift->dayin_time)->toDateString() !== $date_now) {
+          throw new \Exception("cannot create new order, you must end day first!");
+        }
+
         // order_queue di-scope PER DAYSHIFT (dayshift_ulid), BUKAN per order_date (tanggal
         // kalender) lagi -- order_date bisa nyambung >1 dayshift dalam 1 hari (multi-shift) atau
         // 1 dayshift bisa lintas 2 order_date (shift malam lewat tengah malam), dua-duanya bikin

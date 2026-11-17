@@ -76,6 +76,7 @@ Endpoint **paling krusial** di seluruh POS — 1 endpoint untuk **membuat order 
 - `listOrder[].promoId`/`menuPackageList[].promoId` — **promo di-apply PER ITEM/SUB-ITEM**, bukan per order (beda dari pola `use_promo_ids` level-order yang dipakai sudomobile). Lihat "Alur Promo" di bawah.
 - Backend **mengecek stok** (`mr_item.stok_qty`/`flag_soldout`, lewat JOIN `mr_pricelist_detail`→`mr_item_conv`→`mr_item`) — ini **satu-satunya** validasi server yang nyata di titik ini. Stok tidak cukup → `{ "code": 100, "message": "Stok yang tersedia untuk {nama item} hanya {n}" }`, seluruh transaksi di-rollback.
 - `dayshift` harus aktif (`tr_dayshift.dayout_time IS NULL`) — tidak ada → `"dayshift is not active, cannot create order!"`.
+- **Guard tanggal start day (2026-11-17, baru)** — `tr_dayshift.dayin_time` milik dayshift yang sedang aktif harus **tanggal hari ini** (`now()->toDateString()`) — kalau beda (misal shift kemarin belum di-End Day, jam komputer sudah ganti hari) → ditolak `"cannot create new order, you must end day first!"`. **Cuma berlaku di mode order baru** (`orderNumber: ""`) — mode "tambah item ke order existing" (blok kode terpisah) **tidak kena guard ini**, tetap bisa nambah item ke order pending lama meski tanggalnya sudah beda hari.
 - `tableSectionId` harus valid — tidak ketemu → `"invalid table section!"`.
 
 ## Request — mode "tambah item" (`orderNumber` terisi)
@@ -180,3 +181,5 @@ if ($order_source !== 'kiosk' && $tablesection->print_checker_on === 'save_order
 ## Status
 
 Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifikasi ulang lewat HTTP request live di sesi ini). Alur promo di-trace lengkap dari frontend (`applyPromo()` dkk) ke backend (barrier `flag_required_member`/tier) — ini bagian paling kompleks di seluruh POS, disarankan baca kode aslinya langsung kalau ada bagian yang kurang jelas dari ringkasan ini.
+
+**Guard tanggal start day (2026-11-17)**: tervalidasi live via `OrderServices::SaveOrder()` dipanggil langsung (tinker) dengan payload mode order baru, dayshift aktif yang `dayin_time`-nya beda tanggal dari hari ini (`2026-11-12` vs server date `2026-11-17`) — exception `"cannot create new order, you must end day first!"` terlempar dengan benar, SEBELUM proses insert order apa pun dijalankan. `php -l` bersih.
