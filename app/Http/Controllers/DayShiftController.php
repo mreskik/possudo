@@ -69,6 +69,21 @@ class DayShiftController extends Controller
     function EndDay(Request $request)
     {
         try {
+            // Pending order guard (2026-11-17) -- diadopsi dari pendingOrder() (reuse query yang
+            // sama, status='pending' global, TIDAK difilter per dayshift_ulid, sama persis
+            // behavior endpoint GET pending-order yang sudah ada). Dicek SEBELUM panggil
+            // DayShiftServices::EndDay() sama sekali -- kalau ada order pending, End Day ditolak
+            // total (gak masuk ke tahap VALIDASI/SAVE/PUSH/JURNAL apapun), FE dikasih balik daftar
+            // order pending-nya langsung (bukan cuma pesan error) biar bisa ditampilkan ke kasir.
+            $pendingOrders = TrOrderModel::where('status', 'pending')->get();
+            if ($pendingOrders->isNotEmpty()) {
+                return response()->json([
+                    "code" => 100,
+                    "message" => "cannot end day because there are still pending orders, please complete or cancel them first",
+                    "data" => $pendingOrders
+                ]);
+            }
+
             $result = DayShiftServices::EndDay($request);
 
             return response()->json([

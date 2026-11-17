@@ -53,8 +53,20 @@ Response (struktur ringkas — isi lengkap sangat panjang, lihat kode untuk deta
     "dayshift": { "ulid": "...", "dayin_total": "500000.00", "dayout_total": "480000.00" },
     "dayin_user_name": "Kasir 1",
     "dayshift_detail": [ { "shift_number": 1, "shift_time": "..." } ],
-    "sales_by_menu": [...],
-    "sales_by_table": [...],
+    "sales_by_menu": [
+      {
+        "menu_name": "Nasi Goreng",
+        "qty": 12,
+        "sub_total": 180000,
+        "discount_amount": 0,
+        "vat_amount": 0,
+        "pb1_amount": 18000,
+        "grand_total": 198000
+      }
+    ],
+    "sales_by_table": [
+      { "table_name": "Table 01", "total_amount": 150000, "total_order": 3 }
+    ],
     "sales_summary": {
       "total_bills": 0,
       "average_per_bill": 0,
@@ -77,9 +89,9 @@ Response (struktur ringkas — isi lengkap sangat panjang, lihat kode untuk deta
       { "label": "Mobile App", "qty": 0, "amount": 0, "percent": 0 },
       { "label": "Kiosk", "qty": 0, "amount": 0, "percent": 0 }
     ],
-    "item_category_summary": [...],
-    "staff_sales_summary": [...],
-    "payment_method_summary": [...],
+    "item_category_summary": [ { "label": "Food", "qty": 15, "amount": 450000, "percent": 60 } ],
+    "staff_sales_summary": [ { "label": "Kasir 1", "qty": 8, "amount": 300000, "percent": 40 } ],
+    "payment_method_summary": [ { "label": "CASH", "qty": 5, "amount": 250000, "percent": 50 } ],
     "staff_payment_summary": [ { "label": "Kasir 1 - CASH", "qty": 0, "amount": 0, "percent": 0 } ],
     "cash_flow_summary": {
       "starting_cash": 500000,
@@ -139,9 +151,9 @@ Response (struktur ringkas — isi lengkap sangat panjang, lihat kode untuk deta
         { "label": "Mobile App", "qty": 0, "amount": 0, "percent": 0 },
         { "label": "Kiosk", "qty": 0, "amount": 0, "percent": 0 }
       ],
-      "item_category_summary": [...],
-      "staff_sales_summary": [...],
-      "payment_method_summary": [...],
+      "item_category_summary": [ { "label": "Food", "qty": 15, "amount": 450000, "percent": 60 } ],
+      "staff_sales_summary": [ { "label": "Kasir 1", "qty": 8, "amount": 300000, "percent": 40 } ],
+      "payment_method_summary": [ { "label": "CASH", "qty": 5, "amount": 250000, "percent": 50 } ],
       "staff_payment_summary": [ { "label": "Kasir 1 - CASH", "qty": 0, "amount": 0, "percent": 0 } ],
       "cash_flow_summary": {
         "starting_cash": 500000,
@@ -165,17 +177,17 @@ Dibuat untuk consumer yang cuma butuh section summary (gak perlu render tabel Sa
 GET /api/dayshift/pending-order
 ```
 
-Semua order `status = 'pending'` **lintas dayshift** (tidak di-scope ke dayshift aktif).
+Semua order `status = 'pending'` **lintas dayshift** (tidak di-scope ke dayshift aktif) — `TrOrderModel::where('status', 'pending')->get()`, tanpa `WHERE` tambahan apapun.
 
-Response: `{ "code": 0, "data": [ { "order_number": "...", "status": "pending", "...": "tr_order lengkap" } ] }`
+Response: `{ "code": 0, "data": [ {...1 baris tr_order lengkap, semua kolom...} ] }` — contoh JSON lengkap 1 baris (semua kolom) ada di [`START END DAY.md`](START%20END%20DAY.md#end-day), section "Guard pending order" (struktur `data` di situ identik, cuma beda `code` — endpoint ini selalu `0`).
 
-Dipakai saat End Day — kalau masih ada order pending yang belum selesai, biasanya ditampilkan sebagai peringatan sebelum kasir melanjutkan tutup hari.
+**Dipakai sebagai guard di End Day** (2026-11-17, `DayShiftController::EndDay()`) — kalau masih ada order pending, End Day **ditolak total** (`code: 100`, `data` berisi daftar order pending itu) sebelum tahap VALIDASI/SAVE/PUSH/JURNAL manapun dijalankan. Lihat [`START END DAY.md`](START%20END%20DAY.md#end-day) untuk detail lengkapnya — ini BUKAN lagi cuma "peringatan sebelum lanjut", tapi penolakan keras di server.
 
 ## Alur Implementasi
 
 - `dayshift-list` dipakai di `ShiftLogPage.vue` — riwayat log shift lintas hari.
 - `report-v2` dipakai `DayStartEndPage.vue` — ditampilkan sebelum kasir konfirmasi End Day, dan sebagai ringkasan pasca-End Day.
-- `pending-order` — dicek sebelum proses End Day untuk warning "masih ada order belum selesai".
+- `pending-order` — query yang sama (2026-11-17) di-reuse sebagai GUARD KERAS di server (`DayShiftController::EndDay()`), bukan cuma warning FE lagi — End Day ditolak total kalau masih ada order pending.
 
 ## Sumber
 
@@ -190,3 +202,5 @@ Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifik
 Diupdate 2026-10-20: ditambahkan section `staff_payment_summary` — perubahan dilakukan konsisten di 4 fungsi sumber data (`GetReportCurrentShiftforTampilan()`, `GetReportDayshiftorEndDay()`, `GetReportCurrentShift()`, `GetReportPerShift()`), `GetReportSummaryV2()`, dan 4 fungsi print (`PrintEndDay()`, `PrintReportDaysift()`, `PrintCurrentShift()`, `PrintPerShiftv2()` — lihat [`PRINT AND DETAIL LIST.md`](PRINT%20AND%20DETAIL%20LIST.md)). FE (`DayStartEndPage.vue`, repo `posv1-vue`) ditambahkan card baru "Staff Payment Summary".
 
 Diupdate 2026-11-13: ditambahkan `report-v3` — `GetReportSummaryV3()` membangun ulang response yang sama persis dengan `GetReportSummaryV2()` (dipanggil `GetReportCurrentShiftforTampilan()` secara independen, bukan memanggil V2 lalu `unset()`), minus field `sales_by_menu`/`sales_by_table`. Belum ada verifikasi live/HTTP di sesi ini, sudah dicek `php -l` bersih di 3 file (`DayShiftServices.php`, `DayShiftController.php`, `routes/api.php`).
+
+Diupdate 2026-11-17: `pending-order` sekarang juga dipakai sebagai GUARD KERAS di `DayShiftController::EndDay()` (bukan cuma informasi/warning FE lagi) — lihat [`START END DAY.md`](START%20END%20DAY.md#end-day), section "Guard pending order", untuk detail lengkap + contoh JSON + hasil verifikasi live.

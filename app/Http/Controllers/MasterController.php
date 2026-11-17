@@ -158,20 +158,44 @@ class MasterController extends Controller
         $visit_purpose_id = $request->route("visit_purpose_id");
 
         try {
+            // SELECT eksplisit (bukan mpm.* lagi, 2026-11-17) -- verification_code_mandatory/
+            // card_number_code_mandatory/printer_count/coa_account_id SENGAJA dikeluarkan dari
+            // response endpoint ini (keputusan user), kolomnya tetap ada di tabel
+            // mr_payment_method, cuma gak dikirim ke FE lewat endpoint ini.
+            //
+            // flag_all_visit_purpose (2026-11-17, baca logic-nya SEKARANG) -- payment method
+            // yang flag_all_visit_purpose=true muncul buat SEMUA visit purpose, gak peduli
+            // terdaftar di mr_payment_method_visit_purposes apa gak. JOIN pivot diubah dari
+            // INNER jadi LEFT (kondisi visit_purpose_id dipindah ke ON, bukan WHERE lagi) +
+            // ditambah OR mpm.flag_all_visit_purpose = true di WHERE -- pola sama persis
+            // flag_all_branch di apiandorder (master_service.go, LEFT JOIN
+            // master_payment_method_branches + WHERE flag_all_branch=true OR mpmd.id IS NOT
+            // NULL).
             $rows = DB::select("
             SELECT
-                mpm.*,
+                mpm.id,
+                mpm.name,
+                mpm.code,
+                mpm.payment_method_type_id,
+                mpm.mdr,
+                mpm.open_cash_drawer,
+                mpm.group_payment_id,
+                mpm.color_theme,
+                mpm.use_authorization,
+                mpm.fixed_amount,
+                mpm.payment_gateway_code,
+                mpm.flag_mandatory_note,
                 mpmt.id as payment_method_type_id,
                 mpmt.name as payment_method_type_name,
                 mpmg.id as payment_method_group_id,
                 mpmg.name as payment_method_group_name
             FROM
-                mr_payment_method_visit_purposes mpmvp
-                JOIN mr_payment_method mpm ON mpm.id = mpmvp.payment_method_id
+                mr_payment_method mpm
+                LEFT JOIN mr_payment_method_visit_purposes mpmvp ON mpmvp.payment_method_id = mpm.id AND mpmvp.visit_purpose_id = ?
                 LEFT JOIN mr_payment_method_type mpmt ON mpmt.id = mpm.payment_method_type_id
                 LEFT JOIN mr_payment_method_group mpmg ON mpmg.id = mpm.group_payment_id
             WHERE
-                mpmvp.visit_purpose_id = ?
+                (mpm.flag_all_visit_purpose = true OR mpmvp.id IS NOT NULL)
             ORDER BY mpmt.id, mpmg.id, mpm.id
             ", [$visit_purpose_id]);
 
