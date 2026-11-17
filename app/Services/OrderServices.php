@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BranchModel;
 use App\Models\DayShiftDetailModel;
 use App\Models\DaySiftModel;
+use App\Models\MasterBranchSettingModel;
 use App\Models\MasterItemModel;
 use App\Models\MasterPricelistDetailModel;
 use App\Models\SessionModel;
@@ -120,15 +121,20 @@ class OrderServices
           throw new \Exception("dayshift is not active, cannot create order!");
         }
 
-        // Guard tanggal start day (2026-11-17) -- CUMA berlaku buat order BARU (orderNumber
+        // Guard jam notification_end (2026-11-17, GANTI dari guard tanggal start day) -- baca
+        // mr_branch_setting.flag_notification_end/notification_end (field lama, sudah ada
+        // sejak dulu, TAPI belum pernah ada logic konsumsinya sama sekali di POS sampai
+        // sekarang -- cuma CRUD/sync passthrough). CUMA berlaku buat order BARU (orderNumber
         // kosong), BUKAN buat nambah item ke order existing (blok itu beda, lihat else di
-        // bawah). Kalau dayin_time dayshift yang sedang aktif BUKAN tanggal hari ini (misal
-        // shift kemarin belum di-end-day, jam komputer udah ganti hari), order baru ditolak --
-        // harus End Day dulu sebelum bisa bikin order baru di hari berikutnya. Mencegah
-        // order_date baru "nyambung" ke dayshift kemarin yang lupa ditutup (laporan End Day
-        // jadi gak akurat kalau terus dibiarkan).
-        if (\Carbon\Carbon::parse($dayshift->dayin_time)->toDateString() !== $date_now) {
-          throw new \Exception("cannot create new order, you must end day first!");
+        // bawah). flag_notification_end harus true DAN jam sekarang sudah >= notification_end
+        // (format "HH:MM:SS") -- gak ada filter tanggal/hari sama sekali di sini, murni jam.
+        // branch_id selalu 1 row per install (singleton), sama pola SettingModel/StationModel
+        // lain di POS.
+        $branchSetting = MasterBranchSettingModel::first();
+        if ($branchSetting && $branchSetting->flag_notification_end && !empty($branchSetting->notification_end)) {
+          if (now()->format('H:i:s') >= $branchSetting->notification_end) {
+            throw new \Exception("cannot create new order, you must end day first!");
+          }
         }
 
         // order_queue di-scope PER DAYSHIFT (dayshift_ulid), BUKAN per order_date (tanggal
