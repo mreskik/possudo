@@ -20,6 +20,7 @@ use App\Models\TrPaymentModel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use \Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
+use \Mike42\Escpos\PrintConnectors\NetworkPrintConnector;
 use \Mike42\Escpos\Printer;
 use \Mike42\Escpos\EscposImage;
 
@@ -249,6 +250,27 @@ class PrintServices
     $print->setEmphasis(false);
   }
 
+  // resolvePrintConnector (2026-11-17): bikin print connector sesuai mr_station.printer_connection
+  // -- 1 (Windows Printer Connection, default/legacy) pakai WindowsPrintConnector(printer_name)
+  // SAMA PERSIS behavior sebelumnya (printer_name = nama printer yang terdaftar di Windows
+  // Printer Settings). 2 (Network Printer Connection) pakai NetworkPrintConnector(host, port) --
+  // printer_name DI-REUSE buat nyimpen hostname/IP (bukan nama printer Windows) saat connection
+  // type ini, keputusan user 2026-11-17 (gak nambah kolom baru kayak printer_ip, biar gak perlu
+  // migration+sync tambahan). port di-cast ke int (kolom DB-nya varchar), fallback ke 9100
+  // (port standar raw/JetDirect printing) kalau kosong/bukan angka. printer_connection lain
+  // (3=Android Bluetooth, 4=Android USB Printer -- lihat mr_printer_connection) BELUM
+  // diimplementasikan, fallback ke WindowsPrintConnector (behavior lama) biar gak fatal error
+  // kalau ada data dengan connection type itu.
+  private static function resolvePrintConnector($data_station)
+  {
+    if ((int) $data_station->printer_connection === 2) {
+      $port = (int) ($data_station->port ?: 9100);
+      return new NetworkPrintConnector($data_station->printer_name, $port);
+    }
+
+    return new WindowsPrintConnector($data_station->printer_name);
+  }
+
   // resolvePrintReportSetting (2026-11-04): ambil baris mr_branch_pos_print_report_setting
   // (singleton 1 baris per install, pola sama mr_branch_setting). Branch yang belum pernah
   // sync baris ini (lama, sebelum fitur ini ada) dianggap SEMUA section tampil (true) --
@@ -373,7 +395,7 @@ class PrintServices
 
       $data_visitpurpose = MasterVisitPurposeModel::where('id', $data_order->visit_purpose_id)->first();
 
-      $konektor = new WindowsPrintConnector($data_station->printer_name);
+      $konektor = self::resolvePrintConnector($data_station);
       $print = new Printer($konektor);
       $order_number = $data_order->order_number;
       $charPerLine = $data_station->line_character;
@@ -538,7 +560,7 @@ class PrintServices
 
       $data_visitpurpose = MasterVisitPurposeModel::where('id', $data_order->visit_purpose_id)->first();
 
-      $konektor = new WindowsPrintConnector($data_station->printer_name);
+      $konektor = self::resolvePrintConnector($data_station);
       $print = new Printer($konektor);
 
       $order_number = $data_order->order_number;
@@ -801,7 +823,7 @@ class PrintServices
         $data_station = StationModel::where('id', $itemmauprint['station_id'])->first();
         $ngeprintasek = new GeneralLabel;
         $ngeprintasek->setMargin(0, 2);
-        $ngeprintasek->setNamePrinter($data_station->printer_name);
+        $ngeprintasek->setNamePrinter($data_station);
         $ngeprintasek->setText($data_order->order_in);
         $ngeprintasek->setText($data_order->order_queue . " | " . $data_order->order_name . " | $itungan_item/$total_item");
         $ngeprintasek->setText($data_visitpurpose->name);
@@ -967,7 +989,7 @@ class PrintServices
 
 
       $data_visitpurpose = MasterVisitPurposeModel::where('id', $data_order->visit_purpose_id)->first();
-      $konektor = new WindowsPrintConnector($data_station->printer_name);
+      $konektor = self::resolvePrintConnector($data_station);
       $print = new Printer($konektor);
       $branch = BranchModel::first();
 
@@ -989,15 +1011,17 @@ class PrintServices
 
       $print->setJustification(Printer::JUSTIFY_CENTER);
 
-      // logo header: pakai logo_header_src jika ada, fallback ke logo_resize.png
-      $logoSrc = !empty($branch->logo_header_src)
-        ? public_path(ltrim($branch->logo_header_src, '/'))
-        : public_path('logo_resize.png');
-      if (file_exists($logoSrc)) {
-        self::resizeGambar($logoSrc, 180, public_path('logo_resize.png'));
-        $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
-        $print->bitImage($imageLogo);
-        $print->text("\n");
+      // logo header jika ada -- TANPA fallback ke logo_resize.png lagi (2026-11-17, keputusan
+      // user), sama pola image_footer_src (skip total kalau branch belum pasang logo custom,
+      // bukan nyetak logo default bawaan aplikasi).
+      if (!empty($branch->logo_header_src)) {
+        $logoSrc = public_path(ltrim($branch->logo_header_src, '/'));
+        if (file_exists($logoSrc)) {
+          self::resizeGambar($logoSrc, 180, public_path('logo_resize.png'));
+          $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
+          $print->bitImage($imageLogo);
+          $print->text("\n");
+        }
       }
 
       $print->setEmphasis(true);
@@ -1225,7 +1249,7 @@ class PrintServices
         return;
       }
 
-      $konektor = new WindowsPrintConnector($data_station->printer_name);
+      $konektor = self::resolvePrintConnector($data_station);
       $print = new Printer($konektor);
       $branch = BranchModel::first();
 
@@ -1236,14 +1260,17 @@ class PrintServices
       $print->setJustification(Printer::JUSTIFY_CENTER);
       $print->text(self::separator("=", $charPerLine));
 
-      $logoSrc = !empty($branch->logo_header_src)
-        ? public_path(ltrim($branch->logo_header_src, '/'))
-        : public_path('logo_resize.png');
-      if (file_exists($logoSrc)) {
-        self::resizeGambar($logoSrc, 180, public_path('logo_resize.png'));
-        $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
-        $print->bitImage($imageLogo);
-        $print->text("\n");
+      // logo header jika ada -- TANPA fallback ke logo_resize.png lagi (2026-11-17, keputusan
+      // user), sama pola image_footer_src (skip total kalau branch belum pasang logo custom,
+      // bukan nyetak logo default bawaan aplikasi).
+      if (!empty($branch->logo_header_src)) {
+        $logoSrc = public_path(ltrim($branch->logo_header_src, '/'));
+        if (file_exists($logoSrc)) {
+          self::resizeGambar($logoSrc, 180, public_path('logo_resize.png'));
+          $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
+          $print->bitImage($imageLogo);
+          $print->text("\n");
+        }
       }
 
       $print->setEmphasis(true);
@@ -1333,7 +1360,7 @@ class PrintServices
       ", [$order_number]);
       $data_visitpurpose = MasterVisitPurposeModel::where('id', $data_order->visit_purpose_id)->first();
 
-      $konektor = new WindowsPrintConnector($data_station->printer_name);
+      $konektor = self::resolvePrintConnector($data_station);
       $print = new Printer($konektor);
       /////////////////////
       // self::resizeGambar(public_path("img/logo1.png"), 165);
@@ -1679,7 +1706,7 @@ class PrintServices
     $printReportSetting = self::resolvePrintReportSetting();
     // Log::info($datareport);
 
-    $konektor = new WindowsPrintConnector($data_station->printer_name);
+    $konektor = self::resolvePrintConnector($data_station);
     $print = new Printer($konektor);
     $charPerLine = $data_station->line_character;
 
@@ -1906,7 +1933,7 @@ class PrintServices
     }
     $printReportSetting = self::resolvePrintReportSetting();
 
-    $konektor = new WindowsPrintConnector($data_station->printer_name);
+    $konektor = self::resolvePrintConnector($data_station);
     $print = new Printer($konektor);
     $charPerLine = $data_station->line_character;
 
@@ -2087,7 +2114,7 @@ class PrintServices
     $printReportSetting = self::resolvePrintReportSetting();
     // Log::info($datareport);
 
-    $konektor = new WindowsPrintConnector($data_station->printer_name);
+    $konektor = self::resolvePrintConnector($data_station);
     $print = new Printer($konektor);
     $charPerLine = $data_station->line_character;
 
@@ -2312,7 +2339,7 @@ class PrintServices
     $printReportSetting = self::resolvePrintReportSetting();
     // Log::info($datareport);
 
-    $konektor = new WindowsPrintConnector($data_station->printer_name);
+    $konektor = self::resolvePrintConnector($data_station);
     $print = new Printer($konektor);
     $charPerLine = $data_station->line_character;
 
@@ -2706,7 +2733,7 @@ class PrintServices
     try {
 
       if ($data_station->printer_type == 1) {
-        $konektor = new WindowsPrintConnector($data_station->printer_name);
+        $konektor = self::resolvePrintConnector($data_station);
         $print = new Printer($konektor);
         $charPerLine = $data_station->line_character ?: 40;
 
@@ -2738,7 +2765,7 @@ class PrintServices
 
         $ngeprintasek = new GeneralLabel;
         $ngeprintasek->setMargin(0, 2);
-        $ngeprintasek->setNamePrinter($data_station->printer_name);
+        $ngeprintasek->setNamePrinter($data_station);
         $ngeprintasek->setText(self::numberRuler($charPerLine));
         $ngeprintasek->setText("Printer OK");
         $ngeprintasek->sikat();

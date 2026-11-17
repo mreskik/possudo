@@ -5,6 +5,7 @@ namespace App\Services;
 // require 'vendor/autoload.php';
 
 use \Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
+use \Mike42\Escpos\PrintConnectors\NetworkPrintConnector;
 use \Mike42\Escpos\Printer;
 use \Mike42\Escpos\CapabilityProfile;
 use Mike42\Escpos\PrintConnectors\PrintConnector;
@@ -15,12 +16,35 @@ class GeneralLabel
   protected  $connector;
   protected $printer;
 
-  public function setNamePrinter(string $name)
+  // setNamePrinter: terima $data_station (object, bukan cuma nama string lagi, 2026-11-17) --
+  // diselaraskan dengan PrintServices::resolvePrintConnector() biar label/stiker JUGA bisa
+  // pakai Network Printer Connection (printer_connection=2), bukan cuma struk ESC/POS thermal.
+  // Backward-compat: kalau dikasih string polos (caller lama yang belum di-update), tetap
+  // jalan sebagai WindowsPrintConnector seperti sebelumnya -- gak ada breaking change.
+  public function setNamePrinter($station)
   {
     try {
-      $this->connector = new WindowsPrintConnector($name);
+      if (is_string($station)) {
+        $this->connector = new WindowsPrintConnector($station);
+        return;
+      }
+
+      if ((int) $station->printer_connection === 2) {
+        $port = (int) ($station->port ?: 9100);
+        $this->connector = new NetworkPrintConnector($station->printer_name, $port);
+        return;
+      }
+
+      $this->connector = new WindowsPrintConnector($station->printer_name);
     } catch (\Throwable $e) {
-      $this->printer->close();
+      // bug pre-existing (ditemukan 2026-11-17, bukan disebabkan perubahan Network Connection
+      // di atas) -- $this->printer masih null di titik ini (instance Printer baru dibuat SETELAH
+      // connector sukses, lihat sikat()), jadi ->close() di sini SELALU gagal dengan "Call to a
+      // member function close() on null", nutupin exception asli (misal pesan network refused
+      // yang justru penting buat debug). Guard null check, biarkan $e asli yang nyampe ke luar.
+      if ($this->printer !== null) {
+        $this->printer->close();
+      }
       throw $e;
     }
   }
