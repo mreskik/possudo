@@ -9,6 +9,7 @@ use App\Models\CategoryModel;
 use App\Models\MasterBranchVisitPurposeModel;
 use App\Models\MasterMemberTypeModel;
 use App\Models\MasterPaymentMethodModel;
+use App\Models\MasterTaxModel;
 use App\Models\MasterVisitPurposeModel;
 use App\Models\StationModel;
 use App\Models\SubCategoryModel;
@@ -627,6 +628,7 @@ class MasterController extends Controller
 
             $this->AttachPromoTargetIds($data);
             $this->AttachUsedToday($data);
+            $this->AttachPromoFreeItemDetail($data, $visit_purpose_id);
 
             return response()->json([
                 "code" => 0,
@@ -756,5 +758,196 @@ class MasterController extends Controller
                 default => [],
             };
         }
+    }
+
+    // type_freeitem_item_detail (baru, 2026-11-17): detail lengkap item free (promo type
+    // 'freeitem') -- dipakai FE buat nampilin nama/kategori/varian item free-nya, sebelum
+    // di-apply ke order. TIDAK terikat pricelist utk menuPrice (tetap hardcode "0.00", lihat
+    // komentar di bawah) -- TAPI flagInclusiveTax (2026-11-17, revisi) DIAMBIL dari pricelist
+    // milik $visit_purpose_id yang sama dengan request Promo List ini (via mr_branch_visit_
+    // purpose.pricelist_id -> mr_pricelist.is_inclusive, pola sama MenuServices::
+    // GetMasterMenuList()) -- karena endpoint ini emang sudah punya visit_purpose_id dari path,
+    // jadi dipakai juga buat resolve field ini. null kalau visit_purpose_id gak match baris
+    // mr_branch_visit_purpose manapun (seharusnya gak pernah terjadi, visit_purpose_id ini juga
+    // dipakai filter barrier struktural promo di atas). menuPricelistId/menuPrice header dari
+    // pricelist TETAP TIDAK ADA -- type_freeitem_item_id di mr_promo cuma nyimpen item_id
+    // polos, gak ada hubungan langsung ke 1 baris mr_pricelist_detail spesifik (beda dari
+    // flagInclusiveTax yang levelnya per PRICELIST, bukan per item, jadi bisa diresolve tanpa
+    // perlu match ke baris pricelist_detail manapun). itemId di sini = mr_item_conv.id milik
+    // item tersebut (asumsi 1 item cuma punya 1 baris mr_item_conv di POS, karena sync pull
+    // dari sudocore2 sudah filter ke base unit duluan sebelum push ke sini -- beda dari
+    // sudocore2 yang mr_item_conv/master_item_conversion_detail-nya bisa banyak baris per item).
+    // packageList pakai harga mipd.price apa adanya SELAMA flag_include_package milik promo
+    // itu = false -- kalau flag_include_package = true, SEMUA menuPrice di packageList ikut
+    // di-hardcode "0.00" juga (promo-nya emang nyakup package, bukan cuma item utamanya),
+    // keputusan user 2026-11-17. null kalau type_freeitem_item_id null (promo bukan type
+    // 'freeitem', atau freeitem tapi item-nya belum diisi). menuPackageList per sub-item juga
+    // dapet taxId/taxRate (resolve dari vat/pb1 milik visit_purpose_id ini + master_tax) +
+    // notesMenu (pakai categoryId/subCategoryId SUB-ITEM itu sendiri, bukan item induk) +
+    // defaultItem (passthrough mipd.default_item) -- field2 ini SEMPAT KETINGGALAN waktu
+    // pertama nulis fungsi ini (cuma nyontek sebagian query $menuPackageDetail
+    // GetMasterMenuList() tanpa logic resolusi tax/notes-nya), ditambahin balik 2026-11-17.
+    private function AttachPromoFreeItemDetail(array &$promoList, $visit_purpose_id)
+    {
+        $itemIds = array_values(array_unique(array_filter(array_column($promoList, 'type_freeitem_item_id'))));
+        if (empty($itemIds)) {
+            foreach ($promoList as &$promo) {
+                $promo = $this->InsertAfterKey($promo, 'type_freeitem_item_id', 'type_freeitem_item_detail', null);
+            }
+            unset($promo);
+            return;
+        }
+
+        // bvp: vat/pb1 (tax_id per jenis taxType, dipakai resolve taxId/taxRate sub-item
+        // package -- sama pola GetMasterMenuList()) + is_inclusive (flagInclusiveTax, dari
+        // mr_pricelist via pricelist_id milik visit_purpose_id ini).
+        $bvp = DB::selectOne("
+            SELECT bvp.vat, bvp.pb1, mp.is_inclusive
+            FROM mr_branch_visit_purpose bvp
+            JOIN mr_pricelist mp ON mp.id = bvp.pricelist_id
+            WHERE bvp.visit_purpose_id = ?
+        ", [$visit_purpose_id]);
+        $flagInclusiveTax = $bvp?->is_inclusive;
+
+        $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
+
+        $items = DB::select("
+            SELECT
+            mic.id as itemId,
+            mi.id as itemid_real,
+            mi.code as menuCode,
+            mi.name as menuName,
+            mi.description as menuDescription,
+            mi.menu_color as menuColor,
+            mi.bom_id as bomId,
+            mi.category_id as categoryId,
+            mi.subcategory_id as subCategoryId,
+            mi.tax_type as taxType,
+            mi.stok_qty as stokQty,
+            mi.flag_soldout as flagSoldOut,
+            mi.image as imageSrc,
+            mi.icon_src as iconSrc
+
+            FROM mr_item mi
+            JOIN mr_item_conv mic ON mic.item_id = mi.id
+            WHERE mi.id IN ($placeholders)
+        ", $itemIds);
+
+        $allNotesMenu = MenuServices::GetAllNotesMenuForMatching();
+        $tax = MasterTaxModel::get()->groupBy('id');
+
+        $menuPackageDetail = DB::select("SELECT
+            mipd.id as menuPackageId,
+            mipd.package_group_id,
+            mipd.item_conv_detail_id as itemId,
+            mi.name as menuName,
+            mi.description as menuDescription,
+            mipd.price as menuPrice,
+            mi.tax_type as taxType,
+            mi.bom_id as bomId,
+            mi.icon_src as iconSrc,
+            mi.category_id as categoryId,
+            mi.subcategory_id as subCategoryId,
+            mipd.default_item as defaultItem
+
+            FROM mr_item_package_detail mipd
+            JOIN mr_item_conv mic on mic.id = mipd.item_conv_detail_id
+            JOIN mr_item mi on mi.id = mic.item_id
+        ");
+
+        $itemDetailMap = [];
+        foreach ($items as $item) {
+            // menuPrice hardcode "0.00" -- item free gak punya harga sendiri di luar pricelist
+            // (lihat komentar atas fungsi ini), tapi FE butuh field ini tetap ada demi konsistensi
+            // format dengan response Menu List, nilainya emang sesuai kenyataan (harga = 0 saat
+            // diterapkan sebagai free item). Keputusan user 2026-11-17.
+            $item->menuPrice = "0.00";
+            $item->flagInclusiveTax = $flagInclusiveTax;
+            $item->notesMenu = MenuServices::ResolveNotesMenu($allNotesMenu, $item->categoryId, $item->subCategoryId, 'shortNotes');
+            $item->packageList = [];
+
+            $package = DB::select("SELECT id, separate_print_package as separatePrintPackage FROM mr_item_package WHERE item_id = ?", [$item->itemid_real]);
+            $packageIdReal = $package[0]->id ?? null;
+
+            if ($packageIdReal !== null) {
+                $packageGroups = DB::select("SELECT id as packageId, name as packageName, min_qty as minQty, max_qty as maxQty FROM mr_item_package_group WHERE item_package_id = ?", [$packageIdReal]);
+                foreach ($packageGroups as $group) {
+                    $group->menuPackageList = array_values(array_filter($menuPackageDetail, fn($d) => $d->package_group_id == $group->packageId));
+                    foreach ($group->menuPackageList as $d) {
+                        // taxId/taxRate sub-item -- sama pola GetMasterMenuList() (resolve dari
+                        // vat/pb1 milik visit_purpose_id ini + master_tax), bukan hardcode.
+                        if ($d->taxType == 'vat') {
+                            $d->taxId = ($bvp?->vat == 0 || $bvp?->vat === null) ? null : $bvp->vat;
+                        } elseif ($d->taxType == 'pb1') {
+                            $d->taxId = ($bvp?->pb1 == 0 || $bvp?->pb1 === null) ? null : $bvp->pb1;
+                        } else {
+                            $d->taxId = null;
+                        }
+                        if ($d->taxId !== null && $d->taxId != 0) {
+                            if (!isset($tax[$d->taxId])) {
+                                throw new \Exception("Tax ID {$d->taxId} not found in local master_tax data, please re-sync tax data from ERP");
+                            }
+                            $d->taxRate = $tax[$d->taxId][0]->rate;
+                        } else {
+                            $d->taxRate = null;
+                        }
+                        if ($d->bomId == 0) {
+                            $d->bomId = null;
+                        }
+                        // notesMenu sub-item -- matching pakai categoryId/subCategoryId MILIK
+                        // SUB-ITEM ITU SENDIRI, bukan item induk (1 package bisa lintas kategori).
+                        $d->notesMenu = MenuServices::ResolveNotesMenu($allNotesMenu, $d->categoryId ?? null, $d->subCategoryId ?? null, 'shortNotes');
+                        unset($d->package_group_id);
+                    }
+                    $item->packageList[] = $group;
+                }
+            }
+
+            $itemDetailMap[$item->itemid_real] = $item;
+        }
+
+        // flag_include_package per PROMO (bukan per item -- 2 promo freeitem bisa pakai item
+        // free yang sama tapi flag-nya beda), jadi override harga package dilakukan di sini,
+        // pakai clone dalam-dalam dari $itemDetailMap biar promo lain yang share item yang sama
+        // gak ikut ketimpa kalau salah satu promo flag_include_package-nya true.
+        // &$promo (plus parameter array &$promoList di signature fungsi ini) -- fungsi ini butuh
+        // GANTI OBJEK $promo sepenuhnya (bukan cuma nambah property kayak AttachPromoTargetIds/
+        // AttachUsedToday), biar urutan key JSON-nya bisa diatur ulang (type_freeitem_item_detail
+        // taruh tepat setelah type_freeitem_item_id, bukan di ujung). Tanpa &$promoList di
+        // signature, penggantian objek di loop ini cuma kejadian di array lokal fungsi ini, gak
+        // ikut balik ke $data milik caller (GetPromoList()).
+        foreach ($promoList as &$promo) {
+            $detail = $itemDetailMap[$promo->type_freeitem_item_id] ?? null;
+            if ($detail !== null) {
+                $detail = unserialize(serialize($detail));
+                if ($promo->flag_include_package) {
+                    foreach ($detail->packageList as $group) {
+                        foreach ($group->menuPackageList as $d) {
+                            $d->menuPrice = "0.00";
+                        }
+                    }
+                }
+            }
+
+            $promo = $this->InsertAfterKey($promo, 'type_freeitem_item_id', 'type_freeitem_item_detail', $detail);
+        }
+        unset($promo);
+    }
+
+    // InsertAfterKey: insert property baru ke stdClass TEPAT SETELAH property $afterKey (bukan
+    // di ujung, yang terjadi kalau cuma $obj->newKey = $value biasa) -- urutan property PHP
+    // object ngikutin urutan deklarasi, dan itu ngikutin urutan key di JSON hasil response()->
+    // json(). Dipakai AttachPromoFreeItemDetail() buat nempatin type_freeitem_item_detail tepat
+    // setelah type_freeitem_item_id.
+    private function InsertAfterKey(object $obj, string $afterKey, string $newKey, $newValue): object
+    {
+        $reordered = new \stdClass();
+        foreach ($obj as $key => $value) {
+            $reordered->$key = $value;
+            if ($key === $afterKey) {
+                $reordered->$newKey = $newValue;
+            }
+        }
+        return $reordered;
     }
 }

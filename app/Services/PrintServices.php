@@ -1040,8 +1040,8 @@ class PrintServices
       $print->setJustification(Printer::JUSTIFY_LEFT);
       $print->text(self::separator("-", $charPerLine));
 
-      $print->text("No          : " . $data_order->payment_number . "\n");
-      $print->text("Sales No    : " . $data_order->order_number . "\n");
+      $print->text("No          : " . $data_order->order_number . "\n");
+      $print->text("Sales No    : " . $data_order->payment_number . "\n");
       // $print->text("Date        : " . $data_order->order_date . "\n");
       $print->text("Date        : " . $data_order->order_in . "\n");
       $print->text("Customer    : " . $info . "\n");
@@ -1372,9 +1372,9 @@ class PrintServices
       $print->text(self::separator("-", $charPerLine));
 
 
-      // $print->text("No          : ".$orderNumber."\n");
       // $print->text("Sales No    : ".$salesNo."\n");
       // $print->text("Date        : " . $data_order->order_date . "\n");
+      $print->text("No          : " . $order_number . "\n");
       $print->text("Time In     : " . $order_in . "\n");
       $print->text("Customer    : " . $info . "\n");
       $print->text("Table       : " . $table_section->name . "\n");

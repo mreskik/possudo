@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="pFaviconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5DA9E9"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#pFaviconGrad)"/>
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M18 17C18 15.8954 18.8954 15 20 15H33C40.732 15 46 19.82 46 27C46 34.18 40.732 39 33 39H26V47C26 48.1046 25.1046 49 24 49H20C18.8954 49 18 48.1046 18 47V17ZM26 22V32H32.5C36.0899 32 38.5 29.9853 38.5 27C38.5 24.0147 36.0899 22 32.5 22H26Z" fill="#FFFFFF"/>
+</svg>
