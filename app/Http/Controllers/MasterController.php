@@ -176,7 +176,7 @@ class MasterController extends Controller
                 mpm.id,
                 mpm.name,
                 mpm.code,
-                mpm.payment_method_type_id,
+                mpm.payment_method_type_id as type_id,
                 mpm.mdr,
                 mpm.open_cash_drawer,
                 mpm.group_payment_id,
@@ -185,8 +185,7 @@ class MasterController extends Controller
                 mpm.fixed_amount,
                 mpm.payment_gateway_code,
                 mpm.flag_mandatory_note,
-                mpmt.id as payment_method_type_id,
-                mpmt.name as payment_method_type_name,
+                mpmt.name as type_name,
                 mpmg.id as payment_method_group_id,
                 mpmg.name as payment_method_group_name
             FROM
@@ -198,6 +197,22 @@ class MasterController extends Controller
                 (mpm.flag_all_visit_purpose = true OR mpmvp.id IS NOT NULL)
             ORDER BY mpmt.id, mpmg.id, mpm.id
             ", [$visit_purpose_id]);
+
+            // Cast boolean manual (2026-11-19, bug fix) -- DB::select() raw query ke MySQL BUKAN
+            // Eloquent, gak auto-cast tinyint(1) ke bool PHP, jadi open_cash_drawer/
+            // use_authorization sebelumnya keluar sebagai 0/1 (integer) di JSON, bukan true/false
+            // -- padahal dokumentasi & FE ngira ini boolean murni. Sama pola fix yang sudah
+            // diterapkan di GetStationList() (auto_cut/cash_drawer) di bawah.
+            // flag_mandatory_note (2026-11-19, keputusan user): NULL dinormalisasi jadi false,
+            // BUKAN dipertahankan null -- field ini semantiknya "wajib isi catatan atau enggak",
+            // NULL vs false sama-sama berarti "gak wajib", jadi gak perlu FE handle 3 kemungkinan
+            // (true/false/null), cukup true/false. Sama pola normalisasi yang udah dipakai sync
+            // pull APIANDORDER->sudocore2 (bun/pgx auto scan NULL jadi false buat kolom bool biasa).
+            foreach ($rows as $row) {
+                $row->open_cash_drawer = (bool) $row->open_cash_drawer;
+                $row->use_authorization = (bool) $row->use_authorization;
+                $row->flag_mandatory_note = (bool) $row->flag_mandatory_note;
+            }
 
             $data = self::GroupPaymentMethodTree($rows);
 
@@ -224,14 +239,14 @@ class MasterController extends Controller
         $groupIndex = [];
 
         foreach ($rows as $row) {
-            $typeId = $row->payment_method_type_id;
+            $typeId = $row->type_id;
             $groupId = $row->payment_method_group_id;
 
             if (!isset($typeIndex[$typeId])) {
                 $typeIndex[$typeId] = count($tree);
                 $tree[] = [
                     'payment_method_type_id' => $typeId,
-                    'payment_method_type_name' => $row->payment_method_type_name,
+                    'payment_method_type_name' => $row->type_name,
                     'groups' => [],
                 ];
             }
@@ -248,11 +263,21 @@ class MasterController extends Controller
             }
             $groupPos = $groupIndex[$groupKey];
 
-            // Kolom bantu (nama type/group) dibuang dari objek method-nya sendiri -- udah
-            // kepindah jadi header type/group di tree, gak perlu dobel di tiap method.
+            // Kolom bantu group dibuang dari objek method-nya sendiri -- udah kepindah jadi
+            // header group di tree, gak perlu dobel di tiap method.
+            //
+            // BUG FIX (2026-11-19): type_id/type_name (alias dari payment_method_type_id/
+            // payment_method_type_name) SEBELUMNYA ikut di-unset() di sini -- payment_method_
+            // type_id malah SEBELUMNYA ketimpa duplikat SELECT (mpm.payment_method_type_id vs
+            // mpmt.id AS payment_method_type_id, alias sama), jadi field itu ilang total dari
+            // tiap payment_methods[] walau dokumentasi dari awal bilang field ini harus ada.
+            // SEKARANG (keputusan user) type_id/type_name SENGAJA TETAP ADA di tiap method --
+            // disingkat jadi type_id/type_name (bukan payment_method_type_id/..._name penuh)
+            // biar gak kepanjangan/redundan dengan header 'payment_method_type_id' di tree yang
+            // satu tingkat di atasnya. Field bantu group (payment_method_group_id/_name) TETAP
+            // di-unset seperti semula -- cuma dipakai buat header group di tree, gak perlu
+            // dobel di tiap method (beda kasus dari type, yang user minta tetap ada).
             unset(
-                $row->payment_method_type_id,
-                $row->payment_method_type_name,
                 $row->payment_method_group_id,
                 $row->payment_method_group_name
             );
