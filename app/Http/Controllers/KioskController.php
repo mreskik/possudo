@@ -303,6 +303,9 @@ class KioskController extends Controller
                     o.sub_total,
                     o.total_tax,
                     o.total_discount,
+                    o.total_service_charge,
+                    o.order_fee,
+                    o.delivery_cost,
                     o.total_billing,
                     o.total_item,
                     o.customer_phone_number,
@@ -343,8 +346,17 @@ class KioskController extends Controller
                     trod.qty,
                     trod.notes,
                     trod.price_pos as price,
+                    trod.net_price,
                     trod.discount_amount,
+                    trod.tax_id,
+                    trod.tax_type,
+                    trod.tax_rate,
                     trod.tax_amount,
+                    trod.service_charge_id,
+                    trod.service_charge_rate,
+                    trod.service_charge_amount,
+                    trod.promo_id,
+                    trod.is_free_item_promo,
                     trod.total
                     FROM tr_order_detail trod
                     JOIN mr_item_conv mric ON mric.id = trod.menu_id
@@ -358,8 +370,16 @@ class KioskController extends Controller
                         trodp.qty,
                         trodp.notes,
                         trodp.price_pos as price,
+                        trodp.net_price,
                         trodp.discount_amount,
+                        trodp.tax_id,
+                        trodp.tax_type,
+                        trodp.tax_rate,
                         trodp.tax_amount,
+                        trodp.service_charge_id,
+                        trodp.service_charge_rate,
+                        trodp.service_charge_amount,
+                        trodp.promo_id,
                         trodp.total
                         FROM tr_order_detail_package trodp
                         JOIN mr_item_conv mric ON mric.id = trodp.menu_id
@@ -419,9 +439,15 @@ class KioskController extends Controller
 
             $branch = DB::table('mr_branch')->first();
 
+            // items -- SAMA POLA PrintServices::PrintPayment() (2026-11-19): tambah net_price/
+            // tax_rate biar Kiosk bisa reconstruct displayItemPrice (harga SEBELUM diskon,
+            // net-of-tax x (1+tax_rate/100)) dengan rumus yang SAMA, bukan baca ->total langsung
+            // (yang sekarang net-of-discount, beda makna dari sebelum rename dpp/net_dpp).
             $items = DB::select("SELECT
                     trod.ulid,
                     trod.qty,
+                    trod.net_price,
+                    trod.tax_rate,
                     trod.total,
                     trod.discount_amount,
                     trod.notes,
@@ -434,8 +460,12 @@ class KioskController extends Controller
                     WHERE trod.order_number = ?", [$order_number]);
 
             foreach ($items as $item) {
+                $item->display_price = round($item->qty * $item->net_price * (1 + $item->tax_rate / 100), 2);
+
                 $item->package = DB::select("SELECT
                         trodp.qty,
+                        trodp.net_price,
+                        trodp.tax_rate,
                         trodp.total,
                         trodp.notes,
                         mi.name as menu_name
@@ -443,7 +473,13 @@ class KioskController extends Controller
                         JOIN mr_item_conv mic ON mic.id = trodp.menu_id
                         JOIN mr_item mi ON mi.id = mic.item_id
                         WHERE trodp.tr_order_detail_ulid = ?", [$item->ulid]);
-                unset($item->ulid);
+
+                foreach ($item->package as $pkg) {
+                    $pkg->display_price = round($item->qty * $pkg->qty * $pkg->net_price * (1 + $pkg->tax_rate / 100), 2);
+                    unset($pkg->net_price, $pkg->tax_rate);
+                }
+
+                unset($item->ulid, $item->net_price, $item->tax_rate);
             }
 
             $paymentDetail = DB::select("SELECT
@@ -455,6 +491,13 @@ class KioskController extends Controller
 
             $isInclusiveTax = PrintServices::ResolveFlagInclusiveTax($data_order);
             $taxBreakdown = PrintServices::GetTaxBreakdownByType($order_number);
+            // serviceChargeBreakdown -- SAMA POLA taxBreakdown: cuma relevan dicetak kalau
+            // exclusive (lihat PrintPayment() -- flag_inclusive_tax ngebungkus tax_rate+
+            // service_charge_rate SEKALIGUS), tapi tetep dikirim APA ADANYA (gak dikosongin
+            // manual di sini) -- biar Kiosk sendiri yang nentuin render-nya persis kayak
+            // PrintPayment() nentuin posisi baris (exclusive: breakdown di atas Grand Total;
+            // inclusive: masuk "Price Inclusive of ..."), bukan backend yang mutuskan duluan.
+            $serviceChargeBreakdown = PrintServices::GetServiceChargeBreakdown($order_number);
 
             return response()->json([
                 'code' => 0,
@@ -477,8 +520,11 @@ class KioskController extends Controller
                     'total_discount' => $data_order->total_discount,
                     'total_tax' => $data_order->total_tax,
                     'total_billing' => $data_order->total_billing,
+                    'delivery_cost' => $data_order->delivery_cost,
+                    'order_fee' => $data_order->order_fee,
                     'is_inclusive_tax' => $isInclusiveTax,
                     'tax_breakdown' => $taxBreakdown,
+                    'service_charge_breakdown' => $serviceChargeBreakdown,
                     'items' => $items,
                     'payment_detail' => $paymentDetail,
                 ],
@@ -1120,13 +1166,11 @@ class KioskController extends Controller
             DB::table('tr_order_detail_package')->whereIn('tr_order_detail_ulid', $oldUlids)->delete();
             DB::table('tr_order_detail')->where('order_number', $order_number)->delete();
 
-            $totalItem = 0;
             $orderDetailRows = [];
             $orderDetailPackageRows = [];
             foreach ($listOrder as $item) {
                 $ulid = (string) Str::ulid();
                 $qty = (int) ($item['qty'] ?? 0);
-                $totalItem += $qty;
 
                 $calc = $this->recomputeKioskUnit($item);
 
@@ -1140,15 +1184,18 @@ class KioskController extends Controller
                     'price_pos' => $item['price'] ?? null,
                     'tax_id' => $item['tax_id'] ?? null,
                     'tax_type' => $item['tax_type'] ?? null,
-                    'tax_rate' => $item['tax_rate'] ?? null,
+                    'tax_rate' => $calc['tax_rate'],
                     'tax_amount' => $calc['tax_amount'],
+                    'service_charge_id' => $item['service_charge_id'] ?? null,
+                    'service_charge_rate' => $calc['service_charge_rate'],
+                    'service_charge_amount' => $calc['service_charge_amount'],
                     'promo_id' => $item['promo_id'] ?? null,
                     'is_free_item_promo' => $item['is_free_item_promo'] ?? false,
                     'discount_percent' => $calc['discount_percent'],
                     'discount_amount' => $calc['discount_amount'],
+                    'net_price' => $calc['net_price'],
                     'dpp' => $calc['dpp'],
-                    'net_dpp' => $calc['net_dpp'],
-                    'total' => $qty * ($calc['net_dpp'] + $calc['tax_amount']),
+                    'total' => $qty * $calc['total'],
                     'notes' => $item['notes'] ?? null,
                     'batch' => 1,
                 ];
@@ -1167,14 +1214,17 @@ class KioskController extends Controller
                         'price_pos' => $pkg['price'] ?? null,
                         'tax_id' => $pkg['tax_id'] ?? null,
                         'tax_type' => $pkg['tax_type'] ?? null,
-                        'tax_rate' => $pkg['tax_rate'] ?? null,
+                        'tax_rate' => $pkgCalc['tax_rate'],
                         'tax_amount' => $pkgCalc['tax_amount'],
+                        'service_charge_id' => $pkg['service_charge_id'] ?? null,
+                        'service_charge_rate' => $pkgCalc['service_charge_rate'],
+                        'service_charge_amount' => $pkgCalc['service_charge_amount'],
                         'promo_id' => $pkg['promo_id'] ?? null,
                         'discount_percent' => $pkgCalc['discount_percent'],
                         'discount_amount' => $pkgCalc['discount_amount'],
+                        'net_price' => $pkgCalc['net_price'],
                         'dpp' => $pkgCalc['dpp'],
-                        'net_dpp' => $pkgCalc['net_dpp'],
-                        'total' => $qty * $pkgQty * ($pkgCalc['net_dpp'] + $pkgCalc['tax_amount']),
+                        'total' => $qty * $pkgQty * $pkgCalc['total'],
                         'notes' => $pkg['notes'] ?? null,
                     ];
                 }
@@ -1191,14 +1241,18 @@ class KioskController extends Controller
                 'order_name' => $data['order_name'] ?? $order->order_name,
                 'customer_phone_number' => $customerPhoneNumber,
                 'pax' => $data['order_pax'] ?? $order->pax,
-                'total_item' => $data['total_item'] ?? $totalItem,
-                'sub_total' => $data['sub_total'] ?? null,
-                'total_tax' => $data['total_tax'] ?? null,
-                'total_billing' => $data['total_billing'] ?? null,
-                'total_discount' => $data['total_discount'] ?? 0,
+                'order_fee' => $data['order_fee'] ?? $order->order_fee,
+                'delivery_cost' => $data['delivery_cost'] ?? $order->delivery_cost,
                 'member_id' => $this->resolveMemberIdByPhone($customerPhoneNumber),
                 'sync_at' => null,
             ]);
+
+            // sub_total/total_discount/total_tax/total_service_charge/total_item/total_billing
+            // DIHITUNG ULANG server-side dari baris tr_order_detail/tr_order_detail_package yang
+            // baru saja di-insert (2026-11-18) -- sama persis pola SaveOrder(), FE boleh tetap
+            // kirim field2 itu di request tapi diabaikan total. order_fee/delivery_cost TETAP
+            // FE-trusted (passthrough di atas), persis exception yang sama di SaveOrder().
+            OrderServices::RecalculateOrderTotals($order_number);
 
             DB::commit();
         } catch (\Throwable $e) {
@@ -1214,42 +1268,56 @@ class KioskController extends Controller
         ]);
     }
 
-    // recomputeKioskUnit: hitung ulang dpp/discount_amount/net_dpp/tax_amount (PER UNIT, belum
-    // dikali qty) dari input mentah Kiosk -- BUKAN percaya field turunan yang dikirim Kiosk
-    // (tax_value/after_discount/dpp lama), karena app Kiosk (repo terpisah, di luar sini)
+    // recomputeKioskUnit: hitung ulang net_price/discount_amount/dpp/tax_amount/
+    // service_charge_amount/total (PER UNIT, belum dikali qty) dari input mentah Kiosk -- BUKAN
+    // percaya field turunan yang dikirim Kiosk, karena app Kiosk (repo terpisah, di luar sini)
     // belum tentu ikut diupdate ke rumus baru. Backend jadi otoritas terakhir buat angka
     // finansial, gak nelen mentah-mentah hasil hitungan client manapun.
     //
-    // Urutan standar PPN (sama persis recomputeDppTax() di orderPage.vue): pajak dilepas dulu
-    // dari price (dpp) -> diskon dipotong dari dpp (net_dpp) -> pajak final dihitung ulang dari
-    // net_dpp. Diskon PERSEN (discount_rate > 0) dihitung ULANG dari basis dpp di sini --
+    // Delegasi ke OrderServices::CalculateLineItem() (2026-11-18) -- rumus SAMA PERSIS yang
+    // dipakai SaveOrder() (5 langkah: netPrice -> dpp -> taxAmount -> serviceChargeAmount ->
+    // total), 1 sumber kebenaran, lihat komentar di fungsi itu buat detail formula.
+    //
+    // taxRate/serviceChargeRate (2026-11-18, BARU) -- di-resolve server-side dari mr_tax lewat
+    // OrderServices::ResolveTaxRate(), BUKAN dipercaya mentah dari tax_rate/service_charge_rate
+    // yang dikirim Kiosk lagi -- FE cukup kirim tax_id/service_charge_id, nilai rate yang
+    // dikirim diabaikan (walau boleh tetap ada di payload). Nilai resolved dikembalikan di
+    // return value ('tax_rate'/'service_charge_rate') supaya caller nyimpen yang benar.
+    //
+    // Diskon PERSEN (discount_rate > 0) dihitung ULANG dari basis netPrice di sini --
     // discount_value yang dikirim Kiosk diabaikan buat kasus ini, soalnya kemungkinan besar
     // masih basis gross (rumus lama). Diskon NOMINAL (discount_rate == 0 / gak ada promo)
     // dipercaya apa adanya dari discount_value -- nominal gak ada masalah basis.
     private function recomputeKioskUnit(array $item): array
     {
         $price = (float) ($item['price'] ?? 0);
-        $taxRate = (float) ($item['tax_rate'] ?? 0);
+        $taxRate = OrderServices::ResolveTaxRate(isset($item['tax_id']) ? (int) $item['tax_id'] : null);
+        $serviceChargeRate = OrderServices::ResolveTaxRate(isset($item['service_charge_id']) ? (int) $item['service_charge_id'] : null);
         $flagInclusiveTax = (bool) ($item['flag_inclusive_tax'] ?? false);
         $discountRate = (float) ($item['discount_rate'] ?? 0);
 
-        $dpp = $flagInclusiveTax ? $price / (1 + $taxRate / 100) : $price;
+        // discountAmount butuh netPrice (basis diskon persen) -- hitung netPrice dulu lewat 1
+        // panggilan awal (discountAmount=0), baru panggil lagi dengan discountAmount final.
+        $netPriceOnly = OrderServices::CalculateLineItem($price, $taxRate, $serviceChargeRate, $flagInclusiveTax, 0);
 
         if ($discountRate > 0) {
-            $discountAmount = round($discountRate / 100 * $dpp);
+            $discountAmount = round($discountRate / 100 * $netPriceOnly['netPrice'], 2);
         } else {
             $discountAmount = (float) ($item['discount_value'] ?? 0);
         }
 
-        $netDpp = $dpp - $discountAmount;
-        $taxAmount = $netDpp * ($taxRate / 100);
+        $calc = OrderServices::CalculateLineItem($price, $taxRate, $serviceChargeRate, $flagInclusiveTax, $discountAmount);
 
         return [
-            'dpp' => round($dpp),
+            'net_price' => $calc['netPrice'],
             'discount_percent' => $discountRate,
-            'discount_amount' => round($discountAmount),
-            'net_dpp' => round($netDpp),
-            'tax_amount' => round($taxAmount),
+            'discount_amount' => round($discountAmount, 2),
+            'dpp' => $calc['dpp'],
+            'tax_rate' => $taxRate,
+            'tax_amount' => $calc['taxAmount'],
+            'service_charge_rate' => $serviceChargeRate,
+            'service_charge_amount' => $calc['serviceChargeAmount'],
+            'total' => $calc['total'],
         ];
     }
 
@@ -1276,14 +1344,17 @@ class KioskController extends Controller
                     'price' => $pkg['price'] ?? null,
                     'taxId' => $pkg['tax_id'] ?? null,
                     'taxType' => $pkg['tax_type'] ?? null,
-                    'taxRate' => $pkg['tax_rate'] ?? null,
+                    'taxRate' => $pkgCalc['tax_rate'],
                     'taxAmount' => $pkgCalc['tax_amount'],
+                    'serviceChargeId' => $pkg['service_charge_id'] ?? null,
+                    'serviceChargeRate' => $pkgCalc['service_charge_rate'],
+                    'serviceChargeAmount' => $pkgCalc['service_charge_amount'],
                     'promoId' => $pkg['promo_id'] ?? null,
                     'discountPercent' => $pkgCalc['discount_percent'],
                     'discountAmount' => $pkgCalc['discount_amount'],
+                    'netPrice' => $pkgCalc['net_price'],
                     'dpp' => $pkgCalc['dpp'],
-                    'netDpp' => $pkgCalc['net_dpp'],
-                    'total' => $qty * $pkgQty * ($pkgCalc['net_dpp'] + $pkgCalc['tax_amount']),
+                    'total' => $qty * $pkgQty * $pkgCalc['total'],
                     'notes' => $pkg['notes'] ?? null,
                 ];
             }
@@ -1298,15 +1369,18 @@ class KioskController extends Controller
                 'price' => $item['price'] ?? null,
                 'taxId' => $item['tax_id'] ?? null,
                 'taxType' => $item['tax_type'] ?? null,
-                'taxRate' => $item['tax_rate'] ?? null,
+                'taxRate' => $calc['tax_rate'],
                 'taxAmount' => $calc['tax_amount'],
+                'serviceChargeId' => $item['service_charge_id'] ?? null,
+                'serviceChargeRate' => $calc['service_charge_rate'],
+                'serviceChargeAmount' => $calc['service_charge_amount'],
                 'promoId' => $item['promo_id'] ?? null,
                 'isFreeItemPromo' => $item['is_free_item_promo'] ?? false,
                 'discountPercent' => $calc['discount_percent'],
                 'discountAmount' => $calc['discount_amount'],
+                'netPrice' => $calc['net_price'],
                 'dpp' => $calc['dpp'],
-                'netDpp' => $calc['net_dpp'],
-                'total' => $qty * ($calc['net_dpp'] + $calc['tax_amount']),
+                'total' => $qty * $calc['total'],
                 'notes' => $item['notes'] ?? null,
                 'menuPackageList' => $menuPackageList,
             ];
@@ -1325,8 +1399,13 @@ class KioskController extends Controller
             'totalItem' => $data['total_item'] ?? null,
             'subTotal' => $data['sub_total'] ?? null,
             'totalTax' => $data['total_tax'] ?? null,
+            'totalServiceCharge' => $data['total_service_charge'] ?? null,
             'totalBilling' => $data['total_billing'] ?? null,
             'totalDiscount' => $data['total_discount'] ?? 0,
+            // orderFee/deliveryCost FE-trusted (sama exception yang sama di SaveOrder()), bukan
+            // hasil kalkulasi item -- harus di-passthrough di sini.
+            'orderFee' => $data['order_fee'] ?? 0,
+            'deliveryCost' => $data['delivery_cost'] ?? 0,
             // memberId gak lagi dipercaya dari client -- di-derive dari customerPhoneNumber
             // (kalau ada isinya) lewat data lokal mr_member (bukan live ke ERP, ini jalur
             // kritis nyimpen order, gak boleh gantung koneksi ke ERP -- live check ada
@@ -1375,6 +1454,8 @@ class KioskController extends Controller
                     'icon_src' => $mpl->iconSrc ?? null,
                     'tax_id' => $mpl->taxId,
                     'tax_rate' => $mpl->taxRate,
+                    'service_charge_id' => $mpl->serviceChargeId ?? null,
+                    'service_charge_rate' => $mpl->serviceChargeRate ?? null,
                     'default_item' => $mpl->defaultItem,
                     'notes_menu' => $mpl->notesMenu ?? [],
                 ];
@@ -1408,6 +1489,8 @@ class KioskController extends Controller
             'flag_sold_out' => $item->flagSoldOut,
             'tax_id' => $item->taxId,
             'tax_rate' => $item->taxRate,
+            'service_charge_id' => $item->serviceChargeId ?? null,
+            'service_charge_rate' => $item->serviceChargeRate ?? null,
             'package_id_real' => $item->packageid_real ?? null,
             'separate_print_package' => $item->separatePrintPackage ?? null,
             'notes_menu' => $item->notesMenu ?? [],

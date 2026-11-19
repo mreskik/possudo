@@ -138,6 +138,24 @@ class MenuServices
 
     foreach ($branch_visit_purpose as $visitPurposeRow) {
 
+      // serviceChargeId/serviceChargeRate (2026-11-18, BARU) -- bvp.service_charge itu tax_id
+      // (FK ke mr_tax), BUKAN rate langsung, sama pola kayak vat/pb1 -- resolve rate-nya sekali
+      // di sini pakai tabel $tax yang udah di-cache di awal fungsi (sama sumber yang dipakai
+      // resolusi taxRate per item/sub-item di bawah). SENGAJA variabel lokal, TIDAK di-set ke
+      // $visitPurposeRow (field ini TIDAK muncul di root/header objek visit purpose) -- cuma
+      // di-echo ke tiap baris menuList[]/menuPackageList[] di bawah. null kalau serviceCharge =
+      // 0/null (gak ada service charge buat visit purpose ini), konsisten sama null-handling
+      // taxId/taxRate.
+      $serviceChargeId = $visitPurposeRow->serviceCharge;
+      if ($visitPurposeRow->serviceCharge != 0 && $visitPurposeRow->serviceCharge !== null) {
+        if (!isset($tax[$visitPurposeRow->serviceCharge])) {
+          throw new \Exception("Tax ID {$visitPurposeRow->serviceCharge} not found in local master_tax data, please re-sync tax data from ERP");
+        }
+        $serviceChargeRate = $tax[$visitPurposeRow->serviceCharge][0]->rate;
+      } else {
+        $serviceChargeRate = null;
+      }
+
       $category = DB::select("
       SELECT DISTINCT 
       mi.category_id as categoryId,
@@ -233,6 +251,15 @@ class MenuServices
 
             //tax for submenu
             foreach ($cloning_mpg->menuPackageList as $mpl) {
+              // taxType dipindah ke sini (2026-11-18) -- unset() + assign ulang biar urutan key
+              // di object (dan otomatis di JSON) jadi taxType TEPAT SEBELUM taxId/taxRate
+              // (grup pajak berurutan rapi), bukan taxType nyangkut di posisi awal (dari SELECT
+              // SQL) sementara taxId/taxRate jauh di posisi akhir. Nilainya SAMA PERSIS, cuma
+              // posisi property-nya yang berubah.
+              $taxTypeTemp = $mpl->taxType;
+              unset($mpl->taxType);
+              $mpl->taxType = $taxTypeTemp;
+
               if ($mpl->taxType == 'vat') {
                 if ($visitPurposeRow->vat == 0 || $visitPurposeRow->vat === null) {
                   $mpl->taxId = null;
@@ -263,6 +290,13 @@ class MenuServices
               if ($mpl->bomId == 0) {
                 $mpl->bomId = null;
               }
+
+              // serviceChargeId/serviceChargeRate (2026-11-18, BARU) -- echo nilai yang SAMA
+              // persis punya visit purpose ini (sudah diresolve sekali di atas, bukan dihitung
+              // ulang per sub-item -- service charge bukan per-item seperti vat/pb1, nilainya
+              // identik di semua baris dalam 1 visit purpose yang sama).
+              $mpl->serviceChargeId = $serviceChargeId;
+              $mpl->serviceChargeRate = $serviceChargeRate;
 
               // notes_menu sub-item package -- matching pakai category_id/subcategory_id MILIK
               // SUB-ITEM ITU SENDIRI (categoryId/subCategoryId di query $menuPackageDetail),
@@ -302,6 +336,13 @@ class MenuServices
         foreach ($listmenu as $itemConvRow) {
           if ($itemConvRow->subCategoryId == $itemsub->subCategoryId && $itemConvRow->categoryId == $itemsub->categoryId) {
 
+            // taxType dipindah ke sini (2026-11-18) -- sama alasan & pola persis taxType di
+            // menuPackageList di atas: unset() + assign ulang biar urutan key jadi taxType
+            // TEPAT SEBELUM taxId/taxRate, bukan nyangkut di posisi awal (dari SELECT SQL).
+            $taxTypeTemp = $itemConvRow->taxType;
+            unset($itemConvRow->taxType);
+            $itemConvRow->taxType = $taxTypeTemp;
+
             if ($itemConvRow->taxType == 'vat') {
               if ($visitPurposeRow->vat == 0) {
                 $itemConvRow->taxId = null;
@@ -328,11 +369,24 @@ class MenuServices
               $itemConvRow->taxRate = null;
             }
 
+            // serviceChargeId/serviceChargeRate (2026-11-18, BARU) -- sama alasan echo di
+            // menuPackageList di atas: nilai identik punya visit purpose ini, bukan dihitung
+            // ulang per item.
+            $itemConvRow->serviceChargeId = $serviceChargeId;
+            $itemConvRow->serviceChargeRate = $serviceChargeRate;
+
             //ngubah null di bom id
             if ($itemConvRow->bomId == 0) {
               $itemConvRow->bomId = null;
             }
 
+            // packageList dipindah ke sini (2026-11-18) -- unset() + assign ulang biar
+            // posisinya di PALING BAWAH object item (setelah serviceChargeRate), bukan di
+            // tengah (sebelumnya langsung sesudah iconSrc, dari assignment awal baris 233).
+            // Isinya SAMA PERSIS, cuma posisi key-nya yang berubah.
+            $packageListTemp = $itemConvRow->packageList;
+            unset($itemConvRow->packageList);
+            $itemConvRow->packageList = $packageListTemp;
 
             $clonemenu = unserialize(serialize($itemConvRow));
             // categoryId/subCategoryId/itemid_real dipertahankan (tidak di-unset) supaya

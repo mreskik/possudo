@@ -21,33 +21,46 @@ Selain convert case, ada 3 hal yang di-resolve/dipaksa di controller, gak diperc
 
 Semua field yang berhubungan sama uang, rate (persen pajak/diskon), atau nominal — **kirim sebagai string**, bukan number JSON mentah (`"14500.00"`, bukan `14500`). Ini standar buat endpoint Kiosk (baru, jadi bisa langsung distandarin dari awal) — beda dari POS yang masih campuran number/string di berbagai tempat (belum dirapiin, rencana nyusul belakangan, di luar scope Kiosk ini). Tervalidasi kirim string tetep kesimpen bener sebagai `decimal` di DB (MySQL/PDO gak masalah nerima string numerik).
 
-Field yang termasuk kelompok ini: `sub_total`, `total_tax`, `total_billing`, `total_discount` (level order), dan per item di `list_order[]`/`menu_package_list[]`: `price`, `tax_rate`, `tax_value`, `discount_rate`, `discount_value`, `after_discount`, `dpp`, `total`.
+Field yang termasuk kelompok ini: `sub_total`, `total_tax`, `total_service_charge`, `total_billing`, `total_discount`, `order_fee`, `delivery_cost` (level order), dan per item di `list_order[]`/`menu_package_list[]`: `price`, `discount_rate`, `discount_value`, `dpp`, `total`. (`tax_rate`/`service_charge_rate`/`tax_value` sudah gak relevan lagi — field mati, lihat "field MATI" di bawah.)
 
-## ⚠️ Backend hitung ulang tax_value/dpp/total server-side (2026-08-20)
+## ⚠️ Backend hitung ulang net_price/dpp/tax_value/service_charge_amount/total server-side, item & header (2026-11-18)
 
-Field **nama**-nya gak berubah (kontrak request ini sengaja dipertahankan apa adanya), tapi sejak
-restrukturisasi kolom harga/diskon/pajak, backend **gak lagi percaya mentah-mentah** field
-turunan yang dikirim Kiosk — dihitung ulang sendiri lewat `KioskController::recomputeKioskUnit()`
-per baris `list_order[]`/`menu_package_list[]`:
+Field **nama**-nya gak berubah di kontrak request ini (sengaja dipertahankan apa adanya), tapi
+backend **gak lagi percaya mentah-mentah** field turunan yang dikirim Kiosk — dihitung ulang
+sendiri lewat `KioskController::recomputeKioskUnit()` per baris `list_order[]`/`menu_package_list[]`,
+rumus **delegasi langsung** ke `OrderServices::CalculateLineItem()` (fungsi yang sama dipakai POS
+`SaveOrder()`, 1 sumber kebenaran — lihat [`../ORDER/SAVE ORDER.md`](../ORDER/SAVE%20ORDER.md)
+untuk detail lengkap rumus + simulasi angka):
 
-- **`tax_value`, `after_discount`, `dpp`, `total` yang dikirim client DIABAIKAN** — backend
-  hitung ulang dari `price`/`tax_rate`/`flag_inclusive_tax`/`discount_rate`/`discount_value`.
-  Boleh tetap dikirim (gak dibaca), atau boleh dihilangkan dari payload — sama-sama gak masalah.
+- **`tax_value`, `dpp`, `total` yang dikirim client DIABAIKAN** — backend
+  hitung ulang dari `price`/`tax_rate`/`service_charge_rate`/`flag_inclusive_tax`/
+  `discount_rate`/`discount_value`. Boleh tetap dikirim (gak dibaca), atau boleh dihilangkan
+  dari payload — sama-sama gak masalah.
+- **`tax_rate`/`service_charge_rate` yang dikirim client JUGA DIABAIKAN (2026-11-18, BARU)** —
+  sebelumnya dipercaya dari client, sekarang di-**lookup server-side dari `mr_tax`** berdasar
+  `tax_id`/`service_charge_id` (`OrderServices::ResolveTaxRate()`, 1 sumber kebenaran sama
+  POS). Client cukup kirim `tax_id`/`service_charge_id`, rate-nya diurus backend. `tax_id`/
+  `service_charge_id` kosong/`null` → rate `0` (valid, item tanpa pajak). **Id terisi tapi
+  gak ketemu di `mr_tax`** → request DITOLAK (`{"code":100,"message":"tax/service charge
+  dengan id {id} tidak ditemukan"}`), order gagal tersimpan sama sekali.
 - **`discount_value` cuma dipercaya kalau `discount_rate == 0`** (promo nominal rupiah / gak ada
   promo). Kalau `discount_rate > 0` (promo persen), `discount_value` yang dikirim **diabaikan**,
-  backend hitung ulang dari basis DPP (`discount_rate% × dpp`, bukan dari `price` gross).
-- Urutan hitung ulangnya: pajak dilepas dulu dari `price` → `dpp`, **baru** diskon dipotong dari
-  `dpp` (bukan dari `price` gross) → `net_dpp`, baru pajak final dihitung dari `net_dpp` →
-  `tax_value` (nama kolom DB-nya `tax_amount`, response tetap kayak biasa). `total` per baris
-  yang beneran kesimpen = `qty × (net_dpp + tax_value)`.
+  backend hitung ulang dari basis net price (`discount_rate% × netPrice`, bukan dari `price` gross).
+- Urutan hitung ulangnya (5 langkah, sama persis POS): `netPrice` dilepas dulu dari `price`
+  (pajak+service charge, kalau inclusive) → `dpp = netPrice - discountAmount` → `tax_value`
+  (`dpp × taxRate%`, nama kolom DB `tax_amount`) → `service_charge_amount` (`dpp ×
+  serviceChargeRate%`) → `total = dpp + tax_value + service_charge_amount`, dikali `qty` buat
+  nilai yang beneran kesimpen.
+- **Header juga dihitung ulang** (bukan cuma item) — `sub_total`/`total_discount`/`total_tax`/
+  `total_service_charge`/`total_billing`/`total_item` yang dikirim client **DIABAIKAN**, di-
+  overwrite oleh `OrderServices::RecalculateOrderTotals()` berdasar baris item yang baru
+  disimpan. Exception (TETAP FE-trusted, gak di-recalculate): `order_fee`, `delivery_cost`.
 
 Alasannya: app Kiosk (repo terpisah, di luar `posv1-laravel`) belum tentu ikut diupdate ke rumus
 baru bareng — backend jadi otoritas terakhir buat angka finansial, gak nelen mentah-mentah hasil
-hitungan client manapun. Detail lengkap logic & simulasi angka:
-[PERHITUNGAN PAJAK INCLUSIVE & DISKON.md](../../../posv1-vue/DOKUMENTASI/PERHITUNGAN%20PAJAK%20INCLUSIVE%20%26%20DISKON.md)
-(`posv1-vue`).
+hitungan client manapun.
 
-Field angka biasa (**tetap number**, bukan uang/rate): `terminal_id`, `visit_purpose_id`, `price_list_id`, `member_id`, `order_pax`, `total_item`, `qty`, `tax_id`, `promo_id`, `menu_pricelist_id`, `menu_id`, `menu_package_id` — ini id/quantity, bukan nominal.
+Field angka biasa (**tetap number**, bukan uang/rate): `terminal_id`, `visit_purpose_id`, `price_list_id`, `member_id`, `order_pax`, `total_item`, `qty`, `tax_id`, `service_charge_id`, `promo_id`, `menu_pricelist_id`, `menu_id`, `menu_package_id` — ini id/quantity, bukan nominal.
 
 ## Contoh request
 
@@ -67,8 +80,11 @@ Content-Type: application/json
   "total_item": 2,
   "sub_total": "22500.00",
   "total_tax": "0.00",
+  "total_service_charge": "0.00",
   "total_billing": "22500.00",
   "total_discount": "0.00",
+  "order_fee": "0.00",
+  "delivery_cost": "0.00",
   "list_order": [
     {
       "menu_pricelist_id": 49,
@@ -78,13 +94,12 @@ Content-Type: application/json
       "price": "14500.00",
       "tax_id": null,
       "tax_type": "",
-      "tax_rate": "0.00",
-      "tax_value": "0.00",
+      "service_charge_id": 16,
       "promo_id": null,
       "is_free_item_promo": false,
       "discount_rate": "0.00",
       "discount_value": "0.00",
-      "after_discount": "14500.00",
+      "net_price": "14500.00",
       "dpp": "14500.00",
       "total": "14500.00",
       "notes": "",
@@ -98,13 +113,12 @@ Content-Type: application/json
       "price": "0.00",
       "tax_id": null,
       "tax_type": "",
-      "tax_rate": "0.00",
-      "tax_value": "0.00",
+      "service_charge_id": 16,
       "promo_id": null,
       "is_free_item_promo": false,
       "discount_rate": "0.00",
       "discount_value": "0.00",
-      "after_discount": "8000.00",
+      "net_price": "8000.00",
       "dpp": "8000.00",
       "total": "8000.00",
       "notes": "less ice",
@@ -117,11 +131,11 @@ Content-Type: application/json
           "price": "8000.00",
           "tax_id": null,
           "tax_type": "",
-          "tax_rate": "0.00",
-          "tax_value": "0.00",
+          "service_charge_id": 16,
           "promo_id": null,
           "discount_rate": "0.00",
           "discount_value": "0.00",
+          "net_price": "8000.00",
           "total": "8000.00",
           "notes": ""
         }
@@ -163,6 +177,12 @@ Gagal — error lain dari `OrderServices::SaveOrder()` (stok habis, dayshift bel
 { "code": 100, "message": "Stok yang tersedia untuk CARAME MACHIATO hanya 3" }
 ```
 
+Gagal — `tax_id`/`service_charge_id` yang dikirim gak ketemu di `mr_tax` (2026-11-18, BARU, lihat "Backend hitung ulang" di atas):
+
+```json
+{ "code": 100, "message": "tax/service charge dengan id 999999 tidak ditemukan" }
+```
+
 ## Field payload
 
 | Field | Isi |
@@ -173,7 +193,8 @@ Gagal — error lain dari `OrderServices::SaveOrder()` (stok habis, dayshift bel
 | `visit_purpose_id` | dari [KIOSK BRANCH VISIT PURPOSE.md](./KIOSK%20BRANCH%20VISIT%20PURPOSE.md) (`visit_purpose_id`, bukan `id`) |
 | `price_list_id` | `menu_pricelist_id` dari [KIOSK BRANCH VISIT PURPOSE DETAIL.md](./KIOSK%20BRANCH%20VISIT%20PURPOSE%20DETAIL.md) |
 | `order_pax`, `total_item` | dihitung di frontend dari isi keranjang (number, bukan string) |
-| `sub_total`, `total_tax`, `total_billing`, `total_discount` | dihitung di frontend dari isi keranjang — **string** (lihat bagian "Field duit/rate/amount" di atas) |
+| `sub_total`, `total_tax`, `total_service_charge`, `total_billing`, `total_discount` | dihitung di frontend dari isi keranjang — **string**, tapi DIABAIKAN backend (dihitung ulang, lihat section di atas), boleh dikirim boleh gak |
+| `order_fee`, `delivery_cost` | **FE-trusted** (TIDAK dihitung ulang backend) — manual input, default `0` kalau gak dikirim |
 | `list_order[]` | isi keranjang, lihat mapping di bawah |
 
 **Jangan kirim `order_source`/`table_section_id`/`member_id`** — kalaupun dikirim, bakal diabaikan/ketimpa server (lihat poin 1-3 di atas). `order_number` boleh gak dikirim (create) atau diisi (edit, lihat section di bawah).
@@ -189,17 +210,18 @@ Item di keranjang Kiosk (dari endpoint detail, field-nya udah `snake_case`) ting
 | — (qty dipilih user) | `qty` |
 | `flag_inclusive_tax` | `flag_inclusive_tax` |
 | `menu_price` | `price` |
-| `tax_id` | `tax_id` |
+| `tax_id` | `tax_id` — jadi dasar lookup rate server-side (lihat "Backend hitung ulang" di atas); kalau diisi, harus id yang beneran ada di `mr_tax` (gak ketemu = request ditolak). `null`/kosong = item tanpa pajak (valid, rate dianggap `0`) |
 | `tax_type` | `tax_type` |
-| `tax_rate` | `tax_rate` |
-| — (dihitung di frontend, tapi **diabaikan backend** — lihat "Backend hitung ulang" di atas) | `tax_value` |
+| `service_charge_id` (2026-11-18, BARU — lihat [KIOSK BRANCH VISIT PURPOSE DETAIL.md](./KIOSK%20BRANCH%20VISIT%20PURPOSE%20DETAIL.md)), **boleh `null`** (item tanpa service charge, valid — rate dianggap `0`) — kalau diisi, harus id yang beneran ada di `mr_tax` | `service_charge_id` |
 | — (kosong kalau gak ada promo) | `promo_id`, `discount_rate`, `discount_value` (`discount_value` cuma dipercaya kalau `discount_rate == 0`) |
 | — | `is_free_item_promo` (opsional, default `false` kalau gak dikirim) |
-| — (dihitung di frontend, tapi **diabaikan backend**) | `total` |
+| — (dihitung di frontend, tapi **diabaikan backend** — basis kalkulasi `net_price`/`dpp`/`total` dijelaskan lengkap di "Backend hitung ulang" di atas) | `net_price`, `dpp`, `total` |
 | — (opsional dari user) | `notes` |
 | `package_list[]` (kalau ada) | `menu_package_list[]` — boleh dikosongin `[]` kalau item gak punya package, server yang isi default kalau field ini gak ada sama sekali |
 
-`menu_package_list[]` per baris (kalau item punya package terpilih) field-nya sama kayak `menu_package_list[]` di respons detail (`menu_package_id`, `menu_id`, `qty`, `flag_inclusive_tax`, `price`, `tax_id`, `tax_type`, `tax_rate`, `tax_value`, `promo_id`, `discount_rate`, `discount_value`, `total`, `notes`).
+**`tax_rate`, `service_charge_rate`, `tax_value` — field MATI, boleh dihilangkan total dari payload (2026-11-18)**: ketiganya **tidak dibaca sama sekali** oleh backend (bukan sekadar "diabaikan nilainya", tapi gak pernah diakses dari array request) — `tax_rate`/`service_charge_rate` di-lookup dari `mr_tax` lewat `tax_id`/`service_charge_id` (lihat "Backend hitung ulang" di atas), `tax_value` sudah mati lebih lama (lihat riwayat field basi lain). Boleh tetap dikirim kalau FE belum sempat dibersihkan (gak error), tapi gak ada gunanya — contoh JSON di dokumen ini sudah **sengaja gak menyertakan ketiganya** per hari ini, biar gak menyesatkan field mana yang masih hidup.
+
+`menu_package_list[]` per baris (kalau item punya package terpilih) field-nya sama kayak `menu_package_list[]` di respons detail, MINUS `tax_rate`/`service_charge_rate` (field mati, lihat di atas), PLUS `net_price`/`dpp` (opsional, sama alasan level item di atas — diabaikan backend): `menu_package_id`, `menu_id`, `qty`, `flag_inclusive_tax`, `price`, `tax_id`, `tax_type`, `service_charge_id`, `promo_id`, `discount_rate`, `discount_value`, `net_price`, `dpp`, `total`, `notes`.
 
 ## Print kitchen ditunda sampai payment (bukan pas save-order)
 
@@ -230,6 +252,8 @@ Buat kasus customer nambah/ubah item **sebelum bayar** (order masih `pending`/`h
 
 Kenapa replace-all (bukan reuse branch edit `OrderServices::SaveOrder()` yang `merge-by-ulid`, dipakai POS): logic POS itu sengaja preserve item yang **udah keprint ke dapur** (`done_print=true`), gak boleh dihapus asal. Kiosk beda kondisi — print kitchen **selalu ditunda sampai payment sukses** (lihat section di atas), jadi gak ada baris yang perlu dijaga selama order masih `pending`/`hold`. Bonus: gak perlu client tracking `ulid` per item (gak dikirim balik lagi di [KIOSK ORDER DETAIL.md](./KIOSK%20ORDER%20DETAIL.md)), dan gak ada bug field `total` per-item gak ke-update kayak kalau reuse logic POS.
 
+**Item & header dihitung ulang server-side, sama persis create** (2026-11-18) — `editExistingOrder()` manggil `recomputeKioskUnit()` per baris (delegasi `OrderServices::CalculateLineItem()`) buat `net_price`/`dpp`/`tax_value`/`service_charge_amount`/`total` per item, lalu `OrderServices::RecalculateOrderTotals()` buat header (`sub_total`/`total_discount`/`total_tax`/`total_service_charge`/`total_billing`/`total_item`) — field2 itu di request **diabaikan** sama persis "Backend hitung ulang" di atas. `order_fee`/`delivery_cost` tetap FE-trusted, di-passthrough ke `tr_order` (default nilai lama kalau gak dikirim).
+
 Sebelum replace-all dijalanin:
 
 1. **Guard status `pending`/`hold`** — order yang udah `paid`/`cancel`/`expired`/dll ditolak jelas, gak sempat masuk logic edit sama sekali.
@@ -251,8 +275,11 @@ Content-Type: application/json
   "total_item": 3,
   "sub_total": "30000.00",
   "total_tax": "3300.00",
+  "total_service_charge": "0.00",
   "total_billing": "33300.00",
   "total_discount": "0.00",
+  "order_fee": "0.00",
+  "delivery_cost": "0.00",
   "list_order": [
     {
       "menu_pricelist_id": 82,
@@ -262,10 +289,10 @@ Content-Type: application/json
       "price": "10000.00",
       "tax_id": 100,
       "tax_type": "vat",
-      "tax_rate": "11.00",
-      "tax_value": "2200.00",
+      "service_charge_id": 16,
       "discount_rate": "0.00",
       "discount_value": "0.00",
+      "net_price": "20000.00",
       "total": "20000.00",
       "notes": null,
       "menu_package_list": []
@@ -278,10 +305,10 @@ Content-Type: application/json
       "price": "10000.00",
       "tax_id": null,
       "tax_type": "",
-      "tax_rate": "0.00",
-      "tax_value": "0.00",
+      "service_charge_id": 16,
       "discount_rate": "0.00",
       "discount_value": "0.00",
+      "net_price": "10000.00",
       "total": "10000.00",
       "notes": "item paket baru",
       "menu_package_list": [
@@ -293,8 +320,7 @@ Content-Type: application/json
           "price": "6000.00",
           "tax_id": null,
           "tax_type": "",
-          "tax_rate": "0.00",
-          "tax_value": "0.00",
+          "service_charge_id": 16,
           "discount_rate": "0.00",
           "discount_value": "0.00",
           "total": "6000.00",
@@ -308,8 +334,7 @@ Content-Type: application/json
           "price": "8000.00",
           "tax_id": null,
           "tax_type": "",
-          "tax_rate": "0.00",
-          "tax_value": "0.00",
+          "service_charge_id": 16,
           "discount_rate": "0.00",
           "discount_value": "0.00",
           "total": "8000.00",
@@ -321,7 +346,7 @@ Content-Type: application/json
 }
 ```
 
-**Field yang gak dipakai buat edit** (dikirim juga gak apa-apa, diabaikan): `terminal_id`, `visit_purpose_id`, `price_list_id` — `table_section_id`/`visit_purpose_id` order gak berubah abis dibuat. `customer_phone_number` **tetap dipakai** (beda dari 3 field di atas) — ikut di-update ke `tr_order`, dan `member_id` di-re-derive ulang darinya (kalau mau ganti nomor HP, kirim yang baru; kalau gak dikirim/dikosongin, `customer_phone_number`/`member_id` jadi `null`).
+**Field yang gak dipakai buat edit** (dikirim juga gak apa-apa, diabaikan): `terminal_id`, `visit_purpose_id`, `price_list_id` — `table_section_id`/`visit_purpose_id` order gak berubah abis dibuat. `sub_total`/`total_tax`/`total_service_charge`/`total_billing`/`total_discount`/`total_item` juga diabaikan (dihitung ulang server-side, lihat di atas). `customer_phone_number` **tetap dipakai** (beda dari field2 di atas) — ikut di-update ke `tr_order`, dan `member_id` di-re-derive ulang darinya (kalau mau ganti nomor HP, kirim yang baru; kalau gak dikirim/dikosongin, `customer_phone_number`/`member_id` jadi `null`). `order_fee`/`delivery_cost` **tetap FE-trusted** — kirim nilai baru kalau mau diubah, gak dikirim = tetap pakai nilai lama.
 
 ### Response
 
@@ -364,3 +389,15 @@ Race — attempt payment-nya ternyata udah `settlement` pas mau diedit (lihat "R
 - Order yang statusnya `cancel` → ditolak `"order sudah tidak bisa diedit..."`.
 - Order dengan QR `pending` aktif (`payment/request` dipanggil dulu) → diedit → attempt itu dicek langsung `GET /payment-gateway/{order_id}` ke service `payment`, hasilnya beneran `status: cancel` di Midtrans (bukan cuma klaim lokal).
 - Create (`order_number` kosong) dites ulang abis perubahan ini → tetap jalan normal, gak kepengaruh.
+
+## Status
+
+**Diselaraskan dengan POS (2026-11-18)**: `recomputeKioskUnit()` dirombak jadi delegasi langsung ke `OrderServices::CalculateLineItem()` (dipakai bareng `SaveOrder()`, 1 sumber kebenaran) — nama field hasil kalkulasi internal ikut rename (`net_price`/`dpp`, sebelumnya `dpp`/`net_dpp`), tambah `service_charge_id`/`service_charge_rate`/`service_charge_amount` di item & sub-item package (sebelumnya gak ada sama sekali). `editExistingOrder()` juga sekarang manggil `OrderServices::RecalculateOrderTotals()` buat header, konsisten sama create — sebelumnya header edit cuma percaya apa adanya dari request FE. Kontrak **nama field request/response gak berubah** (tetap `tax_value`/`dpp`/`total` dst, lihat "Field duit/rate/amount"), cuma `service_charge_id`/`service_charge_rate` yang BARU ditambahkan.
+
+**Tervalidasi live end-to-end (2026-11-18)**: dites via `curl` ke POS Laravel lokal (`php artisan serve --port=8098`), pakai data test sementara (tax rate service charge diset 5%, 1 visit purpose & 1 terminal diaktifkan buat kiosk, dibalikin lagi abis test):
+
+- **Create**: `price=30000` (inclusive), `taxRate=10%`, `serviceChargeRate=5%`, qty 2, tanpa diskon → `net_price=26086.96`, `dpp=26086.96` (sama karena diskon 0), `tax_amount=2608.70`, `service_charge_amount=1304.35` — semua cocok hitungan manual `30000/1.15=26086.96` dst. Header: `sub_total=52173.92`, `total_tax=5217.40`, `total_service_charge=2608.70`, `total_billing=60000.00` (2×qty, semua konsisten).
+- **Edit**: order yang sama diedit — qty jadi 3, `discount_rate=10%` dikirim bareng `discount_value=999999.00` (sentinel sengaja salah) → backend **mengabaikan** `discount_value` dan hitung ulang `discountAmount=10%×netPrice=2608.70` (BUKAN dari sentinel), `dpp=23478.26`, `tax_amount=2347.83`, `service_charge_amount=1173.91`. Header ikut ter-recalculate: `sub_total=78260.88`, `total_discount=7826.10`, `total_tax=7043.49`, `total_service_charge=3521.73`. `order_fee="2000.00"`/`delivery_cost="3000.00"` yang dikirim **ter-passthrough persis** (FE-trusted, gak diabaikan) → `total_billing=86000.00` (`81000` dari item + `2000+3000`).
+- Data test (order + master data yang diubah sementara) dibersihkan abis verifikasi.
+
+**`tax_rate`/`service_charge_rate` resolve server-side dari `mr_tax` (2026-11-18, LANJUTAN)**: `recomputeKioskUnit()` diupdate — `tax_rate`/`service_charge_rate` yang dikirim client **tidak lagi dipakai**, diganti hasil `OrderServices::ResolveTaxRate($tax_id)`/`ResolveTaxRate($service_charge_id)` (fungsi yang sama dipakai POS, dibuat `public`). **Tervalidasi live (2 skenario via curl)**: (1) create order kirim `tax_rate="999.00"`/`service_charge_rate="999.00"` (sentinel sengaja salah) dengan `tax_id=10` (rate asli 10%)/`service_charge_id=16` (rate diset 5% sementara buat test) → kolom DB tersimpan `tax_rate=10.00`/`service_charge_rate=5.00` (bukan `999`), seluruh hasil kalkulasi (`tax_amount=2608.70`, `service_charge_amount=1304.35`, `dpp=26086.96`) cocok hitungan manual pakai rate asli; (2) kirim `tax_id=999999` (gak ada di `mr_tax`) → `{"code":100,"message":"tax/service charge dengan id 999999 tidak ditemukan"}`, order gagal tersimpan. Data test & master data yang diubah sementara dikembalikan ke semula setelah verifikasi.

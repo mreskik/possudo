@@ -55,6 +55,8 @@ Response:
                                 "flag_sold_out": 0,
                                 "tax_id": 100,
                                 "tax_rate": "11.00",
+                                "service_charge_id": 9,
+                                "service_charge_rate": "5.00",
                                 "package_id_real": 53,
                                 "separate_print_package": 0,
                                 "notes_menu": ["Tambah level pedas 1 tingkat", "Sugar free"],
@@ -76,6 +78,8 @@ Response:
                                                 "icon_src": null,
                                                 "tax_id": 100,
                                                 "tax_rate": "11.00",
+                                                "service_charge_id": 9,
+                                                "service_charge_rate": "5.00",
                                                 "default_item": true,
                                                 "notes_menu": []
                                             },
@@ -89,6 +93,8 @@ Response:
                                                 "icon_src": null,
                                                 "tax_id": 100,
                                                 "tax_rate": "11.00",
+                                                "service_charge_id": 9,
+                                                "service_charge_rate": "5.00",
                                                 "default_item": false,
                                                 "notes_menu": ["Extra pedas level 2"]
                                             }
@@ -109,7 +115,9 @@ Response:
                                                 "bom_id": null,
                                                 "icon_src": null,
                                                 "tax_id": 100,
-                                                "tax_rate": "11.00"
+                                                "tax_rate": "11.00",
+                                                "service_charge_id": 9,
+                                                "service_charge_rate": "5.00"
                                             }
                                         ]
                                     }
@@ -170,11 +178,13 @@ Pemetaan nama field per level (versi POS camelCase → kiosk snake_case):
 | `flagSoldOut`          | `flag_sold_out`          |
 | `taxId`                | `tax_id`                 |
 | `taxRate`              | `tax_rate`               |
+| `serviceChargeId` (2026-11-18, BARU) | `service_charge_id` |
+| `serviceChargeRate` (2026-11-18, BARU) | `service_charge_rate` |
 | `packageid_real`       | `package_id_real`        |
 | `separatePrintPackage` | `separate_print_package` |
 | `packageList`          | `package_list`           |
 
-`package_list[]` (kalau item punya package) juga di-snake_case-in: `packageId`→`package_id`, `packageName`→`package_name`, `minQty`→`min_qty`, `maxQty`→`max_qty`, `menuPackageList`→`menu_package_list` (isinya: `menuPackageId`→`menu_package_id`, `itemId`→`item_id`, `menuName`→`menu_name`, `menuDescription`→`description`, `menuPrice`→`menu_price`, `taxType`→`tax_type`, `bomId`→`bom_id`, `iconSrc`→`icon_src`, `taxId`→`tax_id`, `taxRate`→`tax_rate`, `defaultItem`→`default_item`).
+`package_list[]` (kalau item punya package) juga di-snake_case-in: `packageId`→`package_id`, `packageName`→`package_name`, `minQty`→`min_qty`, `maxQty`→`max_qty`, `menuPackageList`→`menu_package_list` (isinya: `menuPackageId`→`menu_package_id`, `itemId`→`item_id`, `menuName`→`menu_name`, `menuDescription`→`description`, `menuPrice`→`menu_price`, `taxType`→`tax_type`, `bomId`→`bom_id`, `iconSrc`→`icon_src`, `taxId`→`tax_id`, `taxRate`→`tax_rate`, `serviceChargeId`→`service_charge_id` (2026-11-18, BARU), `serviceChargeRate`→`service_charge_rate` (2026-11-18, BARU), `defaultItem`→`default_item`).
 
 `subcategories[]` juga ada pemetaan sendiri (versi POS `$subcategory` query → kiosk): `subCategoryId`→`subcategory_id`, `SubCategoryName`→`subcategory_name`, `subCategoryIconSrc`→`icon_src`, `subCategoryBannerSrc`→`banner_src`, `sequence`→`sequence` (nama sama, BARU 2026-10-15).
 
@@ -266,6 +276,14 @@ Tervalidasi lewat `php -l` (`MenuServices.php`, `KioskController.php`) dan reque
 `sequence` ditambahin di tiap `subcategories[]` — urutan tampil subcategory, menyusul fitur yang sama yang baru ditambahkan di POS (`/api/master/menu-list`, lihat [`MENU LIST.md`](../POS/POS/MASTER/MENU%20LIST.md)). Sumbernya dari ERP: tabel `master_pricelist_sub_category_sequence` (sudocore2), ditarik ke lokal POS lewat sync pull (`mr_pricelist_sub_category_sequence`). Karena satu sumber logic (`MenuServices::GetMasterMenuList()`), query `$subcategory` yang sudah di-`LEFT JOIN` + `ORDER BY` berdasar `sequence` otomatis ikut kepakai di Kiosk juga — perubahan di sini cuma 1 baris tambahan di `KioskController::GetBranchVisitPurposeDetail()` (`'sequence' => $sub->sequence`), passthrough murni, gak ada sort baru ditulis di Kiosk (array-nya sudah terurut dari backend).
 
 Tervalidasi: `php -l` lolos. Belum ada verifikasi HTTP live baru di titik ini (perubahan reshape sederhana, konsisten pola sama seperti field lain yang sudah tervalidasi di versi POS).
+
+## Update (2026-11-18)
+
+`service_charge_id`/`service_charge_rate` ditambahin di **level item** (`items[]`) **dan** di tiap `menu_package_list[]` (sub-item package) — field ini sudah dulu ditambahkan di `MenuServices::GetMasterMenuList()` (`serviceChargeId`/`serviceChargeRate`, di-echo dari resolusi service charge per visit purpose, lihat [`MENU LIST.md`](../POS/POS/MASTER/MENU%20LIST.md)/[`MENU LIST PER VISIT PURPOSE.md`](../POS/POS/MASTER/MENU%20LIST%20PER%20VISIT%20PURPOSE.md)), tapi belum ikut dipetakan ke `mapKioskMenuItem()` sampai sekarang — Kiosk sebelumnya cuma punya `service_charge_rate` di level **header** (`data.service_charge_rate`, dari `mr_branch_visit_purpose.service_charge`), bukan per-item/sub-item (beda dari `tax_id`/`tax_rate` yang sudah lama ada di kedua level). Dipakai di [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md) sebagai dasar lookup rate server-side pas `save-order` (`service_charge_id` yang di sini yang dikirim balik ke `list_order[].service_charge_id`).
+
+Dua field ini **sengaja NULL-safe** (`?? null`) di `mapKioskMenuItem()` — sumbernya (`MenuServices::GetMasterMenuList()`) selalu mengisi keduanya per item/visit purpose, tapi defensif kalau suatu saat ada item yang gak lewat jalur resolusi itu.
+
+**Tervalidasi live (2026-11-18)**: `curl` ke `GET /api/kiosk/branch-visit-purpose/1` (server lokal `php artisan serve --port=8098`) — `service_charge_id`/`service_charge_rate` muncul konsisten di 3 level: header (`data.service_charge_rate`), tiap `items[]` (contoh: AMERICANO/CAPPUCCINO/ESPRESSO, semua `"service_charge_id":16,"service_charge_rate":"0.00"`), dan tiap `menu_package_list[]` (sub-item VARIAN/addon, nilai sama persis mengikuti item induknya — sesuai desain `MenuServices::GetMasterMenuList()` yang resolve 1x per visit purpose, bukan per item). `php -l` lolos. Data test (`flag_kiosk` 1 visit purpose diaktifkan sementara) dikembalikan ke semula setelah verifikasi.
 
 ## Catatan performa
 

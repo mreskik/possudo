@@ -427,7 +427,6 @@ class DayShiftServices
       $netsales_dc_total = 0;
       $netsales_of_total = 0;
       $netsales_sc_total = 0;
-      $netsales_pf_total = 0;
 
       // hitung peritem order
       $netsales_pb1_total = 0;
@@ -474,8 +473,7 @@ class DayShiftServices
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
-          $netsales_sc_total += $orderitem->service_charge;
-          $netsales_pf_total += $orderitem->platform_fee;
+          $netsales_sc_total += $orderitem->total_service_charge;
           $pax_total += $orderitem->pax;
 
           $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
@@ -544,7 +542,7 @@ class DayShiftServices
 
 
       $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
-        $netsales_sc_total + $netsales_pf_total + $netsales_pb1_total + $netsales_vat_total;
+        $netsales_sc_total + $netsales_pb1_total + $netsales_vat_total;
 
       $order_number_concat = "";
       $ulid_orderdetail_concat = "";
@@ -695,7 +693,6 @@ class DayShiftServices
           ["pl" => 40, "key" => "Netsales Delivery Cost", "amount" => $netsales_dc_total],
           ["pl" => 40, "key" => "Netsales Order Fee", "amount" => $netsales_of_total],
           ["pl" => 40, "key" => "Netsales Service Charge", "amount" => $netsales_sc_total],
-          ["pl" => 40, "key" => "Netsales Platform Fee", "amount" => $netsales_pf_total],
           ["pl" => 40, "key" => "Netsales PB1 Total", "amount" => $netsales_pb1_total],
           ["pl" => 40, "key" => "Netsales VAT Total", "amount" => $netsales_vat_total],
           ["pl" => 1, "key" => "Gross Sales", "amount" => $gross_sales],
@@ -790,7 +787,6 @@ class DayShiftServices
       $netsales_dc_total = 0;
       $netsales_of_total = 0;
       $netsales_sc_total = 0;
-      $netsales_pf_total = 0;
 
       // hitung peritem order
       $netsales_pb1_total = 0;
@@ -840,8 +836,7 @@ class DayShiftServices
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
-          $netsales_sc_total += $orderitem->service_charge;
-          $netsales_pf_total += $orderitem->platform_fee;
+          $netsales_sc_total += $orderitem->total_service_charge;
           $pax_total += $orderitem->pax;
 
           $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
@@ -910,7 +905,7 @@ class DayShiftServices
 
 
       $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
-        $netsales_sc_total + $netsales_pf_total + $netsales_pb1_total + $netsales_vat_total;
+        $netsales_sc_total + $netsales_pb1_total + $netsales_vat_total;
 
       $order_number_concat = "";
       $ulid_orderdetail_concat = "";
@@ -1061,7 +1056,6 @@ class DayShiftServices
           ["pl" => 40, "key" => "Netsales Delivery Cost", "amount" => $netsales_dc_total],
           ["pl" => 40, "key" => "Netsales Order Fee", "amount" => $netsales_of_total],
           ["pl" => 40, "key" => "Netsales Service Charge", "amount" => $netsales_sc_total],
-          ["pl" => 40, "key" => "Netsales Platform Fee", "amount" => $netsales_pf_total],
           ["pl" => 40, "key" => "Netsales PB1 Total", "amount" => $netsales_pb1_total],
           ["pl" => 40, "key" => "Netsales VAT Total", "amount" => $netsales_vat_total],
           ["pl" => 1, "key" => "Gross Sales", "amount" => $gross_sales],
@@ -1151,7 +1145,6 @@ class DayShiftServices
       $netsales_dc_total = 0;
       $netsales_of_total = 0;
       $netsales_sc_total = 0;
-      $netsales_pf_total = 0;
 
       // hitung peritem order
       $netsales_pb1_total = 0;
@@ -1198,8 +1191,7 @@ class DayShiftServices
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
-          $netsales_sc_total += $orderitem->service_charge;
-          $netsales_pf_total += $orderitem->platform_fee;
+          $netsales_sc_total += $orderitem->total_service_charge;
           $pax_total += $orderitem->pax;
 
           $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
@@ -1276,7 +1268,7 @@ class DayShiftServices
 
 
       $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
-        $netsales_sc_total + $netsales_pf_total + $netsales_pb1_total + $netsales_vat_total;
+        $netsales_sc_total + $netsales_pb1_total + $netsales_vat_total;
 
       $order_number_concat = "";
       $ulid_orderdetail_concat = "";
@@ -1498,7 +1490,6 @@ class DayShiftServices
           ["pl" => 40, "key" => "Netsales Delivery Cost", "amount" => $netsales_dc_total],
           ["pl" => 40, "key" => "Netsales Order Fee", "amount" => $netsales_of_total],
           ["pl" => 40, "key" => "Netsales Service Charge", "amount" => $netsales_sc_total],
-          ["pl" => 40, "key" => "Netsales Platform Fee", "amount" => $netsales_pf_total],
           ["pl" => 40, "key" => "Netsales PB1 Total", "amount" => $netsales_pb1_total],
           ["pl" => 40, "key" => "Netsales VAT Total", "amount" => $netsales_vat_total],
           ["pl" => 1, "key" => "Gross Sales", "amount" => $gross_sales],
@@ -1792,7 +1783,6 @@ class DayShiftServices
       $netsales_dc_total = 0;
       $netsales_of_total = 0;
       $netsales_sc_total = 0;
-      $netsales_pf_total = 0;
 
       // hitung peritem order
       $netsales_pb1_total = 0;
@@ -1839,8 +1829,7 @@ class DayShiftServices
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
-          $netsales_sc_total += $orderitem->service_charge;
-          $netsales_pf_total += $orderitem->platform_fee;
+          $netsales_sc_total += $orderitem->total_service_charge;
           $pax_total += $orderitem->pax;
 
           $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
@@ -1894,8 +1883,10 @@ class DayShiftServices
 
       // dpp_total: SUM(dpp*qty) gabungan detail+package, dipakai di section SALES SUMMARY
       // (baris "DPP") -- kolom dpp udah ada langsung di tr_order_detail/tr_order_detail_package
-      // (nilai net-of-tax, sebelum diskon), sama sumber persis yang dipakai tax breakdown di
-      // bawah, jadi digabung ke loop yang sama biar gak double-loop.
+      // (nilai net-of-tax, SETELAH diskon -- makna "DPP" yang benar secara akuntansi, sejak
+      // swap kolom dpp/net_dpp 2026-11-18; kalau butuh nilai SEBELUM diskon pakai net_price,
+      // bukan kolom ini), sama sumber persis yang dipakai tax breakdown di bawah, jadi
+      // digabung ke loop yang sama biar gak double-loop.
       $dpp_total = 0;
 
       foreach ($order_paid_detail as $opd) {
@@ -1920,7 +1911,7 @@ class DayShiftServices
 
 
       $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
-        $netsales_sc_total + $netsales_pf_total + $netsales_pb1_total + $netsales_vat_total;
+        $netsales_sc_total + $netsales_pb1_total + $netsales_vat_total;
 
       $order_number_concat = "";
       $ulid_orderdetail_concat = "";
@@ -2141,7 +2132,6 @@ class DayShiftServices
           ["pl" => 40, "key" => "Netsales Delivery Cost", "amount" => $netsales_dc_total],
           ["pl" => 40, "key" => "Netsales Order Fee", "amount" => $netsales_of_total],
           ["pl" => 40, "key" => "Netsales Service Charge", "amount" => $netsales_sc_total],
-          ["pl" => 40, "key" => "Netsales Platform Fee", "amount" => $netsales_pf_total],
           ["pl" => 40, "key" => "Netsales PB1 Total", "amount" => $netsales_pb1_total],
           ["pl" => 40, "key" => "Netsales VAT Total", "amount" => $netsales_vat_total],
           ["pl" => 1, "key" => "Gross Sales", "amount" => $gross_sales],
@@ -2235,7 +2225,6 @@ class DayShiftServices
       $netsales_dc_total = 0;
       $netsales_of_total = 0;
       $netsales_sc_total = 0;
-      $netsales_pf_total = 0;
 
       // hitung peritem order
       $netsales_pb1_total = 0;
@@ -2282,8 +2271,7 @@ class DayShiftServices
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
-          $netsales_sc_total += $orderitem->service_charge;
-          $netsales_pf_total += $orderitem->platform_fee;
+          $netsales_sc_total += $orderitem->total_service_charge;
           $pax_total += $orderitem->pax;
 
           $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
@@ -2359,7 +2347,7 @@ class DayShiftServices
 
 
       $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
-        $netsales_sc_total + $netsales_pf_total + $netsales_pb1_total + $netsales_vat_total;
+        $netsales_sc_total + $netsales_pb1_total + $netsales_vat_total;
 
       $order_number_concat = "";
       $ulid_orderdetail_concat = "";
@@ -2563,7 +2551,6 @@ class DayShiftServices
           ["pl" => 40, "key" => "Netsales Delivery Cost", "amount" => $netsales_dc_total],
           ["pl" => 40, "key" => "Netsales Order Fee", "amount" => $netsales_of_total],
           ["pl" => 40, "key" => "Netsales Service Charge", "amount" => $netsales_sc_total],
-          ["pl" => 40, "key" => "Netsales Platform Fee", "amount" => $netsales_pf_total],
           ["pl" => 40, "key" => "Netsales PB1 Total", "amount" => $netsales_pb1_total],
           ["pl" => 40, "key" => "Netsales VAT Total", "amount" => $netsales_vat_total],
           ["pl" => 1, "key" => "Gross Sales", "amount" => $gross_sales],
@@ -2671,7 +2658,6 @@ class DayShiftServices
       $netsales_dc_total = 0;
       $netsales_of_total = 0;
       $netsales_sc_total = 0;
-      $netsales_pf_total = 0;
 
       // hitung peritem order
       $netsales_pb1_total = 0;
@@ -2718,8 +2704,7 @@ class DayShiftServices
           $netsales += ($orderitem->nett_sales_real ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
-          $netsales_sc_total += $orderitem->service_charge;
-          $netsales_pf_total += $orderitem->platform_fee;
+          $netsales_sc_total += $orderitem->total_service_charge;
           $pax_total += $orderitem->pax;
 
           $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
@@ -2794,7 +2779,7 @@ class DayShiftServices
       $total_tax_total = $netsales_pb1_total + $netsales_vat_total;
 
       $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
-        $netsales_sc_total + $netsales_pf_total + $netsales_pb1_total + $netsales_vat_total;
+        $netsales_sc_total + $netsales_pb1_total + $netsales_vat_total;
 
       $order_number_concat = "";
       $ulid_orderdetail_concat = "";
@@ -2998,7 +2983,6 @@ class DayShiftServices
           ["pl" => 40, "key" => "Netsales Delivery Cost", "amount" => $netsales_dc_total],
           ["pl" => 40, "key" => "Netsales Order Fee", "amount" => $netsales_of_total],
           ["pl" => 40, "key" => "Netsales Service Charge", "amount" => $netsales_sc_total],
-          ["pl" => 40, "key" => "Netsales Platform Fee", "amount" => $netsales_pf_total],
           ["pl" => 40, "key" => "Netsales PB1 Total", "amount" => $netsales_pb1_total],
           ["pl" => 40, "key" => "Netsales VAT Total", "amount" => $netsales_vat_total],
           ["pl" => 1, "key" => "Gross Sales", "amount" => $gross_sales],

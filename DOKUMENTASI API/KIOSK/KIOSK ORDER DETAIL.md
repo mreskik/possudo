@@ -26,6 +26,9 @@ Sukses (item biasa + item package):
     "sub_total": "24000.00",
     "total_tax": "2640.00",
     "total_discount": "0.00",
+    "total_service_charge": "0.00",
+    "order_fee": "0.00",
+    "delivery_cost": "0.00",
     "total_billing": "26640.00",
     "total_item": 1,
     "customer_phone_number": null,
@@ -42,8 +45,17 @@ Sukses (item biasa + item package):
         "qty": 1,
         "notes": null,
         "price": "10000.00",
+        "net_price": "9090.00",
         "discount_amount": "0.00",
+        "tax_id": 100,
+        "tax_type": "vat",
+        "tax_rate": "11.00",
         "tax_amount": "1100.00",
+        "service_charge_id": 9,
+        "service_charge_rate": "5.00",
+        "service_charge_amount": "454.50",
+        "promo_id": null,
+        "is_free_item_promo": false,
         "total": "10000.00",
         "package": [
           {
@@ -52,8 +64,16 @@ Sukses (item biasa + item package):
             "qty": 1,
             "notes": null,
             "price": "6000.00",
+            "net_price": "5454.00",
             "discount_amount": "0.00",
+            "tax_id": 100,
+            "tax_type": "vat",
+            "tax_rate": "11.00",
             "tax_amount": "660.00",
+            "service_charge_id": 9,
+            "service_charge_rate": "5.00",
+            "service_charge_amount": "272.70",
+            "promo_id": null,
             "total": "6000.00"
           },
           {
@@ -62,8 +82,16 @@ Sukses (item biasa + item package):
             "qty": 1,
             "notes": null,
             "price": "8000.00",
+            "net_price": "7272.00",
             "discount_amount": "0.00",
+            "tax_id": 100,
+            "tax_type": "vat",
+            "tax_rate": "11.00",
             "tax_amount": "880.00",
+            "service_charge_id": 9,
+            "service_charge_rate": "5.00",
+            "service_charge_amount": "363.60",
+            "promo_id": null,
             "total": "8000.00"
           }
         ]
@@ -74,7 +102,10 @@ Sukses (item biasa + item package):
 ```
 
 - `items[].package` — **selalu ada** (array, bisa kosong `[]`) — isi kalau item itu paket/punya varian (dari `tr_order_detail_package`), kosong kalau item biasa.
-- Field duit (`price`, `discount_amount`, `tax_amount`, `total`, plus header `sub_total`/`total_tax`/`total_discount`/`total_billing`) balik sebagai **string** — hasil select langsung dari kolom `decimal` MySQL, konsisten sama standar string buat field duit di [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md).
+- Field duit (`price`, `net_price`, `discount_amount`, `tax_amount`, `service_charge_amount`, `total`, plus header `sub_total`/`total_tax`/`total_discount`/`total_service_charge`/`order_fee`/`delivery_cost`/`total_billing`) balik sebagai **string** — hasil select langsung dari kolom `decimal` MySQL, konsisten sama standar string buat field duit di [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md).
+- **`net_price` (2026-11-18, BARU)** — harga per-unit SEBELUM diskon tapi SUDAH dilepas pajak+service charge kalau `flagInclusiveTax` (sama kolom `tr_order_detail.net_price`/`tr_order_detail_package.net_price`, lihat [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md)) — dulu gak pernah ikut di-expose di endpoint ini, cuma internal kolom DB.
+- **`tax_id`/`tax_type`/`tax_rate`, `service_charge_id`/`service_charge_rate`/`service_charge_amount`, `promo_id` (2026-11-18, BARU, di level `items[]` & `items[].package[]`)** — sebelumnya cuma `tax_amount` yang ke-expose (hasil kalkulasi), komponen id/tipe/rate-nya sendiri gak pernah ikut, demikian juga `promo_id` (dulu dibaca pas `save-order` tapi gak pernah dikembalikan di endpoint detail). Sekarang semua ikut ditampilkan, konsisten pasangan `tax_*`/`service_charge_*`. `is_free_item_promo` (BARU, cuma level `items[]`, **TIDAK ADA** di `package[]` — kolomnya emang gak ada di `tr_order_detail_package`, lihat [SAVE ORDER.md](../POS/POS/ORDER/SAVE%20ORDER.md)) juga ditambahkan di titik yang sama — flag item gratis dari promo.
+- **`total_service_charge`/`order_fee`/`delivery_cost` (2026-11-18, BARU)** — 3 field HEADER yang sebelumnya **gak ada sama sekali** di response ini (`tr_order.total_service_charge`/`order_fee`/`delivery_cost` sudah ada & aktif dipakai kalkulasi `total_billing`, tapi gak pernah ikut di-SELECT di `GetOrderDetail()`). `order_fee`/`delivery_cost` FE-trusted (manual input, lihat [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md)), `total_service_charge` hasil `Σ qty × serviceChargeAmount` semua baris item.
 - **⚠️ Perubahan field (2026-08-20)**: `discount_value`→`discount_amount`, `tax_value`→`tax_amount` (rename doang, arti sama). `total` per-item **nama sama tapi artinya berubah** — sekarang udah termasuk diskon (`qty × (net_dpp + tax_amount)`), sebelumnya gross (`qty × price`, sebelum diskon). Detail lengkap: [PERHITUNGAN PAJAK INCLUSIVE & DISKON.md](../../../posv1-vue/DOKUMENTASI/PERHITUNGAN%20PAJAK%20INCLUSIVE%20%26%20DISKON.md) (`posv1-vue`).
 - `qty`/`total_item` — integer.
 - `status` — apa adanya dari `tr_order.status` (`pending`/`paid`/`cancel`/`expired`/dst, sama kayak [KIOSK ORDER HISTORY.md](./KIOSK%20ORDER%20HISTORY.md)).
@@ -110,3 +141,18 @@ Order test dengan visit purpose `TAKEAWAY` (`visit_purpose_id: 2`) → balikin `
 ## Tervalidasi live (2026-08-13) — payment_expired_at
 
 Order test → `payment/request` → `order-detail` balikin `payment_expired_at` sesuai `expired_at` asli dari Midtrans (`"2026-08-13 13:25:45"`), konsisten sama baris yang sama di [KIOSK ORDER HISTORY.md](./KIOSK%20ORDER%20HISTORY.md).
+
+## Tervalidasi live (2026-11-18) — audit lengkap field yang hilang di GetOrderDetail(), semua ditambahkan
+
+Audit dipicu laporan user bertahap ("net_price kok gak ada" → "service charge amount juga gak ada" → "taxid tax rate, service charge id, rate juga belum ada" → "promo id juga gak ada" → "tax type juga gak ada") — ternyata `GetOrderDetail()` dari awal cuma SELECT subset kecil kolom (`price`/`discount_amount`/`tax_amount`/`total`), padahal `tr_order_detail`/`tr_order_detail_package` (dan `tr_order` di level header) sudah punya banyak kolom lain yang aktif dipakai kalkulasi tapi gak pernah ikut di-expose. Ditambahkan ke SELECT (level `items[]`/`items[].package[]`, kecuali disebutkan lain): `net_price`, `tax_id`, `tax_type`, `tax_rate`, `service_charge_id`, `service_charge_rate`, `service_charge_amount`, `promo_id`, `is_free_item_promo` (**cuma level item**, `tr_order_detail_package` gak punya kolom ini). Level header (`data`): `total_service_charge`, `order_fee`, `delivery_cost`.
+
+**Tervalidasi live**, satu per satu via `curl` ke order `paid` real (`NO112320261027165250`, CAPPUCCINO x2 inclusive tax 10% + 2 sub-item package) — nilai asli order ini banyak yang `0`/`NULL` (dibuat sebelum fitur-fitur ini ada), jadi tiap field di-set sementara ke nilai non-default dulu biar kebuktian field BENERAN ke-expose (bukan kebetulan default yang ambigu sama "field gak ada"), lalu direvert abis dikonfirmasi:
+- `net_price`: `27273.00` (`30000/1.1`, benar) per item.
+- `service_charge_amount`: di-set `333.33`/`11.11` (item/package) → keluar persis.
+- `tax_id`/`tax_rate`: nilai asli `10`/`10.00` (gak perlu di-set, sudah ada dari awal) → keluar persis.
+- `service_charge_id`/`service_charge_rate`: nilai asli `NULL`/`0.00` (order dibuat sebelum fitur service charge ada) → keluar `null`/`"0.00"`, bukan bug, memang belum pernah diisi.
+- `is_free_item_promo`/`promo_id`: di-set `1`/`1` di 1 item+package → keluar persis, item lain tetap `0`/`null`.
+- `tax_type`: nilai asli `"pb1"` → keluar persis.
+- `total_service_charge`/`order_fee`/`delivery_cost`: di-set `1234.00`/`2500.00`/`7500.00` → keluar persis, posisi di antara `total_discount` dan `total_billing`.
+
+Semua data test (order_detail/order_detail_package test values) direvert ke kondisi semula setelah setiap putaran verifikasi. `php -l` bersih di setiap putaran edit.

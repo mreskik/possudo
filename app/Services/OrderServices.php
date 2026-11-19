@@ -51,6 +51,76 @@ class OrderServices
     }
   }
 
+  // ResolveTaxRate (2026-11-18) -- lookup rate SERVER-SIDE dari mr_tax by id, bukan percaya
+  // taxRate/serviceChargeRate mentah dari FE lagi (keputusan user -- FE cukup kirim taxId/
+  // serviceChargeId, rate-nya di-resolve di sini). $taxId null (item tanpa pajak/service
+  // charge, valid -- lihat contoh "tax_id": null di dokumentasi Kiosk) -> rate 0, BUKAN error.
+  // $taxId terisi tapi gak ketemu di mr_tax -> Exception (data gak konsisten, ditolak keras).
+  // public (bukan private) -- 2026-11-18, dipakai juga dari KioskController::recomputeKioskUnit()
+  // supaya rate resolution 1 sumber kebenaran (sama alasan CalculateLineItem()/
+  // RecalculateOrderTotals() di atas).
+  public static function ResolveTaxRate(?int $taxId): float
+  {
+    if (empty($taxId)) {
+      return 0;
+    }
+
+    $tax = \App\Models\MasterTaxModel::find($taxId);
+    if (!$tax) {
+      throw new \Exception("tax/service charge dengan id {$taxId} tidak ditemukan");
+    }
+
+    return (float) $tax->rate;
+  }
+
+  // CalculateLineItem (2026-11-18) -- hitung ulang netPrice/dpp/taxAmount/serviceChargeAmount/
+  // total SERVER-SIDE, bukan percaya mentah dari FE lagi (keputusan user -- field itu BOLEH
+  // tetap dikirim FE di request, tapi DIABAIKAN total, server override pakai hasil fungsi ini).
+  // Input yang TETAP dipercaya dari FE: price, taxRate, serviceChargeRate, flagInclusiveTax,
+  // discountAmount -- discountAmount SENGAJA gak ikut di-re-derive (gak dicoba hitung ulang
+  // dari discountPercent/promo rules, itu kompleks & alur promo FE sendiri di luar scope ini).
+  //
+  // Formula (5 langkah, urutan standar PPN -- pajak+service charge dilepas dulu dari harga
+  // inclusive, BARU diskon dipotong, BARU pajak+service charge final dihitung ulang dari basis
+  // setelah diskon):
+  //   1. netPrice = flagInclusiveTax ? price / (1 + (taxRate+serviceChargeRate)/100) : price
+  //   2. dpp = netPrice - discountAmount
+  //   3. taxAmount = dpp * taxRate/100
+  //   4. serviceChargeAmount = dpp * serviceChargeRate/100
+  //   5. total = dpp + taxAmount + serviceChargeAmount
+  //
+  // BEDA dari RecalculateOrderTotals() (fungsi lama, dipakai SaveMoveItem()) -- fungsi itu
+  // formulanya cuma melepas taxRate (belum ikut serviceChargeRate) dari harga inclusive, gap
+  // ini SENGAJA dibiarkan untuk sekarang (scope perubahan ini cuma SaveOrder()), lihat
+  // "Formula Kalkulasi Harga" di SAVE ORDER.md buat detail lengkap + contoh simulasi.
+  // public (bukan private) -- 2026-11-18, dipakai juga dari KioskController::recomputeKioskUnit()
+  // supaya rumus ini 1 sumber kebenaran (gak diduplikasi, ikut update otomatis kalau rumus ini
+  // berubah lagi nanti).
+  public static function CalculateLineItem(
+    float $price,
+    float $taxRate,
+    float $serviceChargeRate,
+    bool $flagInclusiveTax,
+    float $discountAmount
+  ): array {
+    $netPrice = $flagInclusiveTax
+      ? $price / (1 + ($taxRate + $serviceChargeRate) / 100)
+      : $price;
+
+    $dpp = $netPrice - $discountAmount;
+    $taxAmount = $dpp * ($taxRate / 100);
+    $serviceChargeAmount = $dpp * ($serviceChargeRate / 100);
+    $total = $dpp + $taxAmount + $serviceChargeAmount;
+
+    return [
+      'netPrice' => round($netPrice, 2),
+      'dpp' => round($dpp, 2),
+      'taxAmount' => round($taxAmount, 2),
+      'serviceChargeAmount' => round($serviceChargeAmount, 2),
+      'total' => round($total, 2),
+    ];
+  }
+
   // ValidatePromoTierBarrier (2026-09-30) -- promo yang mr_promo.flag_all_tiers=false WAJIB
   // member (kalau ada) tier-nya cocok ke salah satu baris mr_promo_tier promo itu. Beda dari
   // flag_required_member (yang nolak "gak ada member sama sekali") -- ini nolak "ada member,
@@ -198,11 +268,20 @@ class OrderServices
           "chasier_name" => self::getChasierName($datajson),
           // "pricelist_id" => $datajson->priceListId,
 
-          "total_item" => $datajson->totalItem,
-          "sub_total" => $datajson->subTotal,
-          "total_tax" => $datajson->totalTax,
-          "total_billing" => $datajson->totalBilling,
-          "total_discount" => $datajson->totalDiscount ?? 0,
+          // total_item/sub_total/total_discount/total_tax/total_service_charge/total_billing
+          // (2026-11-18, UBAH ARSITEKTUR) -- SEMUA kolom turunan dari baris item ini TIDAK
+          // LAGI ditulis dari $datajson di sini. Nilai awal 0 (default kolom), nanti DI-
+          // OVERRIDE oleh RecalculateOrderTotals($order_number) yang dipanggil SETELAH insert
+          // $order_detail/$order_detail_package selesai (lihat bawah) -- server hitung ulang
+          // SEMUA angka ini dari baris yang beneran tersimpan, FE gak lagi dipercaya mentah
+          // (field itu BOLEH tetap dikirim FE buat display, tapi diabaikan total server).
+          //
+          // order_fee/delivery_cost TETAP dari FE apa adanya (bukan turunan item, input
+          // manual level header) -- ditulis DI SINI (bukan RecalculateOrderTotals()) karena
+          // fungsi itu cuma baca ulang 2 kolom ini buat ditambahkan ke total_billing, gak
+          // menghitungnya sendiri.
+          "order_fee" => $datajson->orderFee ?? 0,
+          "delivery_cost" => $datajson->deliveryCost ?? 0,
 
           // invariant per order (mr_pricelist.is_inclusive via visit purpose, semua baris
           // listOrder pasti sama) -- diambil sekali dari item pertama pas order dibuat,
@@ -287,6 +366,27 @@ class OrderServices
             $datagrouping_[$ida] = ($datagrouping_[$ida] ?? 0) + $item['qty'];
 
 
+            // taxRate/serviceChargeRate (2026-11-18, BARU) -- di-resolve SERVER-SIDE dari
+            // mr_tax by id (ResolveTaxRate()), BUKAN dipercaya mentah dari FE lagi. FE cukup
+            // kirim taxId/serviceChargeId, rate-nya diabaikan walau tetap boleh dikirim.
+            $taxRate = self::ResolveTaxRate($item['taxId'] ?? null);
+            $serviceChargeRate = self::ResolveTaxRate($item['serviceChargeId'] ?? null);
+
+            // calc (2026-11-18, BARU) -- netPrice/dpp/taxAmount/serviceChargeAmount/total
+            // DIHITUNG ULANG SERVER (CalculateLineItem()), BUKAN dipercaya mentah dari FE lagi
+            // (keputusan user -- field netPrice/dpp/taxAmount/serviceChargeAmount/total yang
+            // dikirim FE di $item DIABAIKAN total walau tetap boleh dikirim, nilai yang dipakai
+            // SELALU hasil $calc). Input yang tetap dipercaya dari FE: price/flagInclusiveTax/
+            // discountAmount -- taxRate/serviceChargeRate sekarang di-resolve di atas, bukan
+            // dari FE. Lihat CalculateLineItem().
+            $calc = self::CalculateLineItem(
+              (float) $item['price'],
+              $taxRate,
+              $serviceChargeRate,
+              (bool) $item['flagInclusiveTax'],
+              (float) $item['discountAmount']
+            );
+
             // Log::info($item);
             $mumu = [
               'ulid' => (string)Str::ulid(),
@@ -300,17 +400,24 @@ class OrderServices
 
               'tax_id' => $item['taxId'],
               'tax_type' => $item['taxType'],
-              'tax_rate' => $item['taxRate'],
-              'tax_amount' => $item['taxAmount'],
+              'tax_rate' => $taxRate,
+              'tax_amount' => $calc['taxAmount'],
+
+              'service_charge_id' => $item['serviceChargeId'] ?? null,
+              'service_charge_rate' => $serviceChargeRate,
+              'service_charge_amount' => $calc['serviceChargeAmount'],
 
               'promo_id' => $item['promoId'],
               'is_free_item_promo' => $item['isFreeItemPromo'] ?? false,
               'discount_percent' => $item['discountPercent'],
               'discount_amount' => $item['discountAmount'],
-              'dpp' => $item['dpp'] ?? null,
-              'net_dpp' => $item['netDpp'] ?? null,
+              // dpp/net_dpp (2026-11-18, DI-RENAME, migration 2026_11_18_000002) -- kolom DB
+              // net_price/dpp sekarang. net_price = SEBELUM diskon, dpp = SETELAH diskon
+              // (basis pajak sesungguhnya -- makna "DPP" akuntansi yang benar).
+              'net_price' => $calc['netPrice'],
+              'dpp' => $calc['dpp'],
 
-              'total' => $item['total'],
+              'total' => $calc['total'],
 
               'notes' => $item['notes'],
               'batch' => $order['total_batch'],
@@ -319,6 +426,17 @@ class OrderServices
             $order_detail[] = $mumu;
 
             foreach ($item['menuPackageList'] as $item_package) {
+              $pkgTaxRate = self::ResolveTaxRate($item_package['taxId'] ?? null);
+              $pkgServiceChargeRate = self::ResolveTaxRate($item_package['serviceChargeId'] ?? null);
+
+              $calcPkg = self::CalculateLineItem(
+                (float) $item_package['price'],
+                $pkgTaxRate,
+                $pkgServiceChargeRate,
+                (bool) $item_package['flagInclusiveTax'],
+                (float) $item_package['discountAmount']
+              );
+
               $order_detail_package[] = [
                 'ulid' => (string)Str::ulid(),
                 'tr_order_detail_ulid' => $mumu['ulid'],
@@ -331,15 +449,19 @@ class OrderServices
 
                 'tax_id' => $item_package['taxId'],
                 'tax_type' => $item_package['taxType'],
-                'tax_rate' => $item_package['taxRate'],
-                'tax_amount' => $item_package['taxAmount'],
+                'tax_rate' => $pkgTaxRate,
+                'tax_amount' => $calcPkg['taxAmount'],
+
+                'service_charge_id' => $item_package['serviceChargeId'] ?? null,
+                'service_charge_rate' => $pkgServiceChargeRate,
+                'service_charge_amount' => $calcPkg['serviceChargeAmount'],
 
                 'promo_id' => $item_package['promoId'],
                 'discount_percent' => $item_package['discountPercent'],
                 'discount_amount' => $item_package['discountAmount'],
-                'dpp' => $item_package['dpp'] ?? null,
-                'net_dpp' => $item_package['netDpp'] ?? null,
-                'total' => $item_package['total'],
+                'net_price' => $calcPkg['netPrice'],
+                'dpp' => $calcPkg['dpp'],
+                'total' => $calcPkg['total'],
 
                 'notes' => $item_package['notes'],
               ];
@@ -352,7 +474,7 @@ class OrderServices
         foreach ($datagrouping_ as $inded => $qtye) {
           $itemStockRow = DB::select("SELECT
                       mi.*
-                      FROM mr_pricelist_detail mpd 
+                      FROM mr_pricelist_detail mpd
                       join mr_item_conv mic on mic.id = mpd.item_conv_detail_id
                       JOIN mr_item mi on mi.id = mic.item_id
 
@@ -375,6 +497,10 @@ class OrderServices
         TrOrderModel::create($order);
         TrOrderDetailModel::insert($order_detail);
         TrOrderDetailPackageModel::insert($order_detail_package);
+        // RecalculateOrderTotals() (2026-11-18, BARU) -- hitung ulang sub_total/total_discount/
+        // total_tax/total_service_charge/total_billing/total_item dari baris yang BENERAN
+        // barusan di-insert, masih di dalam transaksi yang sama (sebelum commit).
+        self::RecalculateOrderTotals($order['order_number']);
         DB::commit();
 
 
@@ -408,15 +534,18 @@ class OrderServices
           ->first();
         $batch = $current_table_order->total_batch;
         // Log::info($datajson);
+        // total_item/sub_total/total_discount/total_tax/total_service_charge/total_billing
+        // (2026-11-18, UBAH ARSITEKTUR) -- sama alasan mode order baru di atas, SEMUA kolom
+        // turunan item TIDAK LAGI ditulis dari $datajson di sini -- di-override
+        // RecalculateOrderTotals() setelah insert/update item selesai (baca SEMUA baris order,
+        // bukan cuma yang di request kali ini -- penting di mode ini karena order udah punya
+        // baris lain sebelumnya). order_fee/delivery_cost TETAP dari FE (input manual header).
         $order_update = [
           "order_name" => $datajson->orderName,
           "pax" => $datajson->orderPax,
           'total_batch' => $batch + 1,
-          "total_item" => $datajson->totalItem,
-          "sub_total" => $datajson->subTotal,
-          "total_tax" => $datajson->totalTax,
-          "total_billing" => $datajson->totalBilling,
-          "total_discount" => $datajson->totalDiscount ?? 0,
+          "order_fee" => $datajson->orderFee ?? 0,
+          "delivery_cost" => $datajson->deliveryCost ?? 0,
           "member_id" => $datajson->memberId,
         ];
 
@@ -463,6 +592,26 @@ class OrderServices
           // Log::info($item);
           if (isset($item['ulid'])) {
             // item sudah tersimpan sebelumnya — update qty juga karena split promo bisa mengubahnya
+            //
+            // calc (2026-11-18, BARU) -- sama arsitektur mode 1/2a: netPrice/dpp/taxAmount/
+            // serviceChargeAmount/total DIHITUNG ULANG SERVER, bukan dipercaya dari FE. Beda
+            // dari mode 1/2a: request body di sini TIDAK bawa price/taxRate/serviceChargeRate/
+            // flagInclusiveTax (cuma 8 field "ringan" yang dikirim, lihat SAVE ORDER.md) --
+            // jadi 4 input itu di-SELECT ULANG dari baris existing (gak berubah dari saat
+            // pertama kali dibuat), digabung sama discountAmount BARU dari request ini.
+            $existingRow = DB::table('tr_order_detail')
+              ->where('ulid', $item['ulid'])
+              ->whereNull('cancel_at')
+              ->first(['price_pos', 'tax_rate', 'service_charge_rate', 'flag_inclusive_tax']);
+
+            $calc = self::CalculateLineItem(
+              (float) $existingRow->price_pos,
+              (float) $existingRow->tax_rate,
+              (float) ($existingRow->service_charge_rate ?? 0),
+              (bool) $existingRow->flag_inclusive_tax,
+              (float) $item['discountAmount']
+            );
+
             DB::table('tr_order_detail')
               ->where('ulid', $item['ulid'])
               ->whereNull('cancel_at')
@@ -472,15 +621,39 @@ class OrderServices
                 'is_free_item_promo'  => $item['isFreeItemPromo'] ?? false,
                 'discount_percent'    => $item['discountPercent'],
                 'discount_amount'     => $item['discountAmount'],
-                'dpp'                 => $item['dpp'] ?? null,
-                'net_dpp'             => $item['netDpp'] ?? null,
-                'tax_amount'          => $item['taxAmount'],
+                'net_price'           => $calc['netPrice'],
+                'dpp'                 => $calc['dpp'],
+                'tax_amount'          => $calc['taxAmount'],
+                // service_charge_amount (2026-11-18, BARU) -- ikut di-update di sini, SAMA
+                // alasan taxAmount: basisnya dpp, yang berubah kalau qty/diskon berubah (split
+                // promo). serviceChargeId/serviceChargeRate TIDAK ikut di-update -- nilainya
+                // per visit purpose (gak berubah karena promo/diskon), cukup tersimpan apa
+                // adanya dari saat baris ini pertama kali dibuat.
+                'service_charge_amount' => $calc['serviceChargeAmount'],
+                // total (2026-11-18, BARU) -- ikut di-update, sama alasan taxAmount/
+                // serviceChargeAmount: qty/discount berubah -> total baris ini pasti ikut
+                // berubah, gak boleh nyangkut nilai lama.
+                'total'               => $calc['total'],
               ]);
           } else {
             // item baru (belum punya ulid)
             $hasNewItem = true;
             $ida = $item['menuPricelistId'];
             $datagrouping_[$ida] = ($datagrouping_[$ida] ?? 0) + $item['qty'];
+
+            // taxRate/serviceChargeRate (2026-11-18, BARU) -- sama pola mode order baru di
+            // atas, di-resolve server-side dari mr_tax, bukan dari FE.
+            $taxRate = self::ResolveTaxRate($item['taxId'] ?? null);
+            $serviceChargeRate = self::ResolveTaxRate($item['serviceChargeId'] ?? null);
+
+            // calc (2026-11-18, BARU) -- sama pola & alasan mode order baru di atas.
+            $calc = self::CalculateLineItem(
+              (float) $item['price'],
+              $taxRate,
+              $serviceChargeRate,
+              (bool) $item['flagInclusiveTax'],
+              (float) $item['discountAmount']
+            );
 
             $mumu = [
               'ulid' => (string)Str::ulid(),
@@ -494,17 +667,24 @@ class OrderServices
 
               'tax_id' => $item['taxId'],
               'tax_type' => $item['taxType'],
-              'tax_rate' => $item['taxRate'],
-              'tax_amount' => $item['taxAmount'],
+              'tax_rate' => $taxRate,
+              'tax_amount' => $calc['taxAmount'],
+
+              'service_charge_id' => $item['serviceChargeId'] ?? null,
+              'service_charge_rate' => $serviceChargeRate,
+              'service_charge_amount' => $calc['serviceChargeAmount'],
 
               'promo_id' => $item['promoId'],
               'is_free_item_promo' => $item['isFreeItemPromo'] ?? false,
               'discount_percent' => $item['discountPercent'],
               'discount_amount' => $item['discountAmount'],
-              'dpp' => $item['dpp'] ?? null,
-              'net_dpp' => $item['netDpp'] ?? null,
+              // dpp/net_dpp (2026-11-18, DI-RENAME, migration 2026_11_18_000002) -- kolom DB
+              // net_price/dpp sekarang. net_price = SEBELUM diskon, dpp = SETELAH diskon
+              // (basis pajak sesungguhnya -- makna "DPP" akuntansi yang benar).
+              'net_price' => $calc['netPrice'],
+              'dpp' => $calc['dpp'],
 
-              'total' => $item['total'],
+              'total' => $calc['total'],
 
               'notes' => $item['notes'],
               'batch' => $batch + 1,
@@ -512,6 +692,17 @@ class OrderServices
             $order_detail[] = $mumu;
 
             foreach ($item['menuPackageList'] as $item_package) {
+              $pkgTaxRate = self::ResolveTaxRate($item_package['taxId'] ?? null);
+              $pkgServiceChargeRate = self::ResolveTaxRate($item_package['serviceChargeId'] ?? null);
+
+              $calcPkg = self::CalculateLineItem(
+                (float) $item_package['price'],
+                $pkgTaxRate,
+                $pkgServiceChargeRate,
+                (bool) $item_package['flagInclusiveTax'],
+                (float) $item_package['discountAmount']
+              );
+
               $order_detail_package[] = [
                 'ulid' => (string)Str::ulid(),
                 'tr_order_detail_ulid' => $mumu['ulid'],
@@ -524,15 +715,19 @@ class OrderServices
 
                 'tax_id' => $item_package['taxId'],
                 'tax_type' => $item_package['taxType'],
-                'tax_rate' => $item_package['taxRate'],
-                'tax_amount' => $item_package['taxAmount'],
+                'tax_rate' => $pkgTaxRate,
+                'tax_amount' => $calcPkg['taxAmount'],
+
+                'service_charge_id' => $item_package['serviceChargeId'] ?? null,
+                'service_charge_rate' => $pkgServiceChargeRate,
+                'service_charge_amount' => $calcPkg['serviceChargeAmount'],
 
                 'promo_id' => $item_package['promoId'],
                 'discount_percent' => $item_package['discountPercent'],
                 'discount_amount' => $item_package['discountAmount'],
-                'dpp' => $item_package['dpp'] ?? null,
-                'net_dpp' => $item_package['netDpp'] ?? null,
-                'total' => $item_package['total'],
+                'net_price' => $calcPkg['netPrice'],
+                'dpp' => $calcPkg['dpp'],
+                'total' => $calcPkg['total'],
 
                 'notes' => $item_package['notes'],
               ];
@@ -604,6 +799,15 @@ class OrderServices
         TrOrderDetailModel::where("order_number", $order_number)->update(["sync_at" => null]);
         // TrOrderDetailPackageModel::where("order_number", $order_number)->update(["sync_at" => null]);
         //
+
+        // RecalculateOrderTotals() (2026-11-18, BARU) -- baca SEMUA baris tr_order_detail/
+        // tr_order_detail_package milik order ini (bukan cuma $datajson->listOrder yang di
+        // mode ini cuma berisi baris yang berubah/baru kali ini), hitung ulang header. Dipanggil
+        // PALING TERAKHIR di sini -- baris baru (insert di atas) & baris existing (update mode
+        // 2b di awal fungsi, sudah ter-commit duluan karena di luar transaksi ini) dua-duanya
+        // sudah tersimpan di titik ini.
+        self::RecalculateOrderTotals($order_number);
+
         DB::commit();
 
         return $order_number;
@@ -637,6 +841,9 @@ class OrderServices
       tro.total_item as totalItem,
       tro.sub_total as subTotal,
       tro.total_tax as totalTax,
+      tro.total_service_charge as totalServiceCharge,
+      tro.order_fee as orderFee,
+      tro.delivery_cost as deliveryCost,
       tro.total_billing as totalBilling,
       tro.total_discount as totalDiscount,
       tro.table_section_id as tableSectionId,
@@ -674,13 +881,20 @@ class OrderServices
       trod.tax_type as taxType,
       trod.tax_rate as taxRate,
       trod.tax_amount as taxAmount,
+      trod.service_charge_id as serviceChargeId,
+      trod.service_charge_rate as serviceChargeRate,
+      trod.service_charge_amount as serviceChargeAmount,
       trod.promo_id as promoId,
       mp.name as promoName,
       trod.is_free_item_promo as isFreeItemPromo,
       trod.discount_percent as discountPercent,
       trod.discount_amount as discountAmount,
+      -- netPrice/dpp (2026-11-18, netDpp DIHAPUS) -- response field sekarang pakai nama kolom
+      -- APA ADANYA (net_price->netPrice, dpp->dpp), gak ada lagi alias lama netDpp. Backend/API
+      -- sudah diselaraskan penuh ke nama kolom baru -- rename pemakai di posv1-vue (FE) MENYUSUL
+      -- TERPISAH (scope sesi ini cuma backend), lihat catatan Status di VIEW ORDER.md.
+      trod.net_price as netPrice,
       trod.dpp as dpp,
-      trod.net_dpp as netDpp,
       trod.total,
       trod.cancel_at as cancelAt,
       trod.cancel_notes as cancelNotes,
@@ -713,11 +927,15 @@ class OrderServices
         trodp.tax_type as taxType,
         trodp.tax_rate as taxRate,
         trodp.tax_amount as taxAmount,
+        trodp.service_charge_id as serviceChargeId,
+        trodp.service_charge_rate as serviceChargeRate,
+        trodp.service_charge_amount as serviceChargeAmount,
         trodp.promo_id as promoId,
         trodp.discount_percent as discountPercent,
         trodp.discount_amount as discountAmount,
+        -- netPrice/dpp (2026-11-18, netDpp DIHAPUS) -- sama alasan item1 di atas.
+        trodp.net_price as netPrice,
         trodp.dpp as dpp,
-        trodp.net_dpp as netDpp,
         trodp.total
 
         FROM tr_order_detail_package trodp
@@ -754,6 +972,9 @@ class OrderServices
       tro.total_item as totalItem,
       tro.sub_total as subTotal,
       tro.total_tax as totalTax,
+      tro.total_service_charge as totalServiceCharge,
+      tro.order_fee as orderFee,
+      tro.delivery_cost as deliveryCost,
       tro.total_billing as totalBilling,
       tro.total_discount as totalDiscount
 
@@ -908,21 +1129,31 @@ class OrderServices
   }
 
   /**
-   * Recompute tr_order.sub_total/total_tax/total_billing/total_item from its current
-   * tr_order_detail + tr_order_detail_package rows (mirrors orderPage.vue's hitungTotalFromItemQty()).
-   * Needed after SaveMoveItem moves rows between orders, since moving rows doesn't itself
-   * keep either order's stored totals in sync.
+   * Recompute tr_order.sub_total/total_discount/total_tax/total_service_charge/total_billing/
+   * total_item from its current tr_order_detail + tr_order_detail_package rows (mirrors
+   * orderPage.vue's hitungTotalFromItemQty(), DIPERLUAS 2026-11-18 ikut service charge --
+   * lihat "Formula Kalkulasi Harga" di SAVE ORDER.md). Dipanggil dari 2 tempat: SaveMoveItem()
+   * (karena moving rows antar order gak otomatis sync kolom turunan ini) DAN SaveOrder()
+   * (2026-11-18, BARU -- header order sekarang DIHITUNG ULANG SERVER dari SEMUA baris order,
+   * bukan dipercaya mentah dari FE lagi, sama arsitektur CalculateLineItem() per baris).
+   *
+   * orderFee/deliveryCost SENGAJA TIDAK disentuh fungsi ini (bukan turunan dari baris item,
+   * murni input FE level header) -- caller (SaveOrder()) yang nulis 2 kolom itu terpisah
+   * SEBELUM manggil fungsi ini, order_fee/delivery_cost di sini cuma di-passthrough (dibaca
+   * ulang dari tr_order yang udah ke-update caller) biar ikut ke total_billing.
    */
-  private static function RecalculateOrderTotals(string $order_number)
+  // public (bukan private) -- 2026-11-18, dipakai juga dari KioskController::editExistingOrder()
+  // supaya header totals Kiosk konsisten dengan SaveOrder() (1 sumber kebenaran).
+  public static function RecalculateOrderTotals(string $order_number)
   {
     $order_detail = DB::select("
-      SELECT qty, price_pos, tax_rate, flag_inclusive_tax, discount_amount
+      SELECT qty, price_pos, tax_rate, service_charge_rate, flag_inclusive_tax, discount_amount
       FROM tr_order_detail
       WHERE order_number = ? AND cancel_at IS NULL
     ", [$order_number]);
 
     $order_detail_package = DB::select("
-      SELECT trodp.qty, trodp.price_pos, trodp.tax_rate, trodp.flag_inclusive_tax, trodp.discount_amount, trod.qty as parent_qty
+      SELECT trodp.qty, trodp.price_pos, trodp.tax_rate, trodp.service_charge_rate, trodp.flag_inclusive_tax, trodp.discount_amount, trod.qty as parent_qty
       FROM tr_order_detail_package trodp
       JOIN tr_order_detail trod ON trod.ulid = trodp.tr_order_detail_ulid
       WHERE trod.order_number = ? AND trod.cancel_at IS NULL
@@ -930,41 +1161,50 @@ class OrderServices
 
     $total_item = 0;
     $sub_total = 0;
-    $total_tax = 0;
-    $total_billing = 0;
     $total_discount = 0;
-
-    // dpp (net-of-tax, SEBELUM diskon) diturunkan langsung dari price_pos/tax_rate, gak lagi
-    // kolom tersimpan yang dipercaya mentah-mentah -- konsisten sama netPrice() di orderPage.vue.
-    // Urutan standar PPN: pajak dilepas dulu (dpp) -> diskon dipotong dari dpp (netDpp) -> pajak
-    // final dihitung ulang dari netDpp -- sama persis recomputeDppTax()/hitungTotalFromItemQty().
-    $netPrice = fn($row) => $row->flag_inclusive_tax
-      ? $row->price_pos / (1 + $row->tax_rate / 100)
-      : $row->price_pos;
+    $total_tax = 0;
+    $total_service_charge = 0;
+    $total_billing = 0;
 
     foreach ($order_detail as $row) {
       $total_item += $row->qty;
-      $dpp = $netPrice($row);
-      $netDpp = $dpp - $row->discount_amount;
-      $taxAmount = $netDpp * ($row->tax_rate / 100);
+      $calc = self::CalculateLineItem(
+        (float) $row->price_pos,
+        (float) $row->tax_rate,
+        (float) ($row->service_charge_rate ?? 0),
+        (bool) $row->flag_inclusive_tax,
+        (float) $row->discount_amount
+      );
 
-      $sub_total += $row->qty * $dpp;
-      $total_tax += $row->qty * $taxAmount;
-      $total_billing += $row->qty * ($netDpp + $taxAmount);
-      $total_discount += $row->discount_amount;
+      $sub_total += $row->qty * $calc['netPrice'];
+      $total_discount += $row->qty * $row->discount_amount;
+      $total_tax += $row->qty * $calc['taxAmount'];
+      $total_service_charge += $row->qty * $calc['serviceChargeAmount'];
+      $total_billing += $row->qty * $calc['total'];
     }
 
     foreach ($order_detail_package as $row) {
       $qty = $row->parent_qty * $row->qty;
-      $dpp = $netPrice($row);
-      $netDpp = $dpp - $row->discount_amount;
-      $taxAmount = $netDpp * ($row->tax_rate / 100);
+      $calc = self::CalculateLineItem(
+        (float) $row->price_pos,
+        (float) $row->tax_rate,
+        (float) ($row->service_charge_rate ?? 0),
+        (bool) $row->flag_inclusive_tax,
+        (float) $row->discount_amount
+      );
 
-      $sub_total += $qty * $dpp;
-      $total_tax += $qty * $taxAmount;
-      $total_billing += $qty * ($netDpp + $taxAmount);
-      $total_discount += $row->discount_amount;
+      $sub_total += $qty * $calc['netPrice'];
+      $total_discount += $qty * $row->discount_amount;
+      $total_tax += $qty * $calc['taxAmount'];
+      $total_service_charge += $qty * $calc['serviceChargeAmount'];
+      $total_billing += $qty * $calc['total'];
     }
+
+    // orderFee/deliveryCost (2026-11-18, BARU) -- input FE level header, bukan turunan item,
+    // dibaca ulang dari tr_order (caller udah nulis kolom ini SEBELUM manggil fungsi ini) biar
+    // ikut masuk total_billing. 0 kalau baris order gak ketemu (defensif, seharusnya selalu ada).
+    $orderRow = TrOrderModel::where('order_number', $order_number)->first(['order_fee', 'delivery_cost']);
+    $total_billing += ($orderRow->order_fee ?? 0) + ($orderRow->delivery_cost ?? 0);
 
     // sync_at di-null-kan (2026-09-22) -- sub_total/total_tax/total_billing/dst ini data
     // finansial inti yang dipush ke ERP, kalau baris ini udah sempat ke-push duluan (sync_at
@@ -973,10 +1213,11 @@ class OrderServices
     // cancel item/move item. Pola sama kayak CancelOrder()/SaveMoveTable()/SavePayment()/Void().
     TrOrderModel::where('order_number', $order_number)->update([
       'sub_total' => $sub_total,
+      'total_discount' => $total_discount,
       'total_tax' => $total_tax,
+      'total_service_charge' => $total_service_charge,
       'total_billing' => $total_billing,
       'total_item' => $total_item,
-      'total_discount' => $total_discount,
       'sync_at' => null,
     ]);
   }

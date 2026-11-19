@@ -72,6 +72,40 @@ class PrintServices
     return $breakdown;
   }
 
+  // GetServiceChargeBreakdown: SUM(qty*service_charge_amount) per service_charge_rate buat 1
+  // order_number, gabungan tr_order_detail + tr_order_detail_package -- SAMA POLA PERSIS
+  // GetTaxBreakdownByType() di atas. GROUP BY service_charge_rate (BUKAN service_charge_id,
+  // BUKAN JOIN ke mr_tax) -- keputusan user: label breakdown dibentuk dari rate-nya langsung
+  // ("Service Charge (5%)"), gak perlu nama asli dari master, jadi gak perlu JOIN tambahan.
+  // 1 order BISA punya >1 rate berbeda (misal campur visit purpose dine-in/delivery dengan rate
+  // service charge beda) -- breakdown ini yang bikin itu kelihatan per baris di struk.
+  public static function GetServiceChargeBreakdown(string $order_number): array
+  {
+    $rows = DB::select("
+      SELECT service_charge_rate, SUM(service_charge_amount) AS service_charge_amount FROM (
+        SELECT trod.service_charge_rate, trod.qty * trod.service_charge_amount AS service_charge_amount
+        FROM tr_order_detail trod
+        WHERE trod.order_number = ? AND trod.cancel_at IS NULL
+        UNION ALL
+        SELECT trodp.service_charge_rate, (trod.qty * trodp.qty) * trodp.service_charge_amount AS service_charge_amount
+        FROM tr_order_detail_package trodp
+        JOIN tr_order_detail trod ON trod.ulid = trodp.tr_order_detail_ulid
+        WHERE trod.order_number = ? AND trod.cancel_at IS NULL
+      ) combined
+      WHERE service_charge_rate IS NOT NULL AND service_charge_rate > 0
+      GROUP BY service_charge_rate
+    ", [$order_number, $order_number]);
+
+    $breakdown = [];
+    foreach ($rows as $row) {
+      if ($row->service_charge_amount > 0) {
+        $label = 'Service Charge (' . rtrim(rtrim(number_format($row->service_charge_rate, 2), '0'), '.') . '%)';
+        $breakdown[$label] = $row->service_charge_amount;
+      }
+    }
+    return $breakdown;
+  }
+
   public static function resizeGambar($source = "", $newWidth = 150, $outputPath = "logo_resize.png")
   {
     if ($source == "" || !file_exists($source)) {
@@ -1081,12 +1115,13 @@ class PrintServices
       $print->text(self::separator("-", $charPerLine));
       $displaySubtotal = 0;
       foreach ($data_order_detail as $itemmenu) {
-        // Harga per-baris item (dan Subtotal di bawah) itu SEBELUM diskon -- pakai dpp
-        // (net-of-tax, sebelum diskon) x (1 + tax_rate) buat balikin harga aslinya, BUKAN
-        // $itemmenu->total (yang sekarang udah net-of-discount sejak restrukturisasi kolom),
-        // soalnya diskonnya sendiri udah dicetak kePisah di baris "% Promo" di bawah tiap item --
-        // kalau pakai ->total di sini, diskon jadi keitung dobel secara visual.
-        $displayItemPrice = $itemmenu->qty * $itemmenu->dpp * (1 + $itemmenu->tax_rate / 100);
+        // Harga per-baris item (dan Subtotal di bawah) itu SEBELUM diskon -- pakai net_price
+        // (net-of-tax, sebelum diskon, kolom ini dulu bernama dpp sebelum rename 2026-11-18) x
+        // (1 + tax_rate) buat balikin harga aslinya, BUKAN $itemmenu->total (yang sekarang udah
+        // net-of-discount sejak restrukturisasi kolom), soalnya diskonnya sendiri udah dicetak
+        // kePisah di baris "% Promo" di bawah tiap item -- kalau pakai ->total di sini, diskon
+        // jadi keitung dobel secara visual.
+        $displayItemPrice = $itemmenu->qty * $itemmenu->net_price * (1 + $itemmenu->tax_rate / 100);
         $displaySubtotal += $displayItemPrice;
         $print->text(self::threeline($itemmenu->qty, $itemmenu->menu_name, number_format($displayItemPrice, 0, ',', '.'), $charPerLine));
         $totalItemDiscount = $itemmenu->discount_amount;
@@ -1104,7 +1139,7 @@ class PrintServices
 
         foreach ($listpackagedetail as $itempackage) {
           if (count($listpackagedetail) > 0) {
-            $displayPackagePrice = $itemmenu->qty * $itempackage->qty * $itempackage->dpp * (1 + $itempackage->tax_rate / 100);
+            $displayPackagePrice = $itemmenu->qty * $itempackage->qty * $itempackage->net_price * (1 + $itempackage->tax_rate / 100);
             $displaySubtotal += $displayPackagePrice;
             $print->text(self::threeline("", " " . $itempackage->qty . " " . $itempackage->menu_name, number_format($displayPackagePrice, 0, ',', '.'), $charPerLine));
             $totalItemDiscount += $itempackage->discount_amount;
@@ -1127,12 +1162,9 @@ class PrintServices
       $print->text($data_order->total_item . " Items" . "\n");
       $print->setJustification(Printer::JUSTIFY_RIGHT);
 
-      // $print->text(self::threeline2("", "Delivery Cost :", "0", $charPerLine)); // disiini
-      // $print->text(self::threeline2("", "Order Fee :", "0", $charPerLine));
-
-
       $isInclusiveTax = self::ResolveFlagInclusiveTax($data_order);
       $taxBreakdown = self::GetTaxBreakdownByType($data_order->order_number);
+      $serviceChargeBreakdown = self::GetServiceChargeBreakdown($data_order->order_number);
 
       $print->text("\n");
 
@@ -1142,13 +1174,33 @@ class PrintServices
         $print->text(self::separator("-", $charPerLine));
       }
 
-      // exclusive: breakdown pajak per tax_type di ATAS Grand Total (bisa lebih dari 1 baris
-      // kalau order-nya campur PB1 & VAT). inclusive (atau gak ketauan/$isInclusiveTax null)
-      // -- gak ada breakdown di sini, cuma catatan "Price Inclusive of ..." di bawah (perilaku lama).
+      // exclusive: breakdown pajak per tax_type DULU, baru Service Charge DI BAWAHNYA (urutan
+      // tax lalu service charge, bukan sebaliknya -- keputusan user 2026-11-19). inclusive --
+      // KEDUANYA gak nongol di sini, soalnya flag_inclusive_tax ngebungkus TAX_RATE +
+      // SERVICE_CHARGE_RATE SEKALIGUS (CalculateLineItem(): $price / (1 + (taxRate +
+      // serviceChargeRate)/100)) -- jadi kalau inclusive, harga udah termasuk DUA-DUANYA, bukan
+      // cuma pajak. Masing-masing dapet baris "Price Inclusive of ..." sendiri di bawah (lihat
+      // dekat Change/Grand Total di bawah), sama urutan tax-dulu-baru-service-charge.
       if ($isInclusiveTax === false) {
         foreach ($taxBreakdown as $taxTypeLabel => $taxAmount) {
           $print->text(self::threeline2("", $taxTypeLabel . " :", number_format($taxAmount, 0, ',', '.'), $charPerLine));
         }
+        foreach ($serviceChargeBreakdown as $serviceChargeLabel => $serviceChargeAmount) {
+          $print->text(self::threeline2("", $serviceChargeLabel . " :", number_format($serviceChargeAmount, 0, ',', '.'), $charPerLine));
+        }
+      }
+
+      // Delivery Cost & Order Fee (2026-11-19, AKTIF -- sebelumnya commented-out) -- HEADER-LEVEL
+      // (1 nilai per order di tr_order.delivery_cost/order_fee, BUKAN per-item kayak service
+      // charge/tax), jadi baca langsung dari $data_order, gak perlu breakdown/GROUP BY apapun.
+      // Posisi SENGAJA MENEMPEL LANGSUNG DI ATAS Grand Total (baris terakhir sebelum itu),
+      // SELALU muncul apapun status inclusive/exclusive -- ini biaya tambahan terpisah, BUKAN
+      // bagian dari flag_inclusive_tax. Skip baris kalau nilainya 0.
+      if ($data_order->delivery_cost > 0) {
+        $print->text(self::threeline2("", "Delivery Cost :", number_format($data_order->delivery_cost, 0, ',', '.'), $charPerLine));
+      }
+      if ($data_order->order_fee > 0) {
+        $print->text(self::threeline2("", "Order Fee :", number_format($data_order->order_fee, 0, ',', '.'), $charPerLine));
       }
 
       $print->setEmphasis(true);
@@ -1169,9 +1221,22 @@ class PrintServices
       // $print->setJustification(Printer::JUSTIFY_LEFT);
       $print->text(self::separator("-", $charPerLine));
       $print->text(self::threeline2("", "Change :", "0", $charPerLine));
-      if ($isInclusiveTax !== false && !empty($taxBreakdown)) {
-        $taxLabel = implode(' & ', array_keys($taxBreakdown));
-        $print->text(self::threeline2("", "Price Inclusive of " . $taxLabel . " :", number_format($data_order->total_tax, 0, ',', '.'), $charPerLine));
+      // Price Inclusive -- 1 baris PER tax_type/service_charge_rate (bukan digabung jadi 1
+      // baris), soalnya label gabungan bisa lebih panjang dari charPerLine (kolom 40 cuma
+      // nyisa 28 buat label di threeline2), jadi overflow/wrap gak rapi di printer thermal.
+      // Dipisah per baris -- masing-masing nominalnya sendiri, aman berapa pun jumlahnya.
+      // Tax DULU, baru Service Charge DI BAWAHNYA (sama urutan breakdown exclusive di atas).
+      // Label "Service Charge" disingkat "SC" KHUSUS DI SINI (bukan di breakdown exclusive biasa
+      // yang masih muat) -- prefix "Price Inclusive of " + "Service Charge (5%)" udah 40 karakter,
+      // pas/lewat batas 28 kolom threeline2; "SC (5%)" bikin total 28 karakter, pas aman.
+      if ($isInclusiveTax !== false) {
+        foreach ($taxBreakdown as $taxTypeLabel => $taxAmount) {
+          $print->text(self::threeline2("", "Price Inclusive of " . $taxTypeLabel . " :", number_format($taxAmount, 0, ',', '.'), $charPerLine));
+        }
+        foreach ($serviceChargeBreakdown as $serviceChargeLabel => $serviceChargeAmount) {
+          $shortLabel = str_replace('Service Charge', 'SC', $serviceChargeLabel);
+          $print->text(self::threeline2("", "Price Inclusive of " . $shortLabel . " :", number_format($serviceChargeAmount, 0, ',', '.'), $charPerLine));
+        }
       }
 
       $print->text(self::separator("-", $charPerLine));
@@ -1422,12 +1487,13 @@ class PrintServices
       $print->text(self::separator("-", $charPerLine));
       $displaySubtotal = 0;
       foreach ($data_order_detail as $itemmenu) {
-        // Harga per-baris item (dan Subtotal di bawah) itu SEBELUM diskon -- pakai dpp
-        // (net-of-tax, sebelum diskon) x (1 + tax_rate) buat balikin harga aslinya, BUKAN
-        // $itemmenu->total (yang sekarang udah net-of-discount sejak restrukturisasi kolom),
-        // soalnya diskonnya sendiri udah dicetak kePisah di baris "% Promo" di bawah tiap item --
-        // kalau pakai ->total di sini, diskon jadi keitung dobel secara visual.
-        $displayItemPrice = $itemmenu->qty * $itemmenu->dpp * (1 + $itemmenu->tax_rate / 100);
+        // Harga per-baris item (dan Subtotal di bawah) itu SEBELUM diskon -- pakai net_price
+        // (net-of-tax, sebelum diskon, kolom ini dulu bernama dpp sebelum rename 2026-11-18) x
+        // (1 + tax_rate) buat balikin harga aslinya, BUKAN $itemmenu->total (yang sekarang udah
+        // net-of-discount sejak restrukturisasi kolom), soalnya diskonnya sendiri udah dicetak
+        // kePisah di baris "% Promo" di bawah tiap item -- kalau pakai ->total di sini, diskon
+        // jadi keitung dobel secara visual.
+        $displayItemPrice = $itemmenu->qty * $itemmenu->net_price * (1 + $itemmenu->tax_rate / 100);
         $displaySubtotal += $displayItemPrice;
         $print->text(self::threeline($itemmenu->qty, $itemmenu->menu_name, number_format($displayItemPrice, 0, ',', '.'), $charPerLine));
         $totalItemDiscount = $itemmenu->discount_amount;
@@ -1445,7 +1511,7 @@ class PrintServices
 
         foreach ($listpackagedetail as $itempackage) {
           if (count($listpackagedetail) > 0) {
-            $displayPackagePrice = $itemmenu->qty * $itempackage->qty * $itempackage->dpp * (1 + $itempackage->tax_rate / 100);
+            $displayPackagePrice = $itemmenu->qty * $itempackage->qty * $itempackage->net_price * (1 + $itempackage->tax_rate / 100);
             $displaySubtotal += $displayPackagePrice;
             $print->text(self::threeline("", " " . $itempackage->qty . " " . $itempackage->menu_name, number_format($displayPackagePrice, 0, ',', '.'), $charPerLine));
             $totalItemDiscount += $itempackage->discount_amount;
@@ -1472,6 +1538,7 @@ class PrintServices
 
       $isInclusiveTax = self::ResolveFlagInclusiveTax($data_order);
       $taxBreakdown = self::GetTaxBreakdownByType($data_order->order_number);
+      $serviceChargeBreakdown = self::GetServiceChargeBreakdown($data_order->order_number);
 
       $print->text("\n");
       if ($data_order->total_discount > 0) {
@@ -1480,10 +1547,28 @@ class PrintServices
         $print->text(self::separator("-", $charPerLine));
       }
 
+      // Tax & Service Charge -- SAMA POLA PrintPayment() di atas: cuma tampil di sini kalau
+      // EXCLUSIVE, urutan Tax DULU baru Service Charge DI BAWAHNYA. flag_inclusive_tax
+      // ngebungkus tax_rate+service_charge_rate SEKALIGUS (CalculateLineItem() OrderServices.php),
+      // jadi inclusive = dua-duanya udah termasuk harga -- makanya dua-duanya digeser ke
+      // "Price Inclusive of ..." di bawah.
       if ($isInclusiveTax === false) {
         foreach ($taxBreakdown as $taxTypeLabel => $taxAmount) {
           $print->text(self::threeline2("", $taxTypeLabel . " :", number_format($taxAmount, 0, ',', '.'), $charPerLine));
         }
+        foreach ($serviceChargeBreakdown as $serviceChargeLabel => $serviceChargeAmount) {
+          $print->text(self::threeline2("", $serviceChargeLabel . " :", number_format($serviceChargeAmount, 0, ',', '.'), $charPerLine));
+        }
+      }
+
+      // Delivery Cost & Order Fee -- SAMA POLA PrintPayment() di atas: header-level, posisi
+      // SENGAJA MENEMPEL LANGSUNG DI ATAS Grand Total, SELALU muncul apapun inclusive/exclusive
+      // (bukan bagian flag_inclusive_tax).
+      if ($data_order->delivery_cost > 0) {
+        $print->text(self::threeline2("", "Delivery Cost :", number_format($data_order->delivery_cost, 0, ',', '.'), $charPerLine));
+      }
+      if ($data_order->order_fee > 0) {
+        $print->text(self::threeline2("", "Order Fee :", number_format($data_order->order_fee, 0, ',', '.'), $charPerLine));
       }
 
       $print->setEmphasis(true);
@@ -1494,9 +1579,19 @@ class PrintServices
 
       $print->text("\n");
 
-      if ($isInclusiveTax !== false && !empty($taxBreakdown)) {
-        $taxLabel = implode(' & ', array_keys($taxBreakdown));
-        $print->text(self::threeline2("", "Price Inclusive of " . $taxLabel . " :", number_format($data_order->total_tax, 0, ',', '.'), $charPerLine));
+      // Price Inclusive -- 1 baris PER tax_type/service_charge_rate, sama alasan & pola
+      // PrintPayment() di atas (label gabungan berisiko overflow kolom threeline2). Tax DULU,
+      // baru Service Charge DI BAWAHNYA (sama urutan breakdown exclusive di atas). Label
+      // disingkat "SC" KHUSUS DI SINI, sama alasan PrintPayment() (prefix "Price Inclusive of"
+      // bikin kepanjangan).
+      if ($isInclusiveTax !== false) {
+        foreach ($taxBreakdown as $taxTypeLabel => $taxAmount) {
+          $print->text(self::threeline2("", "Price Inclusive of " . $taxTypeLabel . " :", number_format($taxAmount, 0, ',', '.'), $charPerLine));
+        }
+        foreach ($serviceChargeBreakdown as $serviceChargeLabel => $serviceChargeAmount) {
+          $shortLabel = str_replace('Service Charge', 'SC', $serviceChargeLabel);
+          $print->text(self::threeline2("", "Price Inclusive of " . $shortLabel . " :", number_format($serviceChargeAmount, 0, ',', '.'), $charPerLine));
+        }
       }
       $print->text(self::separator("-", $charPerLine));
       $print->setJustification(Printer::JUSTIFY_CENTER);
