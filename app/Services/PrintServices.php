@@ -1895,7 +1895,7 @@ class PrintServices
       $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
       $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[17]["amount"], 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
@@ -2096,7 +2096,7 @@ class PrintServices
       $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
       $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[17]["amount"], 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
@@ -2313,7 +2313,7 @@ class PrintServices
       $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
       $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[17]["amount"], 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
@@ -2552,7 +2552,7 @@ class PrintServices
       $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
       $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[18]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[17]["amount"], 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));

@@ -44,7 +44,7 @@ class OrderServices
       $daydetail = now()->format("YmdHis");
 
       //lama $komposisi = $kode_modul . $branch_data->branch_code . $branch_data->company_id . $formatnumber;
-      $komposisi = $kode_modul .$terminal_id. $branch_data->branch_code . $daydetail;
+      $komposisi = $kode_modul . $terminal_id . $branch_data->branch_code . $daydetail;
       return $komposisi;
     } catch (\Throwable $e) {
       throw $e;
@@ -288,8 +288,16 @@ class OrderServices
           // Create Order) -- diisi sama kayak chasier_name aja (bukan hardcode 'JUSE' lagi),
           // biar gak ada placeholder yang nyasar ke UI manapun yang nampilin kolom ini.
           "waiter_name" => self::getChasierName($datajson),
-          "sender_name" => 'JUSE',
+          "sender_name" => ' ',
           "chasier_name" => self::getChasierName($datajson),
+          // created_by (2026-11-20, BARU) -- SEBELUMNYA gak pernah ditulis sama sekali di sini,
+          // bikin tr_order.created_by SELALU NULL buat semua order POS/Kiosk. Dampaknya: STAFF
+          // SALES SUMMARY/STAFF PAYMENT SUMMARY (DayShiftServices.php, INNER JOIN mr_user ON
+          // mr_user.id = tr_order.created_by) selalu kosong, karena INNER JOIN gak match baris
+          // created_by NULL. getLoggedInUserId() reuse pola yang sama kayak getChasierName()
+          // (resolve dari Bearer token -> SessionModel -> user id) -- null kalau emang gak ada
+          // kasir login (wajar buat order Kiosk self-service).
+          "created_by" => self::getLoggedInUserId($datajson),
           // "pricelist_id" => $datajson->priceListId,
 
           // total_item/sub_total/total_discount/total_tax/total_service_charge/total_billing

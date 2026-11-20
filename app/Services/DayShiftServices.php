@@ -1584,6 +1584,22 @@ class DayShiftServices
     $expectedCash = $startingCash + $cashIn - $cashOut;
     $actualCash = (float) ($raw['dayshift']->dayout_total ?? 0);
 
+    // STAFF PAYMENT SUMMARY -- label digabung "Nama - Metode" DI SINI (query sales_by_staff_payment,
+    // GetReportCurrentShiftforTampilan, sejak 2026-10-22 ngasih staff_name/payment_method_name
+    // TERPISAH buat kebutuhan printStaffPaymentSection() yang ngelompokin per staf -- breakdownWithPercent()
+    // di bawah butuh 1 kolom label flat, bukan 2 kolom terpisah, makanya digabung manual lagi di sini.
+    // BUG LAMA yang diperbaiki (2026-11-20): kode sebelumnya manggil breakdownWithPercent() pakai
+    // labelKey "label" padahal kolom itu udah gak ada di hasil query sejak 2026-10-22 -- hasilnya
+    // "label" selalu null di tiap baris staff_payment_summary.
+    $staffPaymentRows = [];
+    foreach ($raw['sales_by_staff_payment'] as $item) {
+      $staffPaymentRows[] = (object) [
+        "label" => $item->staff_name . " - " . $item->payment_method_name,
+        "qty" => $item->qty,
+        "amount" => $item->amount,
+      ];
+    }
+
     return [
       // passthrough -- field yang gak ada padanannya di section print end day, tapi masih dipakai
       // DayStartEndPage.vue (header Branch/Started By/Starting Shift, Shift Detail, Sales By
@@ -1601,7 +1617,10 @@ class DayShiftServices
         "on_hold" => $amountAt(0),
         "pending" => $amountAt(1),
         "sales_subtotal" => $amountAt(2),
-        "discount" => $amountAt(18),
+        // index 17 ("Discount Total"), BUKAN 18 -- array sales_recapitulation cuma punya 18
+        // elemen (index 0-17), [18] selalu undefined (bug diperbaiki 2026-11-20, sama off-by-one
+        // yang ditemukan+diperbaiki di PrintServices.php::PrintEndDay()).
+        "discount" => $amountAt(17),
         "dpp" => (float) ($raw['dpp_total'] ?? 0),
         "service_charge" => $amountAt(5),
         "pb1" => $amountAt(7),
@@ -1615,10 +1634,7 @@ class DayShiftServices
       "item_category_summary" => self::breakdownWithPercent($raw['sales_by_category'], "category_name", "grand_total"),
       "staff_sales_summary" => self::breakdownWithPercent($raw['sales_by_staff'], "staff_name", "total_amount"),
       "payment_method_summary" => self::breakdownWithPercent($raw['payment_recapitulation'], "payment_method_name", "payment_amount"),
-      // STAFF PAYMENT SUMMARY (baru) -- label udah digabung "Nama - Metode" dari query SQL
-      // (sales_by_staff_payment, GetReportCurrentShiftforTampilan), jadi breakdownWithPercent()
-      // dipanggil apa adanya tanpa modifikasi (sama persis pola section lain).
-      "staff_payment_summary" => self::breakdownWithPercent($raw['sales_by_staff_payment'], "label", "amount"),
+      "staff_payment_summary" => self::breakdownWithPercent($staffPaymentRows, "label", "amount"),
       "cash_flow_summary" => [
         "starting_cash" => $startingCash,
         "cash_in" => $cashIn,
@@ -1671,6 +1687,17 @@ class DayShiftServices
     $expectedCash = $startingCash + $cashIn - $cashOut;
     $actualCash = (float) ($raw['dayshift']->dayout_total ?? 0);
 
+    // STAFF PAYMENT SUMMARY -- label digabung "Nama - Metode" DI SINI, sama alasan+bug yang
+    // diperbaiki di GetReportSummaryV2() (lihat komentar di sana).
+    $staffPaymentRows = [];
+    foreach ($raw['sales_by_staff_payment'] as $item) {
+      $staffPaymentRows[] = (object) [
+        "label" => $item->staff_name . " - " . $item->payment_method_name,
+        "qty" => $item->qty,
+        "amount" => $item->amount,
+      ];
+    }
+
     return [
       "dayshift" => $raw['dayshift'],
       "dayin_user_name" => $raw['dayin_user_name'],
@@ -1685,7 +1712,8 @@ class DayShiftServices
           "on_hold" => $amountAt(0),
           "pending" => $amountAt(1),
           "sales_subtotal" => $amountAt(2),
-          "discount" => $amountAt(18),
+          // index 17 ("Discount Total"), BUKAN 18 -- lihat komentar sama di GetReportSummaryV2().
+          "discount" => $amountAt(17),
           "dpp" => (float) ($raw['dpp_total'] ?? 0),
           "service_charge" => $amountAt(5),
           "pb1" => $amountAt(7),
@@ -1699,10 +1727,7 @@ class DayShiftServices
         "item_category_summary" => self::breakdownWithPercent($raw['sales_by_category'], "category_name", "grand_total"),
         "staff_sales_summary" => self::breakdownWithPercent($raw['sales_by_staff'], "staff_name", "total_amount"),
         "payment_method_summary" => self::breakdownWithPercent($raw['payment_recapitulation'], "payment_method_name", "payment_amount"),
-        // STAFF PAYMENT SUMMARY (baru) -- label udah digabung "Nama - Metode" dari query SQL
-        // (sales_by_staff_payment, GetReportCurrentShiftforTampilan), jadi breakdownWithPercent()
-        // dipanggil apa adanya tanpa modifikasi (sama persis pola section lain).
-        "staff_payment_summary" => self::breakdownWithPercent($raw['sales_by_staff_payment'], "label", "amount"),
+        "staff_payment_summary" => self::breakdownWithPercent($staffPaymentRows, "label", "amount"),
         "cash_flow_summary" => [
           "starting_cash" => $startingCash,
           "cash_in" => $cashIn,
