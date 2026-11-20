@@ -116,6 +116,11 @@ Catatan: baris `listOrder[]` **tidak punya** `ulid` sama sekali di mode ini — 
 - Backend **mengecek stok** (`mr_item.stok_qty`/`flag_soldout`, lewat JOIN `mr_pricelist_detail`→`mr_item_conv`→`mr_item`) — ini **satu-satunya** validasi server yang nyata di titik ini. Stok tidak cukup → `{ "code": 100, "message": "Stok yang tersedia untuk {nama item} hanya {n}" }`, seluruh transaksi di-rollback.
 - `dayshift` harus aktif (`tr_dayshift.dayout_time IS NULL`) — tidak ada → `"dayshift is not active, cannot create order!"`.
 - **Guard `notification_end` (2026-11-17, baru)** — baca `mr_branch_setting.flag_notification_end`/`notification_end` (field lama, sudah ada sejak dulu, tapi sebelumnya belum ada logic konsumsi apa pun di POS — cuma CRUD/sync passthrough). Kalau `flag_notification_end = true` **dan** jam sekarang (`now()->format('H:i:s')`) sudah **`>=`** `notification_end` (format `"HH:MM:SS"`) → order baru ditolak `"cannot create new order, you must end day first!"`. `flag_notification_end = false` (default) → guard ini **tidak aktif sama sekali**, tidak ada pengecekan jam. **Tidak ada filter tanggal/hari** — murni perbandingan jam. **Cuma berlaku di mode order baru** (`orderNumber: ""`) — mode "tambah item ke order existing" (blok kode terpisah) **tidak kena guard ini**.
+- **Nomor antrian custom, `order_queue` (2026-11-19, baru)** — baca `mr_branch_setting.flag_queue`/`queue_start_from`/`queue_reset_after_each` (field lama, sejak 2026-11-03, sebelumnya belum ada logic konsumsi apa pun di POS — sama pola `notification_end`). `order_queue` (kolom internal, BUKAN field request/response) **selalu di-scope PER DAYSHIFT** (`tr_dayshift.ulid`) — tiap dayshift baru mulai dari awal lagi, gak nyambung lintas dayshift/tanggal kalender.
+  - **`flag_queue = false` (default)** — behavior LAMA, tidak berubah: order pertama di dayshift dapat `order_queue = 1`, naik `+1` tiap order baru, tidak ada batas atas.
+  - **`flag_queue = true`** — order pertama di dayshift dapat `order_queue = queue_start_from` (BUKAN selalu `1`). Order berikutnya naik `+1` seperti biasa, **TAPI** kalau nomor berikutnya akan **melebihi** `queue_reset_after_each` (strict lebih besar, bukan `>=`) → `order_queue` **reset** balik ke `queue_start_from`. `queue_reset_after_each = 0` berarti reset dimatikan (naik terus tanpa batas, walau `flag_queue = true` dan `queue_start_from` bukan `1`).
+  - Contoh (`queue_start_from = 100`, `queue_reset_after_each = 102`): order ke-1→100, ke-2→101, ke-3→102, ke-4→**100 (reset)**, ke-5→101, dst.
+  - **Tervalidasi live (2026-11-19)**: 4 order dibuat berurutan via `OrderServices::SaveOrder()` langsung ke dayshift kosong, hasil persis sesuai contoh di atas (100, 101, 102, lalu reset ke 100). Data test & `mr_branch_setting` dikembalikan ke kondisi semula setelah verifikasi.
 - `tableSectionId` harus valid — tidak ketemu → `"invalid table section!"`.
 - **Guard meja sudah ada order aktif (2026-10-27)** — kalau `tableId` diisi dan sudah ada order lain (order number manapun) di meja itu dengan status `pending`/`hold` → ditolak `"This table already has a pending order!"`. **Cuma berlaku di mode order baru** (`orderNumber: ""`) — mode "tambah item ke order existing" memang menambah ke order pending yang sama di meja itu, jadi tidak kena guard ini.
 - **`memberId`** — kalau diisi (bukan `null`), disimpan ke `tr_order.member_id` dan dipakai sebagai basis 2 barrier promo server-side di bawah (`flag_required_member`, cek tier `flag_all_tiers`). `null`/tidak diisi → order dianggap guest, promo yang `flag_required_member = true` otomatis ditolak (lihat "Barrier server-side" di bawah).
@@ -247,9 +252,23 @@ Setelah baris `listOrder[]`/`menuPackageList[]` selesai disimpan (insert di mode
 | `totalServiceCharge` | `Σ (qty × serviceChargeAmount)` | dihitung ulang server |
 | `orderFee` | — | **TETAP dari FE**, dibaca ulang dari `tr_order` |
 | `deliveryCost` | — | **TETAP dari FE**, dibaca ulang dari `tr_order` |
-| `totalBilling` | `Σ (qty × total) + orderFee + deliveryCost` | dihitung ulang server |
+| `grandTotal` | `Σ (qty × total) + orderFee + deliveryCost` | dihitung ulang server, **BARU (2026-11-20)** — nilai SEBELUM dibulatkan (ini yang SEBELUMNYA namanya `totalBilling`) |
+| `roundingAmount` | lihat "Formula Rounding" di bawah | dihitung ulang server, **BARU (2026-11-20)** |
+| `totalBilling` | `grandTotal + roundingAmount` | dihitung ulang server |
 
-`orderFee`/`deliveryCost` itu **input manual level header** (ongkos kirim/biaya tambahan yang gak nempel ke baris item manapun), bukan turunan dari baris item — makanya satu-satunya 2 field yang **TETAP dipercaya dari FE apa adanya**, ditambahkan langsung ke `totalBilling` di akhir rumus. Field header lain (`totalItem`/`subTotal`/`totalDiscount`/`totalTax`/`totalServiceCharge`/`totalBilling`) yang dikirim FE di request **SEPENUHNYA DIABAIKAN**.
+`orderFee`/`deliveryCost` itu **input manual level header** (ongkos kirim/biaya tambahan yang gak nempel ke baris item manapun), bukan turunan dari baris item — makanya satu-satunya 2 field yang **TETAP dipercaya dari FE apa adanya**, ditambahkan langsung ke `grandTotal` di akhir rumus (bukan lagi langsung ke `totalBilling` — lihat perubahan rounding di bawah). Field header lain (`totalItem`/`subTotal`/`totalDiscount`/`totalTax`/`totalServiceCharge`/`grandTotal`/`roundingAmount`/`totalBilling`) yang dikirim FE di request **SEPENUHNYA DIABAIKAN**.
+
+#### Formula Rounding (2026-11-20, BARU)
+
+Setelah `grandTotal` final (sudah termasuk semua item + `totalServiceCharge` + `orderFee` + `deliveryCost`), `roundingAmount` dihitung dari setting `mr_branch_setting` milik branch order ini:
+
+```
+sisa = fmod(grandTotal, rounding_nearst_value)
+roundingAmount = (flag_rounding == true DAN rounding_nearst_value > 0 DAN sisa != 0) ? rounding_nearst_value - sisa : 0
+totalBilling = grandTotal + roundingAmount
+```
+
+`flag_rounding`/`rounding_nearst_value` sudah lama ada sebagai setting (migration `2026_11_03_000000_add_columns_to_mr_branch_setting.php`), baru dipakai transaksi sejak perubahan ini. Mode pembulatan SELALU "ke kelipatan terdekat DI ATAS" — kolom `rounding_mode` ('up'/'down') **BELUM dipakai** (1 mode saja dulu). Kalau `grandTotal` sudah pas kelipatan `rounding_nearst_value` (sisa bagi `0`), `roundingAmount` TETAP `0` — tidak ikut nambah 1 kelipatan penuh.
 
 **Tervalidasi live (2 skenario via tinker)**: (1) mode 1, kirim `subTotal`/`totalTax`/`totalServiceCharge`/`totalDiscount`/`totalBilling`/`totalItem` sengaja `999999` (angka ngawur), `orderFee="2000.00"`/`deliveryCost="1000.00"`, 1 baris item (`qty=2`, `price=20000` inclusive, `taxRate=10%`, `scRate=5%`, tanpa diskon) → hasil tersimpan `totalItem=2`, `subTotal=34782.60`, `totalTax=3478.26`, `totalServiceCharge=1739.14`, `totalBilling=43000.00` (= `40000 + 2000 + 1000`) — semua cocok hitungan manual, nilai `999999` sepenuhnya diabaikan; (2) mode 2a (tambah item ke order hasil skenario 1), kirim `orderFee="2500.00"`/`deliveryCost="1500.00"` baru + 1 item tambahan (`qty=1`, `price=10000` exclusive, sama rate) → hasil `totalItem=3` (2+1), `subTotal=44782.60` (34782.60+10000), `totalTax=4478.26` (3478.26+1000), `totalServiceCharge=2239.14` (1739.14+500), `totalBilling=55500.00` (= `51500 + 2500 + 1500`) — dikonfirmasi server **beneran menjumlahkan SEMUA baris order** (item lama + item baru), bukan cuma yang di request kali ini, dan `orderFee`/`deliveryCost` baru berhasil meng-override yang lama. `php -l` bersih. Data test dibersihkan setelah tiap skenario.
 

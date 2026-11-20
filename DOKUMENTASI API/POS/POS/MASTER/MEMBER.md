@@ -66,6 +66,8 @@ Response:
       "sub_total": "80000.00",
       "total_discount": "5000.00",
       "total_tax": "10000.00",
+      "grand_total": "85000.00",
+      "rounding_amount": "0.00",
       "total_billing": "85000.00",
       "item_list": [
         {

@@ -89,6 +89,8 @@ Kalau ada order pending:
       "sub_total": "25000.00",
       "total_discount": "0.00",
       "total_tax": "2272.73",
+      "grand_total": "25000.00",
+      "rounding_amount": "0.00",
       "total_billing": "25000.00",
       "rounding_amount": "0.00",
       "flag_inclusive_tax": true,

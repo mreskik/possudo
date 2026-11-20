@@ -1460,6 +1460,24 @@ class PrintServices
         $print->setEmphasis(false);
       }
 
+      // NOT PAID (2026-11-19, baru, permintaan owner) -- blok besar & mencolok DI ATAS
+      // (PrintBill() gak pernah ambil header branch/logo sama sekali, jadi posisi paling atas
+      // struk ini SEJAJAR blok CANCEL ORDER di atas, bukan nempel info order di bawahnya).
+      // SELALU "NOT PAID" buat status pending MAUPUN hold (dua-duanya sama-sama "belum lunas")
+      // -- beda dari baris Status kecil di bawah yang labelnya dibedain per status (NOT PAID
+      // buat pending, HOLD buat hold). Baris Status kecil TETAP ada, ini TAMBAHAN terpisah,
+      // bukan pengganti. Styling disamakan persis pola CANCEL ORDER (setTextSize(2,2) +
+      // setEmphasis), ditambah setJustification(CENTER) eksplisit (CANCEL ORDER di atas gak
+      // nyetelnya sendiri, ngandelin state sebelumnya -- biar blok baru ini gak gitu juga).
+      if ($data_order->status == 'pending' || $data_order->status == 'hold') {
+        $print->setJustification(Printer::JUSTIFY_CENTER);
+        $print->setEmphasis(true);
+        $print->setTextSize(2, 2);
+        $print->text("NOT PAID\n");
+        $print->setTextSize(1, 1);
+        $print->setEmphasis(false);
+      }
+
       $print->setJustification(Printer::JUSTIFY_LEFT);
       $print->text(self::separator("-", $charPerLine));
 
@@ -1479,12 +1497,19 @@ class PrintServices
       $print->setEmphasis(true);
       if ($data_order->status == 'pending') {
         $print->text("NOT PAID" . "\n");
+      } else if ($data_order->status == 'hold') {
+        // hold (2026-11-19, baru) -- beda label dari pending, label ini APA ADANYA dari nilai
+        // kolom status (uppercase doang), BUKAN "NOT PAID" -- beda dari blok besar di bawah
+        // separator yang SELALU "NOT PAID" buat kedua status (pending & hold sama-sama belum
+        // lunas, tapi label di sini sengaja dibedain biar jelas order ini lagi di-hold).
+        $print->text("HOLD" . "\n");
       } else if ($data_order->status == 'cancel') {
         $print->text("CANCELED" . " / " . $data_order->cancel_notes . "\n");
       }
       $print->setEmphasis(false);
 
       $print->text(self::separator("-", $charPerLine));
+
       $displaySubtotal = 0;
       foreach ($data_order_detail as $itemmenu) {
         // Harga per-baris item (dan Subtotal di bawah) itu SEBELUM diskon -- pakai net_price

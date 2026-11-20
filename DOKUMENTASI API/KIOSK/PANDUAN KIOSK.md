@@ -16,7 +16,7 @@
 - [KIOSK BRANCH VISIT PURPOSE DETAIL.md](./KIOSK%20BRANCH%20VISIT%20PURPOSE%20DETAIL.md) — `GET /api/kiosk/branch-visit-purpose/{id}` (config + rate pajak + pohon menu)
 - [KIOSK TERMINAL DETAIL.md](./KIOSK%20TERMINAL%20DETAIL.md) — `GET /api/kiosk/terminal/{id}`
 - [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md) — `POST /api/kiosk/save-order` — wrapper tipis ke `OrderServices::SaveOrder()` yang sama dipakai POS (`order_source` di-hardcode `kiosk`, `table_section_id` di-resolve dari `mr_terminal`). Print kitchen ditunda sampai payment, bukan pas save-order.
-- [KIOSK ORDER DETAIL.md](./KIOSK%20ORDER%20DETAIL.md) — `GET /api/kiosk/order/{order_number}` — header order doang (`order_name`, `sub_total`, `total_tax`, `total_discount`, `total_billing`), belum termasuk list item.
+- [KIOSK ORDER DETAIL.md](./KIOSK%20ORDER%20DETAIL.md) — `GET /api/kiosk/order/{order_number}` — header order doang (`order_name`, `sub_total`, `total_tax`, `total_discount`, `grand_total`, `rounding_amount`, `total_billing`), belum termasuk list item.
 - [KIOSK PAYMENT METHOD.md](./KIOSK%20PAYMENT%20METHOD.md) — `GET /api/kiosk/payment-method` — list payment method yang `payment_gateway_code`-nya keisi (belum difilter per visit purpose).
 - [KIOSK PAYMENT REQUEST.md](./KIOSK%20PAYMENT%20REQUEST.md) — `POST /api/kiosk/payment/request` — minta QR ke payment gateway (proxy APIANDORDER → Midtrans) buat 1 order. Validasi `payment_gateway_code` dulu, `amount` dari `tr_order.total_billing` (server-side).
 

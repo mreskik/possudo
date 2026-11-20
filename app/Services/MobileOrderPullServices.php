@@ -189,11 +189,23 @@ class MobileOrderPullServices
                 'status' => 'paid',
                 'delivery_cost' => $order['delivery_cost'] ?? 0,
                 'order_fee' => $order['order_fee'] ?? 0,
-                'total_service_charge' => $order['service_charge'] ?? 0,
+                // total_service_charge: key payload 'total_service_charge' (2026-11-19, RENAME
+                // dari 'service_charge' -- mb_order.service_charge sudah di-rename jadi
+                // total_service_charge di sudomobile, APIANDORDER get_pending ikut diupdate).
+                'total_service_charge' => $order['total_service_charge'] ?? 0,
                 'total_item' => $totalItem,
                 'sub_total' => $order['sub_total'],
                 'total_discount' => $order['total_discount'] ?? 0,
                 'total_tax' => $order['total_tax'],
+                // grand_total/rounding_amount (2026-11-20, BARU) -- sudomobile SEKARANG ikut
+                // menerapkan rounding (lihat sudomobile/backend/pricing/pricing.go,
+                // CalculateRoundingAmount()), payload get_pending APIANDORDER sudah bawa 2 field
+                // ini apa adanya dari mb_order. grand_total fallback ke total_billing kalau
+                // payload lama belum ngirim field ini (APIANDORDER belum di-refresh) -- BUKAN 0,
+                // biar invarian total_billing = grand_total + rounding_amount tetap valid (0 +
+                // rounding_amount bakal salah kalau fallback-nya 0).
+                'grand_total' => $order['grand_total'] ?? $order['total_billing'],
+                'rounding_amount' => $order['rounding_amount'] ?? 0,
                 'total_billing' => $order['total_billing'],
                 'flag_inclusive_tax' => $order['flag_inclusive_tax'] ?? false,
                 'payment_at' => $order['payment_at'] ?? now(),
@@ -218,8 +230,19 @@ class MobileOrderPullServices
                     'tax_type' => $d['tax_type'] ?? null,
                     'tax_rate' => $d['tax_rate'] ?? 0,
                     'tax_amount' => $d['tax_amount'] ?? 0,
+                    // net_price/dpp (2026-11-19, RENAME dari dpp/net_dpp) -- mb_order_detail.dpp
+                    // sekarang makna "setelah diskon" (dulu net_dpp), net_price field baru
+                    // "sebelum diskon" (dulu dpp) -- SAMA PERSIS rename di tr_order_detail POS
+                    // sendiri (migration 2026_11_18_000002).
+                    'net_price' => $d['net_price'] ?? null,
                     'dpp' => $d['dpp'] ?? null,
-                    'net_dpp' => $d['net_dpp'] ?? null,
+                    // service_charge_id/rate/amount (2026-11-19, BARU) -- kolomnya SUDAH ADA di
+                    // tr_order_detail (migration 2026_11_18_000000) tapi belum pernah di-insert
+                    // dari jalur pull mobile sebelum fix ini -- diam-diam NULL/0, breakdown
+                    // service charge order mobile gak akurat di POS. Diperbaiki sekalian.
+                    'service_charge_id' => $d['service_charge_id'] ?? null,
+                    'service_charge_rate' => $d['service_charge_rate'] ?? 0,
+                    'service_charge_amount' => $d['service_charge_amount'] ?? 0,
                     'promo_id' => $d['promo_id'] ?? null,
                     'discount_percent' => $d['discount_percent'] ?? 0,
                     'discount_amount' => $d['discount_amount'] ?? 0,
@@ -244,8 +267,13 @@ class MobileOrderPullServices
                         'tax_type' => $p['tax_type'] ?? null,
                         'tax_rate' => $p['tax_rate'] ?? 0,
                         'tax_amount' => $p['tax_amount'] ?? 0,
+                        // net_price/dpp/service_charge_* -- SAMA PERSIS pola orderDetailRows di
+                        // atas, lihat komentar di situ.
+                        'net_price' => $p['net_price'] ?? null,
                         'dpp' => $p['dpp'] ?? null,
-                        'net_dpp' => $p['net_dpp'] ?? null,
+                        'service_charge_id' => $p['service_charge_id'] ?? null,
+                        'service_charge_rate' => $p['service_charge_rate'] ?? 0,
+                        'service_charge_amount' => $p['service_charge_amount'] ?? 0,
                         'promo_id' => $p['promo_id'] ?? null,
                         'discount_percent' => $p['discount_percent'] ?? 0,
                         'discount_amount' => $p['discount_amount'] ?? 0,

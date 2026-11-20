@@ -17,11 +17,13 @@ Selain convert case, ada 3 hal yang di-resolve/dipaksa di controller, gak diperc
 2. **`table_section_id`** — diambil dari `mr_terminal.table_section_id` berdasarkan `terminal_id` yang dikirim (device Kiosk pra-dikonfigurasi ke 1 table section tetap, user gak milih meja). Kalau `mr_terminal.table_section_id` kosong (`NULL`), request ditolak: `{"code":100,"message":"terminal ini belum dikonfigurasi table_section_id, hubungi admin"}` — **setiap terminal Kiosk wajib di-set `table_section_id`-nya dulu** sebelum bisa dipakai order beneran.
 3. **`member_id`** — **gak dipercaya dari client sama sekali**, di-derive server-side dari `customer_phone_number`. Kalau `customer_phone_number` ada isinya, di-lookup ke `mr_member` **lokal** (bukan live ke ERP — beda dari `GET /api/kiosk/member/check/{phone_number}` yang live, di sini sengaja pakai data lokal biar nyimpen order gak gantung koneksi ke ERP). Nomor kosong/null atau gak ketemu member → `member_id` tetap `null`, order tetap kesimpen (jadi member bukan syarat wajib). **Field `member_id` gak perlu dikirim lagi** — dihapus dari payload.
 
+**Nomor antrian custom, `order_queue` (2026-11-19, otomatis ikut, 1 jalur)** — karena Kiosk `SaveOrder()` (create) manggil `OrderServices::SaveOrder()` yang **sama persis** dipakai POS (poin di atas), logic `order_queue` custom berdasar `mr_branch_setting.flag_queue`/`queue_start_from`/`queue_reset_after_each` yang dijelaskan di [`SAVE ORDER.md`](../POS/ORDER/SAVE%20ORDER.md) **otomatis berlaku juga buat order dari Kiosk** — gak ada kode tambahan yang ditulis khusus di `KioskController.php`. `order_queue` di-scope PER DAYSHIFT (bukan per `order_source`), jadi order POS dan order Kiosk di dayshift yang sama **ikut antrian yang sama** (nomornya nyambung lintas sumber, bukan dihitung terpisah per channel). Belum di-live-test lewat endpoint Kiosk sungguhan (data dev gak punya terminal Kiosk yang sudah di-setup `table_section_id`) — tapi dikonfirmasi 1 jalur via pembacaan kode langsung (`KioskController::SaveOrder()` baris ~1096), dan logic `order_queue`-nya sendiri sudah live-tested lengkap lewat `OrderServices::SaveOrder()` (lihat [`SAVE ORDER.md`](../POS/ORDER/SAVE%20ORDER.md)).
+
 ## Field duit/rate/amount — kirim sebagai string
 
 Semua field yang berhubungan sama uang, rate (persen pajak/diskon), atau nominal — **kirim sebagai string**, bukan number JSON mentah (`"14500.00"`, bukan `14500`). Ini standar buat endpoint Kiosk (baru, jadi bisa langsung distandarin dari awal) — beda dari POS yang masih campuran number/string di berbagai tempat (belum dirapiin, rencana nyusul belakangan, di luar scope Kiosk ini). Tervalidasi kirim string tetep kesimpen bener sebagai `decimal` di DB (MySQL/PDO gak masalah nerima string numerik).
 
-Field yang termasuk kelompok ini: `sub_total`, `total_tax`, `total_service_charge`, `total_billing`, `total_discount`, `order_fee`, `delivery_cost` (level order), dan per item di `list_order[]`/`menu_package_list[]`: `price`, `discount_rate`, `discount_value`, `dpp`, `total`. (`tax_rate`/`service_charge_rate`/`tax_value` sudah gak relevan lagi — field mati, lihat "field MATI" di bawah.)
+Field yang termasuk kelompok ini: `sub_total`, `total_tax`, `total_service_charge`, `grand_total`, `rounding_amount`, `total_billing`, `total_discount`, `order_fee`, `delivery_cost` (level order), dan per item di `list_order[]`/`menu_package_list[]`: `price`, `discount_rate`, `discount_value`, `dpp`, `total`. (`tax_rate`/`service_charge_rate`/`tax_value` sudah gak relevan lagi — field mati, lihat "field MATI" di bawah.)
 
 ## ⚠️ Backend hitung ulang net_price/dpp/tax_value/service_charge_amount/total server-side, item & header (2026-11-18)
 
@@ -52,9 +54,12 @@ untuk detail lengkap rumus + simulasi angka):
   serviceChargeRate%`) → `total = dpp + tax_value + service_charge_amount`, dikali `qty` buat
   nilai yang beneran kesimpen.
 - **Header juga dihitung ulang** (bukan cuma item) — `sub_total`/`total_discount`/`total_tax`/
-  `total_service_charge`/`total_billing`/`total_item` yang dikirim client **DIABAIKAN**, di-
-  overwrite oleh `OrderServices::RecalculateOrderTotals()` berdasar baris item yang baru
-  disimpan. Exception (TETAP FE-trusted, gak di-recalculate): `order_fee`, `delivery_cost`.
+  `total_service_charge`/`grand_total`/`rounding_amount`/`total_billing`/`total_item` yang
+  dikirim client **DIABAIKAN**, di-overwrite oleh `OrderServices::RecalculateOrderTotals()`
+  berdasar baris item yang baru disimpan. Exception (TETAP FE-trusted, gak di-recalculate):
+  `order_fee`, `delivery_cost`. `grand_total`/`rounding_amount` (2026-11-20, BARU) — lihat
+  [`SAVE ORDER.md`](../POS/ORDER/SAVE%20ORDER.md#formula-rounding-2026-11-20) buat formula
+  rounding lengkap (baca setting `mr_branch_setting` milik branch terminal Kiosk ini).
 
 Alasannya: app Kiosk (repo terpisah, di luar `posv1-laravel`) belum tentu ikut diupdate ke rumus
 baru bareng — backend jadi otoritas terakhir buat angka finansial, gak nelen mentah-mentah hasil

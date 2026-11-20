@@ -213,9 +213,33 @@ class OrderServices
         // nomor antrian gak nyambung/reset di tempat yang salah kalau di-scope per tanggal.
         $last_order =  TrOrderModel::where('dayshift_ulid', $dayshift->ulid)->orderBy('order_queue', 'desc')->first();
 
-        $order_queue = 1;
-        if ($last_order != null) {
-          $order_queue = $last_order->order_queue + 1;
+        // Custom queue setting (2026-11-19, baru) -- mr_branch_setting.flag_queue/
+        // queue_start_from/queue_reset_after_each (field lama, sudah ada sejak 2026-11-03,
+        // belum pernah ada logic konsumsinya di POS sampai sekarang, sama pola notification_end
+        // di atas). flag_queue=false -> behavior LAMA APA ADANYA (mulai 1, naik terus gak ada
+        // batas) -- gak ada perubahan buat branch yang belum pernah nyalain fitur ini.
+        // flag_queue=true -> mulai dari queue_start_from (bukan 1), dan queue_reset_after_each
+        // adalah AMBANG ANGKA MAKSIMUM -- begitu next_queue bakal MELEBIHI nilai itu, balik lagi
+        // ke queue_start_from (bukan reset tiap N order, murni threshold angka). Scope TETAP per
+        // dayshift_ulid, gak berubah -- reset alami juga kejadian tiap dayshift baru (dayshift
+        // baru = $last_order null = mulai dari queue_start_from lagi).
+        if ($branchSetting && $branchSetting->flag_queue) {
+          $queueStartFrom = (int) $branchSetting->queue_start_from;
+          $queueResetAfterEach = (int) $branchSetting->queue_reset_after_each;
+
+          if ($last_order == null) {
+            $order_queue = $queueStartFrom;
+          } else {
+            $nextQueue = $last_order->order_queue + 1;
+            $order_queue = ($queueResetAfterEach > 0 && $nextQueue > $queueResetAfterEach)
+              ? $queueStartFrom
+              : $nextQueue;
+          }
+        } else {
+          $order_queue = 1;
+          if ($last_order != null) {
+            $order_queue = $last_order->order_queue + 1;
+          }
         }
 
         //
@@ -1129,18 +1153,36 @@ class OrderServices
   }
 
   /**
-   * Recompute tr_order.sub_total/total_discount/total_tax/total_service_charge/total_billing/
-   * total_item from its current tr_order_detail + tr_order_detail_package rows (mirrors
-   * orderPage.vue's hitungTotalFromItemQty(), DIPERLUAS 2026-11-18 ikut service charge --
-   * lihat "Formula Kalkulasi Harga" di SAVE ORDER.md). Dipanggil dari 2 tempat: SaveMoveItem()
-   * (karena moving rows antar order gak otomatis sync kolom turunan ini) DAN SaveOrder()
-   * (2026-11-18, BARU -- header order sekarang DIHITUNG ULANG SERVER dari SEMUA baris order,
-   * bukan dipercaya mentah dari FE lagi, sama arsitektur CalculateLineItem() per baris).
+   * Recompute tr_order.sub_total/total_discount/total_tax/total_service_charge/grand_total/
+   * rounding_amount/total_billing/total_item from its current tr_order_detail +
+   * tr_order_detail_package rows (mirrors orderPage.vue's hitungTotalFromItemQty(), DIPERLUAS
+   * 2026-11-18 ikut service charge -- lihat "Formula Kalkulasi Harga" di SAVE ORDER.md).
+   * Dipanggil dari 2 tempat: SaveMoveItem() (karena moving rows antar order gak otomatis sync
+   * kolom turunan ini) DAN SaveOrder() (2026-11-18, BARU -- header order sekarang DIHITUNG
+   * ULANG SERVER dari SEMUA baris order, bukan dipercaya mentah dari FE lagi, sama arsitektur
+   * CalculateLineItem() per baris).
    *
    * orderFee/deliveryCost SENGAJA TIDAK disentuh fungsi ini (bukan turunan dari baris item,
    * murni input FE level header) -- caller (SaveOrder()) yang nulis 2 kolom itu terpisah
    * SEBELUM manggil fungsi ini, order_fee/delivery_cost di sini cuma di-passthrough (dibaca
-   * ulang dari tr_order yang udah ke-update caller) biar ikut ke total_billing.
+   * ulang dari tr_order yang udah ke-update caller) biar ikut ke grand_total.
+   *
+   * grand_total/rounding_amount/total_billing (2026-11-20, BARU) -- rantai nilai akhir order:
+   *   grand_total     = akumulasi semua baris item + service_charge + order_fee + delivery_cost,
+   *                      SEBELUM dibulatkan (ini yang dulu namanya $total_billing di fungsi ini).
+   *   rounding_amount = selisih pembulatan, dihitung dari setting mr_branch_setting milik
+   *                      branch order ini (flag_rounding + rounding_nearst_value). Kalau
+   *                      flag_rounding false, atau rounding_nearst_value null/<=0, atau
+   *                      grand_total sudah pas kelipatan (sisa bagi == 0) -> rounding_amount = 0.
+   *                      Rumus (kalau syarat di atas terpenuhi):
+   *                        sisa = fmod(grand_total, rounding_nearst_value)
+   *                        rounding_amount = rounding_nearst_value - sisa
+   *                      fmod() dipakai (bukan operator %) karena rounding_nearst_value/
+   *                      grand_total nilai desimal, % PHP membuang ke integer dulu.
+   *   total_billing   = grand_total + rounding_amount (nilai final yang ditagih).
+   * rounding_mode (kolom udah ada di mr_branch_setting) BELUM dipakai di sini -- scope sesi ini
+   * cuma 1 mode pembulatan (ke rounding_nearst_value terdekat ke ATAS), mode lain menyusul kalau
+   * dibutuhkan.
    */
   // public (bukan private) -- 2026-11-18, dipakai juga dari KioskController::editExistingOrder()
   // supaya header totals Kiosk konsisten dengan SaveOrder() (1 sumber kebenaran).
@@ -1164,7 +1206,7 @@ class OrderServices
     $total_discount = 0;
     $total_tax = 0;
     $total_service_charge = 0;
-    $total_billing = 0;
+    $grand_total = 0;
 
     foreach ($order_detail as $row) {
       $total_item += $row->qty;
@@ -1180,7 +1222,7 @@ class OrderServices
       $total_discount += $row->qty * $row->discount_amount;
       $total_tax += $row->qty * $calc['taxAmount'];
       $total_service_charge += $row->qty * $calc['serviceChargeAmount'];
-      $total_billing += $row->qty * $calc['total'];
+      $grand_total += $row->qty * $calc['total'];
     }
 
     foreach ($order_detail_package as $row) {
@@ -1197,14 +1239,27 @@ class OrderServices
       $total_discount += $qty * $row->discount_amount;
       $total_tax += $qty * $calc['taxAmount'];
       $total_service_charge += $qty * $calc['serviceChargeAmount'];
-      $total_billing += $qty * $calc['total'];
+      $grand_total += $qty * $calc['total'];
     }
 
     // orderFee/deliveryCost (2026-11-18, BARU) -- input FE level header, bukan turunan item,
     // dibaca ulang dari tr_order (caller udah nulis kolom ini SEBELUM manggil fungsi ini) biar
-    // ikut masuk total_billing. 0 kalau baris order gak ketemu (defensif, seharusnya selalu ada).
-    $orderRow = TrOrderModel::where('order_number', $order_number)->first(['order_fee', 'delivery_cost']);
-    $total_billing += ($orderRow->order_fee ?? 0) + ($orderRow->delivery_cost ?? 0);
+    // ikut masuk grand_total. 0 kalau baris order gak ketemu (defensif, seharusnya selalu ada).
+    $orderRow = TrOrderModel::where('order_number', $order_number)->first(['order_fee', 'delivery_cost', 'branch_id']);
+    $grand_total += ($orderRow->order_fee ?? 0) + ($orderRow->delivery_cost ?? 0);
+
+    // rounding_amount (2026-11-20, BARU) -- baca setting rounding branch pemilik order ini.
+    $rounding_amount = 0;
+    $branchSetting = MasterBranchSettingModel::where('branch_id', $orderRow->branch_id ?? null)->first(['flag_rounding', 'rounding_nearst_value']);
+    if ($branchSetting && $branchSetting->flag_rounding && (float) $branchSetting->rounding_nearst_value > 0) {
+      $nearst = (float) $branchSetting->rounding_nearst_value;
+      $sisa = fmod($grand_total, $nearst);
+      if ($sisa != 0) {
+        $rounding_amount = $nearst - $sisa;
+      }
+    }
+
+    $total_billing = $grand_total + $rounding_amount;
 
     // sync_at di-null-kan (2026-09-22) -- sub_total/total_tax/total_billing/dst ini data
     // finansial inti yang dipush ke ERP, kalau baris ini udah sempat ke-push duluan (sync_at
@@ -1216,6 +1271,8 @@ class OrderServices
       'total_discount' => $total_discount,
       'total_tax' => $total_tax,
       'total_service_charge' => $total_service_charge,
+      'grand_total' => $grand_total,
+      'rounding_amount' => $rounding_amount,
       'total_billing' => $total_billing,
       'total_item' => $total_item,
       'sync_at' => null,

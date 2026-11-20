@@ -29,6 +29,8 @@ Sukses (item biasa + item package):
     "total_service_charge": "0.00",
     "order_fee": "0.00",
     "delivery_cost": "0.00",
+    "grand_total": "26640.00",
+    "rounding_amount": "0.00",
     "total_billing": "26640.00",
     "total_item": 1,
     "customer_phone_number": null,
@@ -102,7 +104,8 @@ Sukses (item biasa + item package):
 ```
 
 - `items[].package` — **selalu ada** (array, bisa kosong `[]`) — isi kalau item itu paket/punya varian (dari `tr_order_detail_package`), kosong kalau item biasa.
-- Field duit (`price`, `net_price`, `discount_amount`, `tax_amount`, `service_charge_amount`, `total`, plus header `sub_total`/`total_tax`/`total_discount`/`total_service_charge`/`order_fee`/`delivery_cost`/`total_billing`) balik sebagai **string** — hasil select langsung dari kolom `decimal` MySQL, konsisten sama standar string buat field duit di [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md).
+- Field duit (`price`, `net_price`, `discount_amount`, `tax_amount`, `service_charge_amount`, `total`, plus header `sub_total`/`total_tax`/`total_discount`/`total_service_charge`/`order_fee`/`delivery_cost`/`grand_total`/`rounding_amount`/`total_billing`) balik sebagai **string** — hasil select langsung dari kolom `decimal` MySQL, konsisten sama standar string buat field duit di [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md).
+- **`grand_total`/`rounding_amount` (2026-11-20, BARU)** — 2 field HEADER baru, sama pola `total_service_charge`/`order_fee`/`delivery_cost` di bawah. `grand_total` = nilai SEBELUM dibulatkan (ini yang SEBELUMNYA namanya `total_billing`), `rounding_amount` = selisih pembulatan. Lihat [`SAVE ORDER.md`](../POS/ORDER/SAVE%20ORDER.md#formula-rounding-2026-11-20) buat formula lengkap.
 - **`net_price` (2026-11-18, BARU)** — harga per-unit SEBELUM diskon tapi SUDAH dilepas pajak+service charge kalau `flagInclusiveTax` (sama kolom `tr_order_detail.net_price`/`tr_order_detail_package.net_price`, lihat [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md)) — dulu gak pernah ikut di-expose di endpoint ini, cuma internal kolom DB.
 - **`tax_id`/`tax_type`/`tax_rate`, `service_charge_id`/`service_charge_rate`/`service_charge_amount`, `promo_id` (2026-11-18, BARU, di level `items[]` & `items[].package[]`)** — sebelumnya cuma `tax_amount` yang ke-expose (hasil kalkulasi), komponen id/tipe/rate-nya sendiri gak pernah ikut, demikian juga `promo_id` (dulu dibaca pas `save-order` tapi gak pernah dikembalikan di endpoint detail). Sekarang semua ikut ditampilkan, konsisten pasangan `tax_*`/`service_charge_*`. `is_free_item_promo` (BARU, cuma level `items[]`, **TIDAK ADA** di `package[]` — kolomnya emang gak ada di `tr_order_detail_package`, lihat [SAVE ORDER.md](../POS/POS/ORDER/SAVE%20ORDER.md)) juga ditambahkan di titik yang sama — flag item gratis dari promo.
 - **`total_service_charge`/`order_fee`/`delivery_cost` (2026-11-18, BARU)** — 3 field HEADER yang sebelumnya **gak ada sama sekali** di response ini (`tr_order.total_service_charge`/`order_fee`/`delivery_cost` sudah ada & aktif dipakai kalkulasi `total_billing`, tapi gak pernah ikut di-SELECT di `GetOrderDetail()`). `order_fee`/`delivery_cost` FE-trusted (manual input, lihat [KIOSK SAVE ORDER.md](./KIOSK%20SAVE%20ORDER.md)), `total_service_charge` hasil `Σ qty × serviceChargeAmount` semua baris item.

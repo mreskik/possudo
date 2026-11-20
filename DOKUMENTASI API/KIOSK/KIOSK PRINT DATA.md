@@ -43,6 +43,8 @@ Sukses (contoh **exclusive tax**, campur Tax PB1+VAT dan Service Charge 5%, plus
     "sub_total": "124300.00",
     "total_discount": "7000.00",
     "total_tax": "14500.00",
+    "grand_total": "108000.00",
+    "rounding_amount": "0.00",
     "total_billing": "108000.00",
     "delivery_cost": "5000.00",
     "order_fee": "1500.00",
