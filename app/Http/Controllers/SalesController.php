@@ -77,10 +77,11 @@ class SalesController extends Controller
             $order_number = $request->order_number;
             $dataorder = TrOrderModel::where("order_number", $order_number)->first();
             $station_id = PrintServices::RetrieveReceiptStationIdFromSession($request);
+            // Non-blocking (2026-11-23) -- lihat catatan lengkap di OrderServices::SaveOrder().
             if ($dataorder->status == 'cancel') {
-                PrintServices::PrintBill($order_number, $station_id);
+                PrintServices::dispatchPrintJob($request, 'bill', ['order_number' => $order_number, 'station_id' => $station_id ?? '']);
             } else if ($dataorder->status == 'paid' || $dataorder->status == 'void') {
-                PrintServices::PrintPayment($order_number, $station_id);
+                PrintServices::dispatchPrintJob($request, 'payment', ['order_number' => $order_number, 'station_id' => $station_id ?? '']);
             }
 
             return response()->json([

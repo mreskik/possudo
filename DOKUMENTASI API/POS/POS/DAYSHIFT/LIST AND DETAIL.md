@@ -1,4 +1,4 @@
-# Report, Dayshift List, Pending Order
+# List, Detail, Report, Pending Order
 
 ## Dayshift List
 
@@ -28,6 +28,21 @@ Response:
 ```
 
 - `dayin_user_name`/`dayout_user_name` — resolve via 2x LEFT JOIN `mr_user` (alias beda) ke `dayin_user_id`/`dayout_user_id` — `dayout_user_name` tetap `null` selama dayshift masih berjalan (belum di-End Day).
+
+## Detail List
+
+```
+GET /api/dayshift/detail-list/{dayshift_ulid}
+```
+
+**PINDAH dari [`PRINT.md`](PRINT.md) (2026-11-23)** — endpoint ini bukan print, cocoknya digabung bareng endpoint data log shift lain di sini (`dayshift-list`), bukan nyampur di file yang isinya murni print.
+
+Daftar baris `tr_dayshift_detail` (log pergantian shift) untuk 1 dayshift — query langsung (`DayShiftDetailModel::where('dayshift_ulid', ...)->get()`, TIDAK lewat `DayShiftServices.php`).
+
+Response:
+```json
+{ "code": 0, "data": [ { "shift_number": 1, "shift_time": "...", "shift_user_id": 5 } ] }
+```
 
 ## Report (v1, LEGACY — tidak dipakai FE lagi)
 
@@ -191,15 +206,17 @@ Response: `{ "code": 0, "data": [ {...1 baris tr_order lengkap, semua kolom...} 
 
 ## Sumber
 
-- `app/Http/Controllers/DayShiftController.php` — `DayShiftList()`, `Report()`, `ReportV2()`, `ReportV3()`, `pendingOrder()`.
+- `app/Http/Controllers/DayShiftController.php` — `DayShiftList()`, `ListDayShiftDetail()`, `Report()`, `ReportV2()`, `ReportV3()`, `pendingOrder()`.
 - `app/Services/DayShiftServices.php` — `GetDayshiftList()`, `GetReport()` (v1), `GetReportCurrentShiftforTampilan()`, `GetReportSummaryV2()`, `GetReportSummaryV3()`, `breakdownWithPercent()` (private).
-- Frontend: `src/services/DayshiftServices.ts`, `src/modules/dashboard/shiftlog/ShiftLogPage.vue`, `src/modules/dashboard/daystart_end/DayStartEndPage.vue`.
+- Frontend: `src/services/DayshiftServices.ts` (`DayShiftDetailList`), `src/modules/dashboard/shiftlog/ShiftLogPage.vue`, `src/modules/dashboard/daystart_end/DayStartEndPage.vue`.
 
 ## Status
 
 Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifikasi ulang lewat HTTP request live di sesi ini). Report V2 sangat kompleks (ratusan baris kalkulasi) — ringkasan ini struktural, disarankan baca `GetReportSummaryV2()`/`GetReportCurrentShiftforTampilan()` langsung kalau butuh detail formula tiap angka.
 
-Diupdate 2026-10-20: ditambahkan section `staff_payment_summary` — perubahan dilakukan konsisten di 4 fungsi sumber data (`GetReportCurrentShiftforTampilan()`, `GetReportDayshiftorEndDay()`, `GetReportCurrentShift()`, `GetReportPerShift()`), `GetReportSummaryV2()`, dan 4 fungsi print (`PrintEndDay()`, `PrintReportDaysift()`, `PrintCurrentShift()`, `PrintPerShiftv2()` — lihat [`PRINT AND DETAIL LIST.md`](PRINT%20AND%20DETAIL%20LIST.md)). FE (`DayStartEndPage.vue`, repo `posv1-vue`) ditambahkan card baru "Staff Payment Summary".
+Diupdate 2026-10-20: ditambahkan section `staff_payment_summary` — perubahan dilakukan konsisten di 4 fungsi sumber data (`GetReportCurrentShiftforTampilan()`, `GetReportDayshiftorEndDay()`, `GetReportCurrentShift()`, `GetReportPerShift()`), `GetReportSummaryV2()`, dan 4 fungsi print (`PrintEndDay()`, `PrintReportDaysift()`, `PrintCurrentShift()`, `PrintPerShiftv2()` — lihat [`PRINT.md`](PRINT.md)). FE (`DayStartEndPage.vue`, repo `posv1-vue`) ditambahkan card baru "Staff Payment Summary".
+
+Diupdate 2026-11-23 (lanjutan): file di-rename `REPORT AND HISTORY.md` -> `LIST AND DETAIL.md` (judul disesuaikan jadi "List, Detail, Report, Pending Order"), sejalan dengan `PRINT AND DETAIL LIST.md` yang juga di-rename jadi `PRINT.md` di periode yang sama.
 
 Diupdate 2026-11-13: ditambahkan `report-v3` — `GetReportSummaryV3()` membangun ulang response yang sama persis dengan `GetReportSummaryV2()` (dipanggil `GetReportCurrentShiftforTampilan()` secara independen, bukan memanggil V2 lalu `unset()`), minus field `sales_by_menu`/`sales_by_table`. Belum ada verifikasi live/HTTP di sesi ini, sudah dicek `php -l` bersih di 3 file (`DayShiftServices.php`, `DayShiftController.php`, `routes/api.php`).
 

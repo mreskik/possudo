@@ -46,8 +46,8 @@ Harus ada sebelum halaman transaksi (List Table, Order, Payment) bisa jalan.
 Order butuh dayshift aktif (`pos_order.dayshift_ulid`).
 
 20. [`DAYSHIFT/START END DAY.md`](POS/DAYSHIFT/START%20END%20DAY.md) — Start Day & End Day.
-21. [`DAYSHIFT/REPORT AND HISTORY.md`](POS/DAYSHIFT/REPORT%20AND%20HISTORY.md)
-22. [`DAYSHIFT/PRINT AND DETAIL LIST.md`](POS/DAYSHIFT/PRINT%20AND%20DETAIL%20LIST.md)
+21. [`DAYSHIFT/LIST AND DETAIL.md`](POS/DAYSHIFT/LIST%20AND%20DETAIL.md)
+22. [`DAYSHIFT/PRINT.md`](POS/DAYSHIFT/PRINT.md)
 
 ## Fase 4 — List Table & Order (halaman kasir utama)
 

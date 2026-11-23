@@ -545,9 +545,17 @@ class OrderServices
         // dipindah ke PaymentServices::SavePayment() (sama pola kayak Kiosk, tapi general per
         // table section, bukan cuma Kiosk doang).
         if ($order['order_source'] !== 'kiosk' && $tablesectionnow->print_checker_on === 'save_order') {
-          PrintServices::PrintTableChecker2($tablesectionnow->id, $order_number);
-          PrintServices::PrintMainChecker2($tablesectionnow->id, $order_number);
-          PrintServices::PrintPriparationStation($tablesectionnow->id, $order_number);
+          // Non-blocking (2026-11-23) -- HTTP self-call ke endpoint internal, BUKAN panggil
+          // langsung. Root cause asli: NetworkPrintConnector::fsockopen() tanpa timeout custom
+          // bisa nge-hang sampai default_socket_timeout PHP (~60 detik) kalau printer/network
+          // bermasalah, nahan response HTTP SaveOrder() walau order udah valid tersimpan
+          // (DB::commit() di atas). $datajson DI SINI ADALAH objek Request HTTP asli (nama
+          // variabelnya menyesatkan, tapi SaveOrder() dipanggil dengan $request Laravel --
+          // dikonfirmasi dari getChasierName($datajson)/getLoggedInUserId($datajson) yang
+          // butuh ->bearerToken()). Lihat PrintServices::dispatchPrintJob().
+          PrintServices::dispatchPrintJob($datajson, 'table-checker2', ['order_number' => $order_number, 'table_section_id' => $tablesectionnow->id]);
+          PrintServices::dispatchPrintJob($datajson, 'main-checker2', ['order_number' => $order_number, 'table_section_id' => $tablesectionnow->id]);
+          PrintServices::dispatchPrintJob($datajson, 'priparation-station', ['order_number' => $order_number, 'table_section_id' => $tablesectionnow->id]);
 
           TrOrderDetailModel::where('order_number', $order_number)->update([
             "done_print" => true,
@@ -816,9 +824,10 @@ class OrderServices
           // save-order kalau table section-nya 'save_order' (default).
           $tablesection_current_order = TableSectionModel::where('id', $current_table_order->table_section_id)->first();
           if ($current_table_order->order_source !== 'kiosk' && $tablesection_current_order && $tablesection_current_order->print_checker_on === 'save_order') {
-            PrintServices::PrintTableChecker2($current_table_order->table_section_id, $current_table_order->order_number);
-            PrintServices::PrintMainChecker2($current_table_order->table_section_id, $current_table_order->order_number);
-            PrintServices::PrintPriparationStation($current_table_order->table_section_id, $current_table_order->order_number);
+            // Non-blocking (2026-11-23) -- lihat catatan lengkap di jalur order baru di atas.
+            PrintServices::dispatchPrintJob($datajson, 'table-checker2', ['order_number' => $current_table_order->order_number, 'table_section_id' => $current_table_order->table_section_id]);
+            PrintServices::dispatchPrintJob($datajson, 'main-checker2', ['order_number' => $current_table_order->order_number, 'table_section_id' => $current_table_order->table_section_id]);
+            PrintServices::dispatchPrintJob($datajson, 'priparation-station', ['order_number' => $current_table_order->order_number, 'table_section_id' => $current_table_order->table_section_id]);
 
             TrOrderDetailModel::where('order_number', $current_table_order->order_number)->update([
               "done_print" => true,

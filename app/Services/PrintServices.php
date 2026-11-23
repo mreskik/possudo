@@ -17,7 +17,9 @@ use App\Models\TerminalModel;
 use App\Models\TrOrderDetailPackageModel;
 use App\Models\TrOrderModel;
 use App\Models\TrPaymentModel;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use \Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
 use \Mike42\Escpos\PrintConnectors\NetworkPrintConnector;
@@ -284,6 +286,56 @@ class PrintServices
     $print->setEmphasis(false);
   }
 
+  // printCategoryItemBreakdownSection: cetak "ITEM BY CATEGORY SUMMARY" (2026-11-23, BARU) --
+  // NESTED kategori->item, BEDA dari printBreakdownSection() yang dipakai "CATEGORY SUMMARY"
+  // (FLAT per kategori doang, item di dalamnya di-collapse habis). Format: 1 baris header
+  // kategori (nama + persen dari GRAND TOTAL semua kategori), diikuti sub-baris per item
+  // ("- <menu_name> (<qty>)" + amount), ditutup "- Total" kategori itu. Kategori diurutkan
+  // AMOUNT TERBESAR DULU -- pola SAMA PERSIS printStaffPaymentSection() di atas.
+  //
+  // $rows: array of ["category_name" => string, "menu_name" => string, "qty" => int,
+  // "amount" => float] -- 1 baris = 1 kombinasi kategori+item (hasil query FLAT
+  // sales_by_category_item, DayShiftServices.php -- grouping dilakukan DI SINI, bukan di SQL).
+  public static function printCategoryItemBreakdownSection($print, array $rows, int $charPerLine)
+  {
+    $grandTotal = 0;
+    $byCategory = [];
+    foreach ($rows as $r) {
+      $grandTotal += $r['amount'];
+      if (!isset($byCategory[$r['category_name']])) {
+        $byCategory[$r['category_name']] = ['total' => 0, 'items' => []];
+      }
+      $byCategory[$r['category_name']]['total'] += $r['amount'];
+      $byCategory[$r['category_name']]['items'][] = $r;
+    }
+
+    // urutan kategori: total amount terbesar dulu.
+    uasort($byCategory, fn($a, $b) => $b['total'] <=> $a['total']);
+
+    $print->setJustification(Printer::JUSTIFY_CENTER);
+    $print->setEmphasis(true);
+    $print->feed(1);
+    $print->text("ITEM BY CATEGORY SUMMARY\n");
+    $print->setEmphasis(false);
+    $print->setJustification(Printer::JUSTIFY_LEFT);
+    $print->text("\n");
+
+    foreach ($byCategory as $categoryName => $category) {
+      $percent = $grandTotal > 0 ? round(($category['total'] / $grandTotal) * 100) : 0;
+      $print->text(self::kirikakan($categoryName, $percent . "%", $charPerLine));
+      foreach ($category['items'] as $item) {
+        $print->text(self::kirikakan("  - " . $item['menu_name'] . " (" . $item['qty'] . ")", number_format($item['amount'], 0, ',', '.'), $charPerLine));
+      }
+      $print->text(self::kirikakan("  - Total", number_format($category['total'], 0, ',', '.'), $charPerLine));
+      $print->text("\n");
+    }
+
+    $print->text(self::separator("-", $charPerLine));
+    $print->setEmphasis(true);
+    $print->text(self::kirikakan("Total Item By Category", number_format($grandTotal, 0, ',', '.'), $charPerLine));
+    $print->setEmphasis(false);
+  }
+
   // resolvePrintConnector (2026-11-17): bikin print connector sesuai mr_station.printer_connection
   // -- 1 (Windows Printer Connection, default/legacy) pakai WindowsPrintConnector(printer_name)
   // SAMA PERSIS behavior sebelumnya (printer_name = nama printer yang terdaftar di Windows
@@ -305,6 +357,39 @@ class PrintServices
     return new WindowsPrintConnector($data_station->printer_name);
   }
 
+  // dispatchPrintJob: kirim HTTP POST self-call ke endpoint internal /internal/print/* (lihat
+  // PrintJobController + routes/api.php group 'internal/print'), timeout PENDEK (1 detik) --
+  // caller TIDAK nunggu print-nya beres, cuma nunggu max 1 detik buat server nerima request-nya
+  // (exception setelah itu DITANGKAP, dianggap NORMAL -- bukan kegagalan sungguhan). Proses print
+  // SEBENARNYA dijalankan di worker Apache LAIN yang menangani /internal/print/* itu (lihat
+  // PrintJobController -- ignore_user_abort(true) di sana bikin print TETAP jalan sampai selesai
+  // walau request pemanggil ini udah "pergi" karena timeout).
+  //
+  // REVISI 2026-11-23 dari versi sebelumnya (spawnPrintCommand() via proc_open + Artisan Command) --
+  // proc_open di Windows mewarisi SEMUA handle proses pemanggil (bInheritHandles=TRUE), termasuk
+  // named pipe internal Apache mpm_winnt (komunikasi parent<->worker) -- proses CLI yang di-spawn
+  // dari dalam worker Apache ikut mewarisi pipe itu, dan pas proses spawn-nya exit, OS nutup
+  // salinan handle yang diwarisi, bikin Apache parent salah ngira pipe worker-nya SENDIRI putus
+  // ("(OS 109) The pipe has been ended", kejadian nyata di komputer POS produksi, Apache
+  // mpm_winnt Windows). HTTP self-call ini GAK SPAWN PROSES OS SAMA SEKALI -- jadi masalah
+  // Windows handle inheritance otomatis gak relevan, portable ke OS/web-server apa pun.
+  //
+  // $request YANG SEDANG DIPROSES WAJIB di-pass (bukan null) kalau caller-nya dari jalur HTTP --
+  // dipakai $request->getSchemeAndHttpHost() buat bangun URL self-call yang ikut host:port ASLI
+  // yang lagi dipakai (robust lintas instalasi, gak hardcode). Caller dari background job TANPA
+  // $request HTTP (MobileOrderPullServices) pass null -- fallback ke config('app.url').
+  public static function dispatchPrintJob(?Request $request, string $path, array $params): void
+  {
+    $baseUrl = $request ? $request->getSchemeAndHttpHost() : rtrim(config('app.url'), '/');
+
+    try {
+      Http::timeout(1)->post("{$baseUrl}/api/internal/print/{$path}", $params);
+    } catch (\Throwable $e) {
+      // timeout/connection reset DIANGGAP NORMAL -- tujuannya emang cuma nunggu sebentar,
+      // print beneran dikerjakan di worker lain terlepas exception ini.
+    }
+  }
+
   // resolvePrintReportSetting (2026-11-04): ambil baris mr_branch_pos_print_report_setting
   // (singleton 1 baris per install, pola sama mr_branch_setting). Branch yang belum pernah
   // sync baris ini (lama, sebelum fitur ini ada) dianggap SEMUA section tampil (true) --
@@ -322,6 +407,7 @@ class PrintServices
       'endday_payment_method_summary' => true,
       'endday_staff_payment_summary' => true,
       'endday_cash_flow_summary' => true,
+      'endday_item_by_category_summary' => true,
       'shift_sales_summary' => true,
       'shift_sales_type_summary' => true,
       'shift_order_source_summary' => true,
@@ -330,6 +416,7 @@ class PrintServices
       'shift_payment_method_summary' => true,
       'shift_staff_payment_summary' => true,
       'shift_cash_flow_summary' => true,
+      'shift_item_by_category_summary' => true,
     ]);
   }
 
@@ -1112,6 +1199,10 @@ class PrintServices
       $print->setEmphasis(true);
       $print->text(strtoupper($data_order->status) . "\n");
       $print->setEmphasis(false);
+      if ($data_order->status === "paid") {
+        $print->text("Queue       : " . $data_order->order_queue . "\n");
+      }
+
       $print->text(self::separator("-", $charPerLine));
       $displaySubtotal = 0;
       foreach ($data_order_detail as $itemmenu) {
@@ -1794,7 +1885,13 @@ class PrintServices
   // PrintEndDay: $request (2026-11-12, pengganti mr_setting.default_station) dipakai resolve
   // station_id lewat RetrieveReceiptStationIdFromSession() -- caller tetap WAJIB bisa manggil ini
   // tanpa $request (fallback null -> RetrieveReceiptStationIdFromSession null-safe -> no-op).
-  static function PrintEndDay($dayshift_ulid, $request = null)
+  // $stationIdOverride (2026-11-23, BARU) -- dipakai PrintJobController::endDay() (endpoint
+  // internal /internal/print/end-day, dipanggil non-blocking lewat PrintServices::dispatchPrintJob(),
+  // TIDAK punya objek Request HTTP user asli) -- caller yang MASIH punya $request asli
+  // (controller/service) resolve station_id duluan, kirim sebagai parameter body HTTP. Override
+  // menang kalau diisi, $request tetap jadi fallback (misal dipanggil langsung tanpa override,
+  // behavior lama APA ADANYA).
+  static function PrintEndDay($dayshift_ulid, $request = null, ?int $stationIdOverride = null)
   {
     $datareport = null;
 
@@ -1818,7 +1915,7 @@ class PrintServices
 
 
     $branch = BranchModel::first();
-    $station_id = self::RetrieveReceiptStationIdFromSession($request);
+    $station_id = $stationIdOverride ?? self::RetrieveReceiptStationIdFromSession($request);
     $data_station = StationModel::where('id', $station_id)->first();
     if (!$data_station) {
       return;
@@ -1939,13 +2036,25 @@ class PrintServices
     }
 
     if ($printReportSetting->endday_item_category_summary) {
-      // ITEM CATEGORY SUMMARY -- reuse sales_by_category yang UDAH ADA (dulu section ini namanya
-      // "NET SALES BY CATEGORY", di-comment-out -- sekarang diaktifkan lagi dengan format baru).
+      // CATEGORY SUMMARY (2026-11-23, rename dari "ITEM CATEGORY SUMMARY") -- reuse sales_by_category
+      // yang UDAH ADA (dulu section ini namanya "NET SALES BY CATEGORY", di-comment-out -- sekarang
+      // diaktifkan lagi dengan format baru). Kolom setting (endday_item_category_summary) TETAP NAMA
+      // LAMA -- cuma teks yang tercetak yang diganti, bukan kolom DB (hindari migration).
       $itemCategoryRows = [];
       foreach ($datareport['sales_by_category'] as $item) {
         $itemCategoryRows[] = ["label" => $item->category_name, "qty" => $item->qty, "amount" => $item->grand_total];
       }
-      self::printBreakdownSection($print, "ITEM CATEGORY SUMMARY", $itemCategoryRows, "Total Item Category", $charPerLine);
+      self::printBreakdownSection($print, "CATEGORY SUMMARY", $itemCategoryRows, "Total Category", $charPerLine);
+    }
+
+    // ITEM BY CATEGORY SUMMARY (2026-11-23, BARU) -- breakdown NESTED kategori->item, BEDA dari
+    // CATEGORY SUMMARY di atas (itu FLAT per kategori doang).
+    if ($printReportSetting->endday_item_by_category_summary) {
+      $categoryItemRows = [];
+      foreach ($datareport['sales_by_category_item'] as $item) {
+        $categoryItemRows[] = ["category_name" => $item->category_name, "menu_name" => $item->menu_name, "qty" => $item->qty, "amount" => $item->grand_total];
+      }
+      self::printCategoryItemBreakdownSection($print, $categoryItemRows, $charPerLine);
     }
 
     if ($printReportSetting->endday_staff_sales_summary) {
@@ -2025,7 +2134,10 @@ class PrintServices
 
   // PrintReportDaysift sama kayak PrintEndDay, bedanya nampilin 3 cashier sekaligus:
   // yang start day, yang end day, dan yang lagi nge-print laporan ini sekarang.
-  static function PrintReportDaysift($dayshift_ulid, $request = null)
+  // $stationIdOverride/$cashierPrintFullnameOverride (2026-11-23, BARU) -- dipakai
+  // PrintJobController::reportDaysift() (endpoint internal, dispatchPrintJob(), gak punya
+  // $request HTTP user asli), sama pola override di PrintEndDay().
+  static function PrintReportDaysift($dayshift_ulid, $request = null, ?int $stationIdOverride = null, ?string $cashierPrintFullnameOverride = null)
   {
     $datareport = null;
 
@@ -2043,10 +2155,10 @@ class PrintServices
       ->where('id', $datareport['dayshift']->dayout_user_id)
       ->value('fullname') ?? '';
 
-    $cashier_print_fullname = self::getLoggedInUserFullname($request) ?? '';
+    $cashier_print_fullname = $cashierPrintFullnameOverride ?? self::getLoggedInUserFullname($request) ?? '';
 
     $branch = BranchModel::first();
-    $station_id = self::RetrieveReceiptStationIdFromSession($request);
+    $station_id = $stationIdOverride ?? self::RetrieveReceiptStationIdFromSession($request);
     $data_station = StationModel::where('id', $station_id)->first();
     if (!$data_station) {
       return;
@@ -2141,7 +2253,17 @@ class PrintServices
       foreach ($datareport['sales_by_category'] as $item) {
         $itemCategoryRows[] = ["label" => $item->category_name, "qty" => $item->qty, "amount" => $item->grand_total];
       }
-      self::printBreakdownSection($print, "ITEM CATEGORY SUMMARY", $itemCategoryRows, "Total Item Category", $charPerLine);
+      self::printBreakdownSection($print, "CATEGORY SUMMARY", $itemCategoryRows, "Total Category", $charPerLine);
+    }
+
+    // ITEM BY CATEGORY SUMMARY (2026-11-23, BARU) -- breakdown NESTED kategori->item, BEDA dari
+    // CATEGORY SUMMARY di atas (itu FLAT per kategori doang).
+    if ($printReportSetting->endday_item_by_category_summary) {
+      $categoryItemRows = [];
+      foreach ($datareport['sales_by_category_item'] as $item) {
+        $categoryItemRows[] = ["category_name" => $item->category_name, "menu_name" => $item->menu_name, "qty" => $item->qty, "amount" => $item->grand_total];
+      }
+      self::printCategoryItemBreakdownSection($print, $categoryItemRows, $charPerLine);
     }
 
     if ($printReportSetting->endday_staff_sales_summary) {
@@ -2212,7 +2334,10 @@ class PrintServices
     $print->close();
   }
 
-  static function PrintCurrentShift($dayshift_ulid, $request = null)
+  // $stationIdOverride/$userFullnameOverride (2026-11-23, BARU) -- dipakai
+  // PrintJobController::currentShift() (endpoint internal, dispatchPrintJob(), gak punya
+  // $request HTTP user asli), sama pola override di PrintEndDay().
+  static function PrintCurrentShift($dayshift_ulid, $request = null, ?int $stationIdOverride = null, ?string $userFullnameOverride = null)
   {
     $datareport = null;
     try {
@@ -2226,7 +2351,7 @@ class PrintServices
 
 
     $branch = BranchModel::first();
-    $station_id = self::RetrieveReceiptStationIdFromSession($request);
+    $station_id = $stationIdOverride ?? self::RetrieveReceiptStationIdFromSession($request);
     $data_station = StationModel::where('id', $station_id)->first();
     if (!$data_station) {
       return;
@@ -2252,7 +2377,7 @@ class PrintServices
     // Cashier di struk shift report ini seharusnya yang lagi login/nge-print sekarang,
     // bukan histori ganti shift terakhir (yang bisa kosong kalau belum ada baris
     // tr_dayshift_detail, atau nunjuk ke orang lain dari yang minta cetak).
-    $user_fullname = self::getLoggedInUserFullname($request);
+    $user_fullname = $userFullnameOverride ?? self::getLoggedInUserFullname($request);
     if (!$user_fullname) {
       // fallback ke user shift terakhir kalau token gak ada/invalid, biar tetap ada isinya
       try {
@@ -2358,7 +2483,17 @@ class PrintServices
       foreach ($datareport['sales_by_category'] as $item) {
         $itemCategoryRows[] = ["label" => $item->category_name, "qty" => $item->qty, "amount" => $item->grand_total];
       }
-      self::printBreakdownSection($print, "ITEM CATEGORY SUMMARY", $itemCategoryRows, "Total Item Category", $charPerLine);
+      self::printBreakdownSection($print, "CATEGORY SUMMARY", $itemCategoryRows, "Total Category", $charPerLine);
+    }
+
+    // ITEM BY CATEGORY SUMMARY (2026-11-23, BARU) -- breakdown NESTED kategori->item, BEDA dari
+    // CATEGORY SUMMARY di atas (itu FLAT per kategori doang).
+    if ($printReportSetting->shift_item_by_category_summary) {
+      $categoryItemRows = [];
+      foreach ($datareport['sales_by_category_item'] as $item) {
+        $categoryItemRows[] = ["category_name" => $item->category_name, "menu_name" => $item->menu_name, "qty" => $item->qty, "amount" => $item->grand_total];
+      }
+      self::printCategoryItemBreakdownSection($print, $categoryItemRows, $charPerLine);
     }
 
     if ($printReportSetting->shift_staff_sales_summary) {
@@ -2435,7 +2570,10 @@ class PrintServices
     $print->close();
   }
 
-  static function PrintPerShiftv2($dayshift_detail_ulid, $request = null)
+  // $stationIdOverride (2026-11-23, BARU) -- dipakai PrintJobController::perShiftV2() (endpoint
+  // internal, dispatchPrintJob(), gak punya $request HTTP user asli), sama pola override di
+  // PrintEndDay().
+  static function PrintPerShiftv2($dayshift_detail_ulid, $request = null, ?int $stationIdOverride = null)
   {
     $datareport = null;
     $shiftcurent = DayShiftDetailModel::where("ulid", $dayshift_detail_ulid)->first();
@@ -2451,7 +2589,7 @@ class PrintServices
 
 
     $branch = BranchModel::first();
-    $station_id = self::RetrieveReceiptStationIdFromSession($request);
+    $station_id = $stationIdOverride ?? self::RetrieveReceiptStationIdFromSession($request);
     $data_station = StationModel::where('id', $station_id)->first();
     if (!$data_station) {
       return;
@@ -2597,7 +2735,17 @@ class PrintServices
       foreach ($datareport['sales_by_category'] as $item) {
         $itemCategoryRows[] = ["label" => $item->category_name, "qty" => $item->qty, "amount" => $item->grand_total];
       }
-      self::printBreakdownSection($print, "ITEM CATEGORY SUMMARY", $itemCategoryRows, "Total Item Category", $charPerLine);
+      self::printBreakdownSection($print, "CATEGORY SUMMARY", $itemCategoryRows, "Total Category", $charPerLine);
+    }
+
+    // ITEM BY CATEGORY SUMMARY (2026-11-23, BARU) -- breakdown NESTED kategori->item, BEDA dari
+    // CATEGORY SUMMARY di atas (itu FLAT per kategori doang).
+    if ($printReportSetting->shift_item_by_category_summary) {
+      $categoryItemRows = [];
+      foreach ($datareport['sales_by_category_item'] as $item) {
+        $categoryItemRows[] = ["category_name" => $item->category_name, "menu_name" => $item->menu_name, "qty" => $item->qty, "amount" => $item->grand_total];
+      }
+      self::printCategoryItemBreakdownSection($print, $categoryItemRows, $charPerLine);
     }
 
     if ($printReportSetting->shift_staff_sales_summary) {

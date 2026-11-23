@@ -300,7 +300,17 @@ class DayShiftServices
       throw $e;
     }
 
-    PrintServices::PrintEndDay($dayshift_ulid, $request);
+    // Non-blocking (2026-11-23) -- station_id di-resolve DI SINI (masih punya $request HTTP asli)
+    // SEBELUM spawn command, lihat catatan lengkap di OrderServices::SaveOrder().
+    //
+    // REROUTE ke 'report-dayshift' (BUKAN 'end-day' lagi, 2026-11-23, REFACTOR) -- PrintEndDay()
+    // (1-baris-kasir) gak dipakai lagi di jalur manapun, digantikan PrintReportDaysift()
+    // (3-baris-kasir: Start/End/Print) di SINI (End Day otomatis) DAN di
+    // DayShiftController::printEndayReport() (manual, "On Running", guard khusus dayshift aktif --
+    // TIDAK relevan di titik INI karena dayshift di sini SUDAH ditutup duluan di atas).
+    $station_id = PrintServices::RetrieveReceiptStationIdFromSession($request);
+    $cashier_print_fullname = PrintServices::getLoggedInUserFullname($request);
+    PrintServices::dispatchPrintJob($request, 'report-dayshift', ['dayshift_ulid' => $dayshift_ulid, 'station_id' => $station_id ?? '', 'cashier_print_fullname' => $cashier_print_fullname ?? '']);
 
     // 3. PUSH -- try/catch LOKAL, BUKAN nge-throw ke luar (beda dari sebelumnya). Push gagal gak
     // boleh bikin EndDay keliatan gagal ke frontend -- SAVE di atas udah aman kesimpen.
@@ -1760,31 +1770,46 @@ class DayShiftServices
 
       // if ($pakai_header) {
       $starttime = $data_dayshift->dayin_time;
+      // endtime NULL kalau dayshift masih AKTIF (belum di-End Day) -- BUKAN lagi error (2026-11-23,
+      // guard "end day has not been done yet!" DIHAPUS). Dayshift aktif = scope SAMPAI SEKARANG
+      // (tanpa batas atas), sama pola GetReport() lama (lihat percabangan query di bawah) -- fungsi
+      // ini sekarang bisa dipanggil buat dayshift aktif MAUPUN sudah ditutup.
       $endtime = $data_dayshift->dayout_time;
-      if (!$endtime) {
-        throw new \Exception('end day has not been done yet!');
-      }
       // } else {
       //   $starttime = $data_dayshift_detail->shift_time;
       // }
 
-      // ambil data 
-      //////bawahnya ini sama dengan report biasa 
+      // ambil data
+      //////bawahnya ini sama dengan report biasa
 
-      // kueri ambil data start time sampai sekarang 
+      // kueri ambil data start time sampai sekarang
 
-      $data_order_list = DB::select("
-        SELECT
-        tro.*,
-        COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
-        FROM
-        tr_order tro " .
+      if ($endtime) {
+        $data_order_list = DB::select("
+          SELECT
+          tro.*,
+          COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
+          FROM
+          tr_order tro " .
           self::NettSalesJoinSql() . "
-        WHERE
-        tro.order_in >= ? AND
-        tro.order_out <= ?
+          WHERE
+          tro.order_in >= ? AND
+          tro.order_out <= ?
 
-        ", [$starttime, $endtime]);
+          ", [$starttime, $endtime]);
+      } else {
+        $data_order_list = DB::select("
+          SELECT
+          tro.*,
+          COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
+          FROM
+          tr_order tro " .
+          self::NettSalesJoinSql() . "
+          WHERE
+          tro.order_in >= ?
+
+          ", [$starttime]);
+      }
 
       // if (count($data_order_list) == 0) {
       //   throw new \Exception('tidak ada transaksi !');
@@ -1952,6 +1977,7 @@ class DayShiftServices
 
       $sales_by_menu = [];
       $sales_by_category = [];
+      $sales_by_category_item = [];
       if (count($list_ordernumber->paid) > 0) {
 
         $sales_by_menu = DB::select("
@@ -2053,6 +2079,65 @@ class DayShiftServices
 				JOIN mr_category mcc on mcc.id = gabungan.category_id
       GROUP BY
         category_name");
+
+        // sales_by_category_item (2026-11-23, BARU) -- breakdown NESTED kategori->item (BEDA
+        // dari sales_by_category di atas yang FLAT per kategori doang, item di dalamnya
+        // di-collapse habis oleh GROUP BY category_name). Query SAMA PERSIS, cuma GROUP BY
+        // ditambah menu_name + SELECT menu_name di level luar -- gabungan.menu_name udah ada
+        // dari dulu di subquery, cuma belum pernah di-expose. Assembly nested (kategori jadi
+        // header, item jadi sub-baris) dilakukan di PrintServices::printCategoryItemBreakdownSection(),
+        // bukan di sini -- hasil query ini tetap FLAT, sama filosofi sales_by_staff_payment.
+        $sales_by_category_item = DB::select("SELECT
+				mcc.name as category_name,
+        gabungan.menu_name,
+        sum( gabungan.qty ) as qty,
+        sum( gabungan.sub_total ) as sub_total,
+        sum( gabungan.discount_amount ) as discount_amount,
+        sum( gabungan.vat_amount ) as vat_amount,
+        sum( gabungan.pb1_amount ) as pb1_amount,
+        sum( gabungan.grand_total )  as grand_total
+      FROM
+        (
+        SELECT
+					mi.category_id as category_id,
+          mi.NAME AS menu_name,
+          tod.qty,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
+        IF
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+        IF
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+          tod.total AS grand_total
+        FROM
+          tr_order_detail tod
+          JOIN mr_item_conv mic ON mic.id = tod.menu_id
+          JOIN mr_item mi ON mi.id = mic.item_id
+        WHERE
+          tod.order_number IN (" . $order_number_concat . ")
+          AND tod.cancel_at IS NULL UNION ALL
+        SELECT
+          mi.category_id as category_id,
+					mi.NAME AS menu_name,
+          tod.qty,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
+        IF
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+        IF
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+          tod.total AS grand_total
+        FROM
+          tr_order_detail_package tod
+          JOIN mr_item_conv mic ON mic.id = tod.menu_id
+          JOIN mr_item mi ON mi.id = mic.item_id
+        WHERE
+          tod.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
+        ) AS gabungan
+
+				JOIN mr_category mcc on mcc.id = gabungan.category_id
+      GROUP BY
+        category_name, menu_name");
       }
 
 
@@ -2178,6 +2263,7 @@ class DayShiftServices
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
         "sales_by_category" => $sales_by_category,
+        "sales_by_category_item" => $sales_by_category_item,
         "sales_by_table" => $sales_by_table_section,
         "sales_by_visit_purpose" => $sales_by_visit_purpose,
         "sales_by_order_source" => $sales_by_order_source,
@@ -2388,6 +2474,7 @@ class DayShiftServices
 
       $sales_by_menu = [];
       $sales_by_category = [];
+      $sales_by_category_item = [];
       if (count($list_ordernumber->paid) > 0) {
 
         $sales_by_menu = DB::select("
@@ -2489,6 +2576,65 @@ class DayShiftServices
 				JOIN mr_category mcc on mcc.id = gabungan.category_id
       GROUP BY
         category_name");
+
+        // sales_by_category_item (2026-11-23, BARU) -- breakdown NESTED kategori->item (BEDA
+        // dari sales_by_category di atas yang FLAT per kategori doang, item di dalamnya
+        // di-collapse habis oleh GROUP BY category_name). Query SAMA PERSIS, cuma GROUP BY
+        // ditambah menu_name + SELECT menu_name di level luar -- gabungan.menu_name udah ada
+        // dari dulu di subquery, cuma belum pernah di-expose. Assembly nested (kategori jadi
+        // header, item jadi sub-baris) dilakukan di PrintServices::printCategoryItemBreakdownSection(),
+        // bukan di sini -- hasil query ini tetap FLAT, sama filosofi sales_by_staff_payment.
+        $sales_by_category_item = DB::select("SELECT
+				mcc.name as category_name,
+        gabungan.menu_name,
+        sum( gabungan.qty ) as qty,
+        sum( gabungan.sub_total ) as sub_total,
+        sum( gabungan.discount_amount ) as discount_amount,
+        sum( gabungan.vat_amount ) as vat_amount,
+        sum( gabungan.pb1_amount ) as pb1_amount,
+        sum( gabungan.grand_total )  as grand_total
+      FROM
+        (
+        SELECT
+					mi.category_id as category_id,
+          mi.NAME AS menu_name,
+          tod.qty,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
+        IF
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+        IF
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+          tod.total AS grand_total
+        FROM
+          tr_order_detail tod
+          JOIN mr_item_conv mic ON mic.id = tod.menu_id
+          JOIN mr_item mi ON mi.id = mic.item_id
+        WHERE
+          tod.order_number IN (" . $order_number_concat . ")
+          AND tod.cancel_at IS NULL UNION ALL
+        SELECT
+          mi.category_id as category_id,
+					mi.NAME AS menu_name,
+          tod.qty,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
+        IF
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+        IF
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+          tod.total AS grand_total
+        FROM
+          tr_order_detail_package tod
+          JOIN mr_item_conv mic ON mic.id = tod.menu_id
+          JOIN mr_item mi ON mi.id = mic.item_id
+        WHERE
+          tod.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
+        ) AS gabungan
+
+				JOIN mr_category mcc on mcc.id = gabungan.category_id
+      GROUP BY
+        category_name, menu_name");
       }
 
 
@@ -2594,6 +2740,7 @@ class DayShiftServices
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
         "sales_by_category" => $sales_by_category,
+        "sales_by_category_item" => $sales_by_category_item,
         "sales_by_table" => $sales_by_table_section,
         "sales_by_visit_purpose" => $sales_by_visit_purpose,
         "sales_by_order_source" => $sales_by_order_source,
@@ -2820,6 +2967,7 @@ class DayShiftServices
 
       $sales_by_menu = [];
       $sales_by_category = [];
+      $sales_by_category_item = [];
       if (count($list_ordernumber->paid) > 0) {
 
         $sales_by_menu = DB::select("
@@ -2921,6 +3069,65 @@ class DayShiftServices
 				JOIN mr_category mcc on mcc.id = gabungan.category_id
       GROUP BY
         category_name");
+
+        // sales_by_category_item (2026-11-23, BARU) -- breakdown NESTED kategori->item (BEDA
+        // dari sales_by_category di atas yang FLAT per kategori doang, item di dalamnya
+        // di-collapse habis oleh GROUP BY category_name). Query SAMA PERSIS, cuma GROUP BY
+        // ditambah menu_name + SELECT menu_name di level luar -- gabungan.menu_name udah ada
+        // dari dulu di subquery, cuma belum pernah di-expose. Assembly nested (kategori jadi
+        // header, item jadi sub-baris) dilakukan di PrintServices::printCategoryItemBreakdownSection(),
+        // bukan di sini -- hasil query ini tetap FLAT, sama filosofi sales_by_staff_payment.
+        $sales_by_category_item = DB::select("SELECT
+				mcc.name as category_name,
+        gabungan.menu_name,
+        sum( gabungan.qty ) as qty,
+        sum( gabungan.sub_total ) as sub_total,
+        sum( gabungan.discount_amount ) as discount_amount,
+        sum( gabungan.vat_amount ) as vat_amount,
+        sum( gabungan.pb1_amount ) as pb1_amount,
+        sum( gabungan.grand_total )  as grand_total
+      FROM
+        (
+        SELECT
+					mi.category_id as category_id,
+          mi.NAME AS menu_name,
+          tod.qty,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
+        IF
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+        IF
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+          tod.total AS grand_total
+        FROM
+          tr_order_detail tod
+          JOIN mr_item_conv mic ON mic.id = tod.menu_id
+          JOIN mr_item mi ON mi.id = mic.item_id
+        WHERE
+          tod.order_number IN (" . $order_number_concat . ")
+          AND tod.cancel_at IS NULL UNION ALL
+        SELECT
+          mi.category_id as category_id,
+					mi.NAME AS menu_name,
+          tod.qty,
+          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+          ( tod.discount_amount * tod.qty ) AS discount_amount,
+        IF
+          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+        IF
+          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+          tod.total AS grand_total
+        FROM
+          tr_order_detail_package tod
+          JOIN mr_item_conv mic ON mic.id = tod.menu_id
+          JOIN mr_item mi ON mi.id = mic.item_id
+        WHERE
+          tod.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
+        ) AS gabungan
+
+				JOIN mr_category mcc on mcc.id = gabungan.category_id
+      GROUP BY
+        category_name, menu_name");
       }
 
 
@@ -3026,6 +3233,7 @@ class DayShiftServices
         "payment_recapitulation" => $payment_detail_list,
         "sales_by_menu" => $sales_by_menu,
         "sales_by_category" => $sales_by_category,
+        "sales_by_category_item" => $sales_by_category_item,
         "sales_by_table" => $sales_by_table_section,
         "sales_by_visit_purpose" => $sales_by_visit_purpose,
         "sales_by_order_source" => $sales_by_order_source,

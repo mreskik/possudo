@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DaySiftModel;
 use App\Models\DayShiftDetailModel;
 use App\Models\TrOrderModel;
 use App\Services\DayShiftServices;
@@ -213,7 +214,10 @@ class DayShiftController extends Controller
     {
         try {
             $dayshift_detail_ulid = $request->dayshift_detail_ulid;
-            PrintServices::PrintPerShiftv2($dayshift_detail_ulid, $request);
+            // Non-blocking (2026-11-23) -- station_id di-resolve DI SINI (masih punya $request
+            // HTTP asli) SEBELUM spawn command, lihat catatan lengkap di OrderServices::SaveOrder().
+            $station_id = PrintServices::RetrieveReceiptStationIdFromSession($request);
+            PrintServices::dispatchPrintJob($request, 'per-shift-v2', ['dayshift_detail_ulid' => $dayshift_detail_ulid, 'station_id' => $station_id ?? '']);
             return response()->json([
                 "code" => 0,
                 "message" => "ashiappp"
@@ -230,7 +234,10 @@ class DayShiftController extends Controller
     {
         try {
             $dayshift_ulid = $request->dayshift_ulid;
-            PrintServices::PrintCurrentShift($dayshift_ulid, $request);
+            // Non-blocking (2026-11-23) -- lihat catatan di printReportByShift() di atas.
+            $station_id = PrintServices::RetrieveReceiptStationIdFromSession($request);
+            $user_fullname = PrintServices::getLoggedInUserFullname($request);
+            PrintServices::dispatchPrintJob($request, 'current-shift', ['dayshift_ulid' => $dayshift_ulid, 'station_id' => $station_id ?? '', 'user_fullname' => $user_fullname ?? '']);
             return response()->json([
                 "code" => 0,
                 "message" => "success print current shift report"
@@ -243,11 +250,34 @@ class DayShiftController extends Controller
         }
     }
 
+    // printEndayReport "(On Running)" (2026-11-23, REFACTOR) -- endpoint ini SEKARANG KHUSUS
+    // dayshift yang MASIH BERJALAN (dayout_time NULL), DITOLAK kalau dayshift udah di-End Day --
+    // beda dari printReportDaysift() (endpoint lain, TETAP bisa buat dayshift mana pun, aktif
+    // atau udah tutup, TANPA guard). Secara internal manggil PrintReportDaysift() (BUKAN
+    // PrintEndDay() lagi) -- struk 3-baris-kasir (Start/End/Print), bukan 1-baris.
     function printEndayReport(Request $request)
     {
         try {
             $dayshift_ulid = $request->dayshift_ulid;
-            PrintServices::PrintEndDay($dayshift_ulid, $request);
+
+            $current_dayshift = DaySiftModel::where('ulid', $dayshift_ulid)->first();
+            if (!$current_dayshift) {
+                return response()->json([
+                    "code" => 100,
+                    "message" => "dayshift not found!"
+                ]);
+            }
+            if ($current_dayshift->dayout_time !== null) {
+                return response()->json([
+                    "code" => 100,
+                    "message" => "dayshift sudah di-End Day, gunakan print-report-dayshift untuk cetak ulang!"
+                ]);
+            }
+
+            // Non-blocking (2026-11-23) -- lihat catatan di printReportByShift() di atas.
+            $station_id = PrintServices::RetrieveReceiptStationIdFromSession($request);
+            $cashier_print_fullname = PrintServices::getLoggedInUserFullname($request);
+            PrintServices::dispatchPrintJob($request, 'report-dayshift', ['dayshift_ulid' => $dayshift_ulid, 'station_id' => $station_id ?? '', 'cashier_print_fullname' => $cashier_print_fullname ?? '']);
             return response()->json([
                 "code" => 0,
                 "message" => "success print endday report"
@@ -264,7 +294,10 @@ class DayShiftController extends Controller
     {
         try {
             $dayshift_ulid = $request->dayshift_ulid;
-            PrintServices::PrintReportDaysift($dayshift_ulid, $request);
+            // Non-blocking (2026-11-23) -- lihat catatan di printReportByShift() di atas.
+            $station_id = PrintServices::RetrieveReceiptStationIdFromSession($request);
+            $cashier_print_fullname = PrintServices::getLoggedInUserFullname($request);
+            PrintServices::dispatchPrintJob($request, 'report-dayshift', ['dayshift_ulid' => $dayshift_ulid, 'station_id' => $station_id ?? '', 'cashier_print_fullname' => $cashier_print_fullname ?? '']);
             return response()->json([
                 "code" => 0,
                 "message" => "success print report dayshift"

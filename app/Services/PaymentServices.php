@@ -181,7 +181,8 @@ class PaymentServices
         $station_id = $dataorder_current->order_source === 'kiosk'
           ? ($terminal->receipt_station_id ?? null)
           : PrintServices::RetrieveReceiptStationIdFromSession($datajson);
-        PrintServices::PrintPayment($datajson->order_number, $station_id);
+        // Non-blocking (2026-11-23) -- lihat catatan lengkap di OrderServices::SaveOrder().
+        PrintServices::dispatchPrintJob($datajson, 'payment', ['order_number' => $datajson->order_number, 'station_id' => $station_id ?? '']);
       }
 
       // order Kiosk sengaja gak nge-print kitchen pas SaveOrder (nunggu kepastian bayar dulu,
@@ -196,9 +197,10 @@ class PaymentServices
         $dataorder_current->order_source === 'kiosk'
         || ($tablesection_current_payment && $tablesection_current_payment->print_checker_on === 'save_payment')
       ) {
-        PrintServices::PrintTableChecker2($dataorder_current->table_section_id, $datajson->order_number);
-        PrintServices::PrintMainChecker2($dataorder_current->table_section_id, $datajson->order_number);
-        PrintServices::PrintPriparationStation($dataorder_current->table_section_id, $datajson->order_number);
+        // Non-blocking (2026-11-23) -- lihat catatan lengkap di OrderServices::SaveOrder().
+        PrintServices::dispatchPrintJob($datajson, 'table-checker2', ['order_number' => $datajson->order_number, 'table_section_id' => $dataorder_current->table_section_id]);
+        PrintServices::dispatchPrintJob($datajson, 'main-checker2', ['order_number' => $datajson->order_number, 'table_section_id' => $dataorder_current->table_section_id]);
+        PrintServices::dispatchPrintJob($datajson, 'priparation-station', ['order_number' => $datajson->order_number, 'table_section_id' => $dataorder_current->table_section_id]);
 
         TrOrderDetailModel::where('order_number', $datajson->order_number)->update([
           "done_print" => true,

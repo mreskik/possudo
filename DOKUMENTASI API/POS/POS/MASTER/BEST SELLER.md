@@ -1,6 +1,6 @@
 # Best Seller
 
-Endpoint standalone buat liat menu paling laku dalam rentang tanggal tertentu — **BUKAN** bagian dari sistem Report (dayshift report), gak ada hubungan sama `DayShiftServices`/`REPORT AND HISTORY.md`. Masuk grup `master` (`routes/api.php`) sama kayak `menu-list`/`category-list`/dll, tapi service/controller-nya file terpisah (`BestSellerServices`/`BestSellerController`), bukan nambah ke `MasterController`/`MenuServices`. Ada 3 versi: global, by visit purpose, by table section.
+Endpoint standalone buat liat menu paling laku dalam rentang tanggal tertentu — **BUKAN** bagian dari sistem Report (dayshift report), gak ada hubungan sama `DayShiftServices`/`LIST AND DETAIL.md`. Masuk grup `master` (`routes/api.php`) sama kayak `menu-list`/`category-list`/dll, tapi service/controller-nya file terpisah (`BestSellerServices`/`BestSellerController`), bukan nambah ke `MasterController`/`MenuServices`. Ada 3 versi: global, by visit purpose, by table section.
 
 **Yang dihitung**: cuma item utama dari `tr_order_detail` — sub-item di dalam package (`tr_order_detail_package`) **TIDAK** diikutkan (beda dari `sales_by_menu` di Report V2 yang menggabungkan keduanya buat tujuan laporan omzet). Status order yang dihitung cuma `paid` (transaksi closed), bukan `pending`/`hold`. Item yang dibatalkan (`tod.cancel_at IS NOT NULL`) tidak dihitung.
 

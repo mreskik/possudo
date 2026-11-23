@@ -126,13 +126,13 @@ Route `/dashboard/day-start-end/:id?` — `src/modules/dashboard/daystart_end/Da
 
 | Endpoint | Dok |
 |---|---|
-| `GET /dayshift/report/{id}` (v1), `GET /dayshift/report-v2/{id}` | [`DAYSHIFT/REPORT AND HISTORY.md`](DAYSHIFT/REPORT%20AND%20HISTORY.md) — dipanggil paralel saat buka halaman |
+| `GET /dayshift/report/{id}` (v1), `GET /dayshift/report-v2/{id}` | [`DAYSHIFT/LIST AND DETAIL.md`](DAYSHIFT/LIST%20AND%20DETAIL.md) — dipanggil paralel saat buka halaman |
 | `GET /dayshift/end-shift/{id}` | [`DAYSHIFT/START END DAY.md`](DAYSHIFT/START%20END%20DAY.md) — tombol End Shift, lalu refresh report v1+v2 |
-| `GET /dayshift/print-report-shift/{id}`, `GET /dayshift/print-current-shift-report/{ulid}`, `GET /dayshift/print-report-dayshift/{ulid}` | [`DAYSHIFT/PRINT AND DETAIL LIST.md`](DAYSHIFT/PRINT%20AND%20DETAIL%20LIST.md) |
-| `GET /dayshift/pending-order` | [`DAYSHIFT/REPORT AND HISTORY.md`](DAYSHIFT/REPORT%20AND%20HISTORY.md) — dicek sebelum dialog End Day dibuka |
+| `GET /dayshift/print-report-shift/{id}`, `GET /dayshift/print-current-shift-report/{ulid}`, `GET /dayshift/print-report-dayshift/{ulid}` | [`DAYSHIFT/PRINT.md`](DAYSHIFT/PRINT.md) |
+| `GET /dayshift/pending-order` | [`DAYSHIFT/LIST AND DETAIL.md`](DAYSHIFT/LIST%20AND%20DETAIL.md) — dicek sebelum dialog End Day dibuka |
 | `POST /dayshift/end-day` | [`DAYSHIFT/START END DAY.md`](DAYSHIFT/START%20END%20DAY.md) — timeout 60 detik, sukses → `globalstore.loadData()` + redirect `/dashboard` |
 
-**Catatan**: `GET /dayshift/print-report/{id}` (endpoint fungsional-dead, lihat [`DAYSHIFT/PRINT AND DETAIL LIST.md`](DAYSHIFT/PRINT%20AND%20DETAIL%20LIST.md)) tidak terpanggil dari template halaman ini — fungsi composable ada tapi tidak dipakai, konsisten dengan status dead-nya.
+**Catatan**: `GET /dayshift/print-report/{id}` (endpoint fungsional-dead, lihat [`DAYSHIFT/PRINT.md`](DAYSHIFT/PRINT.md)) tidak terpanggil dari template halaman ini — fungsi composable ada tapi tidak dipakai, konsisten dengan status dead-nya.
 
 ## Shift Log
 
@@ -140,7 +140,7 @@ Route `/dashboard/shift-log` — `src/modules/dashboard/shiftlog/ShiftLogPage.vu
 
 | Endpoint | Dok |
 |---|---|
-| `GET /dayshift/dayshift-list` | [`DAYSHIFT/REPORT AND HISTORY.md`](DAYSHIFT/REPORT%20AND%20HISTORY.md) — satu-satunya call; klik row → navigasi `day-start-end/:id` |
+| `GET /dayshift/dayshift-list` | [`DAYSHIFT/LIST AND DETAIL.md`](DAYSHIFT/LIST%20AND%20DETAIL.md) — satu-satunya call; klik row → navigasi `day-start-end/:id` |
 
 ## Setting
 
@@ -178,7 +178,7 @@ Ketiganya bukan bagian dari alur kasir harian — hanya dipakai sekali saat setu
 ## Catatan migrasi tambahan
 
 - Endpoint `/master/notes-menu/:item_conv_id` yang mungkin masih disebut di komentar kode lama **sudah dihapus** (2026-09-24) — `notesMenu` sekarang dibawa langsung dari payload `GET /master/menu-list`, bukan endpoint terpisah.
-- `GET /dayshift/print-report/{id}` (lihat [`DAYSHIFT/PRINT AND DETAIL LIST.md`](DAYSHIFT/PRINT%20AND%20DETAIL%20LIST.md)) — dead baik di backend (commented-out) maupun di pemanggilan frontend (tidak ada di template). Jangan diport.
+- `GET /dayshift/print-report/{id}` (lihat [`DAYSHIFT/PRINT.md`](DAYSHIFT/PRINT.md)) — dead baik di backend (commented-out) maupun di pemanggilan frontend (tidak ada di template). Jangan diport.
 - Banyak data referensi (visit purpose, menu, tax) dibaca dari IndexedDB lokal hasil sync, bukan API call langsung — saat menghitung beban request API real per halaman, jangan ikut hitung baca IndexedDB sebagai traffic API.
 
 ## Status

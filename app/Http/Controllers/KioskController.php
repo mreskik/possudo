@@ -664,7 +664,7 @@ class KioskController extends Controller
             $data = (new MemberBalanceServices())->CheckTopupStatus($reference_number);
 
             if (($data['status'] ?? null) === 'paid') {
-                $this->TriggerTopupPrintIfNeeded($reference_number, $data);
+                $this->TriggerTopupPrintIfNeeded($reference_number, $data, $request);
             }
 
             return response()->json([
@@ -681,7 +681,7 @@ class KioskController extends Controller
 
     // TriggerTopupPrintIfNeeded: dedupe guard + trigger print struk top-up. Dipanggil dari
     // CheckTopupStatus() begitu status "paid" kedeteksi -- lihat komentar di sana.
-    private function TriggerTopupPrintIfNeeded(string $reference_number, array $data): void
+    private function TriggerTopupPrintIfNeeded(string $reference_number, array $data, Request $request): void
     {
         $alreadyPrinted = DB::table('tr_member_topup_print_log')
             ->where('reference_number', $reference_number)
@@ -719,7 +719,8 @@ class KioskController extends Controller
         // ini. Kalau terminal gak ketemu ATAU receipt_station_id-nya belum di-set -- PrintTopup()
         // bakal no-op sendiri (guard StationModel di dalamnya), gak error, cuma gak nyetak.
         $stationId = $terminal ? ($terminal->receipt_station_id ?? 0) : 0;
-        PrintServices::PrintTopup($reference_number, (int) $stationId);
+        // Non-blocking (2026-11-23) -- lihat catatan lengkap di OrderServices::SaveOrder().
+        PrintServices::dispatchPrintJob($request, 'topup', ['reference_number' => $reference_number, 'station_id' => (int) $stationId]);
 
         DB::table('tr_member_topup_print_log')
             ->where('reference_number', $reference_number)

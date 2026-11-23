@@ -180,7 +180,9 @@ class SalesServices
   public static function ReprintPayment(string $order_number, $request = null)
   {
     try {
-      PrintServices::PrintPayment($order_number, PrintServices::RetrieveReceiptStationIdFromSession($request));
+      // Non-blocking (2026-11-23) -- lihat catatan lengkap di OrderServices::SaveOrder().
+      $station_id = PrintServices::RetrieveReceiptStationIdFromSession($request);
+      PrintServices::dispatchPrintJob($request, 'payment', ['order_number' => $order_number, 'station_id' => $station_id ?? '']);
     } catch (\Throwable $e) {
     }
   }
@@ -209,7 +211,9 @@ class SalesServices
       ]);
       DB::commit();
 
-      PrintServices::PrintPayment($data_order->order_number, PrintServices::RetrieveReceiptStationIdFromSession($request));
+      // Non-blocking (2026-11-23) -- lihat catatan lengkap di OrderServices::SaveOrder().
+      $station_id = PrintServices::RetrieveReceiptStationIdFromSession($request);
+      PrintServices::dispatchPrintJob($request, 'payment', ['order_number' => $data_order->order_number, 'station_id' => $station_id ?? '']);
 
       return "void $order_number success";
     } catch (\Throwable $e) {

@@ -211,6 +211,10 @@ class SetupServices
           'endday_payment_method_summary' => $response->json('data.EnddayPaymentMethodSummary'),
           'endday_staff_payment_summary' => $response->json('data.EnddayStaffPaymentSummary'),
           'endday_cash_flow_summary' => $response->json('data.EnddayCashFlowSummary'),
+          // endday_item_by_category_summary/shift_item_by_category_summary (2026-11-23, BARU) --
+          // section BARU breakdown NESTED kategori->item, BEDA dari endday_item_category_summary/
+          // shift_item_category_summary di atas (itu FLAT per kategori doang).
+          'endday_item_by_category_summary' => $response->json('data.EnddayItemByCategorySummary'),
           'shift_sales_summary' => $response->json('data.ShiftSalesSummary'),
           'shift_sales_type_summary' => $response->json('data.ShiftSalesTypeSummary'),
           'shift_order_source_summary' => $response->json('data.ShiftOrderSourceSummary'),
@@ -219,6 +223,7 @@ class SetupServices
           'shift_payment_method_summary' => $response->json('data.ShiftPaymentMethodSummary'),
           'shift_staff_payment_summary' => $response->json('data.ShiftStaffPaymentSummary'),
           'shift_cash_flow_summary' => $response->json('data.ShiftCashFlowSummary'),
+          'shift_item_by_category_summary' => $response->json('data.ShiftItemByCategorySummary'),
         ]);
       }
 

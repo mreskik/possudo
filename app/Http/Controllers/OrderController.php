@@ -49,7 +49,9 @@ class OrderController extends Controller
 
             $message = OrderServices::CancelOrder($order_number, $notes);
 
-            PrintServices::PrintBill($order_number, PrintServices::RetrieveReceiptStationIdFromSession($request));
+            // Non-blocking (2026-11-23) -- lihat catatan lengkap di OrderServices::SaveOrder().
+            $station_id = PrintServices::RetrieveReceiptStationIdFromSession($request);
+            PrintServices::dispatchPrintJob($request, 'bill', ['order_number' => $order_number, 'station_id' => $station_id ?? '']);
             return response()->json([
                 'code' => 0,
                 'message' => $message
@@ -109,7 +111,9 @@ class OrderController extends Controller
         // if ($table_section == null || $order == null) {
         //     return 'error';
         // }
-        PrintServices::PrintBill($order, PrintServices::RetrieveReceiptStationIdFromSession($request));
+        // Non-blocking (2026-11-23) -- lihat catatan lengkap di OrderServices::SaveOrder().
+        $station_id = PrintServices::RetrieveReceiptStationIdFromSession($request);
+        PrintServices::dispatchPrintJob($request, 'bill', ['order_number' => $order, 'station_id' => $station_id ?? '']);
         return '';
     }
 

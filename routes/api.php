@@ -12,6 +12,7 @@ use App\Http\Controllers\OrderNotifController;
 use App\Http\Controllers\OrderlistController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PaymentGatewayController;
+use App\Http\Controllers\PrintJobController;
 use App\Http\Controllers\PushDataController;
 use App\Http\Controllers\SalesController;
 use App\Http\Controllers\SettingController;
@@ -22,6 +23,23 @@ use App\Http\Controllers\SystemController;
 use Illuminate\Support\Facades\Route;
 
 // Route::apiResource('order', OrderController::class);
+
+// internal/print: endpoint non-blocking buat operasi print fisik (lihat PrintJobController +
+// PrintServices::dispatchPrintJob()) -- HTTP self-call dari server ke dirinya sendiri, LOCALHOST
+// ONLY (middleware restrict.localhost), TANPA validasi session/token (disepakati eksplisit user,
+// 2026-11-23 -- gak pernah diakses dari luar server itu sendiri).
+Route::prefix('internal/print')->middleware('restrict.localhost')->group(function () {
+    Route::post('table-checker2', [PrintJobController::class, 'tableChecker2']);
+    Route::post('main-checker2', [PrintJobController::class, 'mainChecker2']);
+    Route::post('priparation-station', [PrintJobController::class, 'priparationStation']);
+    Route::post('payment', [PrintJobController::class, 'payment']);
+    Route::post('topup', [PrintJobController::class, 'topup']);
+    Route::post('bill', [PrintJobController::class, 'bill']);
+    Route::post('end-day', [PrintJobController::class, 'endDay']);
+    Route::post('report-dayshift', [PrintJobController::class, 'reportDaysift']);
+    Route::post('current-shift', [PrintJobController::class, 'currentShift']);
+    Route::post('per-shift-v2', [PrintJobController::class, 'perShiftV2']);
+});
 
 
 Route::prefix('kiosk')->group(function () {
