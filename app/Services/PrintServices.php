@@ -409,15 +409,36 @@ class PrintServices
   // Windows handle inheritance otomatis gak relevan, portable ke OS/web-server apa pun.
   //
   // $request YANG SEDANG DIPROSES WAJIB di-pass (bukan null) kalau caller-nya dari jalur HTTP --
-  // dipakai $request->getSchemeAndHttpHost() buat bangun URL self-call yang ikut host:port ASLI
-  // yang lagi dipakai (robust lintas instalasi, gak hardcode). Caller dari background job TANPA
-  // $request HTTP (MobileOrderPullServices) pass null -- fallback ke config('app.url').
+  // dipakai buat ngambil scheme + port ASLI yang lagi dipakai (robust lintas instalasi, gak hardcode).
+  // Caller dari background job TANPA $request HTTP (MobileOrderPullServices) pass null -- fallback
+  // ke config('app.url').
+  //
+  // PERBAIKAN 2026-11-24 -- self-call SELALU ke 127.0.0.1 (port dari request), BUKAN ke host yang
+  // dipakai browser. Sebelumnya URL dibangun dari $request->getSchemeAndHttpHost(): kalau POS dibuka
+  // lewat IP LAN (mis. http://192.168.0.138/...), self-call menuju IP LAN server sendiri, sehingga
+  // koneksinya datang dari IP LAN itu (BUKAN loopback) dan ditolak middleware restrict.localhost
+  // (403). Http::post tidak melempar exception untuk 403, jadi gagalnya SENYAP: endpoint publik tetap
+  // membalas "success" tapi tidak ada yang tercetak. Dibuka lewat localhost jalan normal.
+  // Header Host tetap diteruskan (virtual host berbasis nama tetap kena yang benar). Kalau scheme
+  // https, verifikasi sertifikat dimatikan KHUSUS untuk panggilan loopback ini (sertifikat tidak
+  // akan cocok dengan 127.0.0.1) -- aman karena tidak keluar dari mesin ini. Middleware
+  // restrict.localhost TIDAK diubah: komputer lain tetap tidak bisa memanggil /internal/print/*.
   public static function dispatchPrintJob(?Request $request, string $path, array $params): void
   {
-    $baseUrl = $request ? $request->getSchemeAndHttpHost() : rtrim(config('app.url'), '/');
+    $client = Http::timeout(1);
+    if ($request) {
+      $scheme = $request->getScheme();
+      $baseUrl = $scheme . '://127.0.0.1:' . $request->getPort();
+      $client = $client->withHeaders(['Host' => $request->getHttpHost()]);
+      if ($scheme === 'https') {
+        $client = $client->withoutVerifying();
+      }
+    } else {
+      $baseUrl = rtrim(config('app.url'), '/');
+    }
 
     try {
-      Http::timeout(1)->post("{$baseUrl}/api/internal/print/{$path}", $params);
+      $client->post("{$baseUrl}/api/internal/print/{$path}", $params);
     } catch (\Throwable $e) {
       // timeout/connection reset DIANGGAP NORMAL -- tujuannya emang cuma nunggu sebentar,
       // print beneran dikerjakan di worker lain terlepas exception ini.

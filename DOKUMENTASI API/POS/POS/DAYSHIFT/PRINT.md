@@ -107,6 +107,16 @@ Dipanggil dari berbagai tombol "Print"/"Reprint" di `DayStartEndPage.vue` — ka
 
 **Non-blocking (2026-11-23)**: SEMUA endpoint print di file ini (kecuali "Detail List" yang bukan print) sekarang **non-blocking** — `DayShiftController` tidak lagi panggil `PrintServices::PrintXxx()` langsung, melainkan `PrintServices::dispatchPrintJob()` (HTTP self-call ke endpoint internal `api/internal/print/*`, localhost-only, timeout 1 detik). Response HTTP balik cepat TANPA menunggu print fisik selesai — proses print sebenarnya jalan di request terpisah (`PrintJobController`, `ignore_user_abort(true)`), jadi tetap jalan sampai selesai walau request pemanggil sudah "pergi" karena timeout. Ini memperbaiki bug lama: printer network bermasalah (`NetworkPrintConnector::fsockopen`) yang dulu bisa nge-hang sampai 60 detik dan menahan response.
 
+**Akses & keamanan endpoint print (2026-11-24):**
+
+| Endpoint | Penjaga |
+|---|---|
+| `api/internal/print/*` (yang benar-benar mencetak; dipanggil `dispatchPrintJob()`) | middleware **`restrict.localhost`**: hanya IP koneksi `127.0.0.1` / `::1`, selain itu `403 Forbidden`. Tidak ada validasi token. Header proxy (`X-Forwarded-For` dst) **tidak** dipercaya, jadi tidak bisa dipalsukan dari komputer lain |
+| `dayshift/print-*`, `order/print-bill`, `sales/reprint/*`, `setting/test-print*` (endpoint publik pemicu cetak) | **tidak ada penjaga IP maupun token** di level rute; perangkat apa pun yang bisa menjangkau server bisa memicunya |
+
+**Self-call selalu ke loopback:** `dispatchPrintJob()` memanggil `api/internal/print/{path}` ke **`127.0.0.1`** (scheme dan port dari request, header `Host` asli diteruskan; jika `https`, verifikasi sertifikat dimatikan khusus untuk panggilan loopback ini). Sebelum 2026-11-24 URL dibangun dari host yang dipakai browser, sehingga kalau POS dibuka lewat **IP LAN atau nama host** (mis. `http://192.168.0.138/api/dayshift/print-report-dayshift/...`) panggilan ke diri sendiri datang dari IP LAN server (bukan loopback) dan **ditolak `restrict.localhost` (403) secara senyap** — endpoint publik tetap membalas `"success print report dayshift"` tetapi tidak ada yang tercetak. Dibuka lewat `localhost` selalu jalan. Perbaikan ini hanya mengubah alamat tujuan panggilan; **penjaga `restrict.localhost` tidak diubah**, jadi komputer lain tetap tidak bisa memanggil `/internal/print/*` langsung.
+
+Panggilan dari job latar belakang tanpa request HTTP (`MobileOrderPullServices`) tetap memakai `APP_URL` (`.env` dev: `http://localhost`); pastikan nilainya `localhost`/`127.0.0.1` di komputer POS.
 **Catatan migrasi**: `print-report` (dead, tidak melakukan apa-apa) sebaiknya **tidak** di-port sebagai fitur aktif di FE baru — cek dulu apakah memang masih dibutuhkan atau sudah digantikan sepenuhnya oleh endpoint print lain di file ini.
 
 ## Sumber
@@ -147,3 +157,5 @@ Diupdate 2026-11-24 (lanjutan 5): section **ITEM BY CATEGORY SUMMARY** —
 Diupdate 2026-11-24 (lanjutan 6): pemotongan nama otomatis (`fitLabel()`) diperluas ke semua section breakdown struk laporan (lihat catatan di atas). Dites: 100 baris pada printer 20/32/42/48 kolom dengan nama staf/metode/kategori sangat panjang tidak ada yang melebihi lebar; struk End Day penuh pada printer 32 kolom juga bersih. Printer fisik tidak dites.
 
 Diupdate 2026-11-24 (lanjutan 7): indentasi body di ITEM BY CATEGORY SUMMARY dibatalkan, diratakan lagi dengan head (permintaan owner). Pengurutan head di atas body, pemotongan nama otomatis (`fitLabel`), dan total tidak berubah. Dites ulang: lebar baris di printer 20/32/42/48 kolom tetap tidak ada yang melebihi lebar; struk dicetak ke listener TCP lokal (printer fisik tidak dites).
+
+Diupdate 2026-11-24 (lanjutan 8): **bug cetak senyap saat POS dibuka lewat IP LAN diperbaiki** (lihat "Akses & keamanan endpoint print"). Direproduksi end-to-end dengan data uji + printer tiruan (listener TCP) dan server uji: sebelum perbaikan, host `127.0.0.1` struk tercetak, host IP LAN **tidak ada struk** (padahal endpoint membalas success); sesudah perbaikan keduanya tercetak. Dites juga: URL self-call untuk IP LAN port 80/8080, nama host, `localhost`, `https`; akses langsung dari IP LAN ke `/internal/print/*` tetap 403 (juga dengan header `X-Forwarded-For`/`Host` palsu). Belum dites di Apache produksi dan printer fisik.
