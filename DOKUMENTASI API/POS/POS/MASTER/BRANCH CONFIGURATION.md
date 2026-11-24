@@ -20,7 +20,6 @@ Response:
     "flag_time_out_user": false,
     "time_out_second": 0,
     "flag_rounding": true,
-    "rounding_mode": "up",
     "rounding_nearst_value": "100.00",
     "flag_email_report_endday": false,
     "email_report_endday": "",
@@ -57,3 +56,5 @@ Response:
 **Update 2026-11-03 (nested `mandatory_setting`) — tervalidasi live**: seed manual `flag_bill_name`/`flag_note_payment` jadi `true` → hit endpoint → response `data.mandatory_setting` berisi `{"flag_bill_name":1,"flag_note_payment":1}` (nested, bukan flat lagi), field lain tidak terpengaruh. Data test dikembalikan ke semula setelah verifikasi.
 
 **Update 2026-11-03 (hapus `flag_online_service_mobile_customer`/`flag_barber_service` dari response) — tervalidasi live**: kedua field dihapus dari response (kode `MasterController::GetBranchConfiguration()`) — DB/sync TIDAK diubah, cuma gak di-expose di response ini. Hit endpoint setelah perubahan → response `data` dicek TIDAK mengandung 2 key itu sama sekali, field lain tetap normal.
+
+Diupdate 2026-11-24: field `rounding_mode` DIHAPUS dari response (kolom `mr_branch_setting.rounding_mode` di-drop, mengikuti ERP migration 354). `flag_rounding` dan `rounding_nearst_value` tidak berubah.

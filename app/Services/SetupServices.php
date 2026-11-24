@@ -180,7 +180,6 @@ class SetupServices
           'flag_time_out_user' => $response->json('data.FlagTimeOutUser'),
           'time_out_second' => $response->json('data.TimeOutSecond'),
           'flag_rounding' => $response->json('data.FlagRounding'),
-          'rounding_mode' => $response->json('data.RoundingMode'),
           'rounding_nearst_value' => $response->json('data.RoundingNearstValue'),
           'flag_email_report_endday' => $response->json('data.FlagEmailReportEndday'),
           'email_report_endday' => $response->json('data.EmailReportEndday'),

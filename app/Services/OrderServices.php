@@ -1207,9 +1207,9 @@ class OrderServices
    *                      fmod() dipakai (bukan operator %) karena rounding_nearst_value/
    *                      grand_total nilai desimal, % PHP membuang ke integer dulu.
    *   total_billing   = grand_total + rounding_amount (nilai final yang ditagih).
-   * rounding_mode (kolom udah ada di mr_branch_setting) BELUM dipakai di sini -- scope sesi ini
-   * cuma 1 mode pembulatan (ke rounding_nearst_value terdekat ke ATAS), mode lain menyusul kalau
-   * dibutuhkan.
+   * Pembulatan HANYA 1 mode: ke kelipatan rounding_nearst_value terdekat ke ATAS. Kolom
+   * mr_branch_setting.rounding_mode (dulu 'up'/'down') tidak pernah dipakai dan sudah DIHAPUS
+   * (2026-11-24, ERP migration 354 + POS migration 2026_11_24_000000).
    */
   // public (bukan private) -- 2026-11-18, dipakai juga dari KioskController::editExistingOrder()
   // supaya header totals Kiosk konsisten dengan SaveOrder() (1 sumber kebenaran).

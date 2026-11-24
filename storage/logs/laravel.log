@@ -104,3 +104,15 @@
 #43 D:/KERJAAN/RANCANGAN ERP SUDO/dev/POS/posv1-laravel/vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php(23): require_once('...')
 #44 {main}
 "} 
+[2026-11-24 15:18:40] local.ERROR: Undefined variable $response {"exception":"[object] (ErrorException(code: 0): Undefined variable $response at C:/Users/LENOVO/AppData/Local/Temp/claude/6f19ffee8e52814f/78d9802d-9f85-4373-8fc1-34a16af70c18/scratchpad/map_check.php:7)
+[stacktrace]
+#0 D:/KERJAAN/RANCANGAN ERP SUDO/dev/POS/posv1-laravel/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php(258): Illuminate/Foundation/Bootstrap/HandleExceptions->handleError()
+#1 C:/Users/LENOVO/AppData/Local/Temp/claude/6f19ffee8e52814f/78d9802d-9f85-4373-8fc1-34a16af70c18/scratchpad/map_check.php(7): Illuminate/Foundation/Bootstrap/HandleExceptions->{closure:Illuminate/Foundation/Bootstrap/HandleExceptions::forwardsTo():257}()
+#2 {main}
+"} 
+[2026-11-24 15:18:47] local.ERROR: Undefined variable $response {"exception":"[object] (ErrorException(code: 0): Undefined variable $response at C:/Users/LENOVO/AppData/Local/Temp/claude/6f19ffee8e52814f/78d9802d-9f85-4373-8fc1-34a16af70c18/scratchpad/map_check.php:7)
+[stacktrace]
+#0 D:/KERJAAN/RANCANGAN ERP SUDO/dev/POS/posv1-laravel/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php(258): Illuminate/Foundation/Bootstrap/HandleExceptions->handleError()
+#1 C:/Users/LENOVO/AppData/Local/Temp/claude/6f19ffee8e52814f/78d9802d-9f85-4373-8fc1-34a16af70c18/scratchpad/map_check.php(7): Illuminate/Foundation/Bootstrap/HandleExceptions->{closure:Illuminate/Foundation/Bootstrap/HandleExceptions::forwardsTo():257}()
+#2 {main}
+"} 
