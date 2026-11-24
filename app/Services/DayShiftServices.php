@@ -1740,9 +1740,65 @@ class DayShiftServices
   // GetReportSummaryV3 (2026-11-13) -- SAMA PERSIS V2, cuma minus "sales_by_menu" & "sales_by_table"
   // dari response (2 field itu dipakai DayStartEndPage.vue render tabel Sales By Menu/Sales By
   // Table di frontend, tapi gak kepake di consumer baru yang cuma butuh section summary-nya doang).
-  static function GetReportSummaryV3($dayshift_ulid)
+  // $scope (2026-11-24, permintaan owner) -- periode data laporan:
+  //   'dayshift' (DEFAULT) = SELURUH dayshift: dari dayin_time sampai dayout_time (atau sampai sekarang kalau
+  //                          belum End Day). Angka TIDAK berubah saat ganti shift, sama dengan struk End Day.
+  //   'shift'              = hanya SHIFT BERJALAN: dari End Shift terakhir (atau dayin_time kalau belum pernah
+  //                          End Shift) sampai dayout_time/sekarang -- perilaku V3 sebelumnya.
+  //   'shift' + $shiftNumber = SHIFT KE-N (2026-11-24): N = tr_dayshift_detail.shift_number untuk shift yang sudah
+  //                          di-End Shift (pakai GetReportPerShift()), N = jumlah End Shift + 1 = shift berjalan.
+  //                          Response SAMA dengan scope lain (lengkap) + field shift_number.
+  // starting_cash selalu modal awal DAYSHIFT; pada scope 'shift' cash_in cuma shift tsb, jadi expected_cash
+  // yang benar untuk dialog End Day hanya didapat dari scope 'dayshift'.
+  // Kesalahan input (scope/shift_number tidak valid, shift tidak ada) -> \InvalidArgumentException supaya controller
+  // bisa membalas code 100.
+  static function GetReportSummaryV3($dayshift_ulid, string $scope = 'dayshift', ?int $shiftNumber = null)
   {
-    $raw = self::GetReportCurrentShiftforTampilan($dayshift_ulid);
+    $scope = strtolower($scope);
+    if (!in_array($scope, ['dayshift', 'shift'], true)) {
+      throw new \InvalidArgumentException("invalid scope, use 'dayshift' or 'shift'");
+    }
+    if ($shiftNumber !== null && $scope !== 'shift') {
+      throw new \InvalidArgumentException("shift_number requires scope=shift");
+    }
+    if ($shiftNumber !== null && $shiftNumber < 1) {
+      throw new \InvalidArgumentException("invalid shift_number");
+    }
+
+    if ($shiftNumber !== null) {
+      // shift_number <= jumlah End Shift -> shift yang sudah selesai; jumlah End Shift + 1 -> shift berjalan.
+      $totalEndShift = DB::table('tr_dayshift_detail')->where('dayshift_ulid', $dayshift_ulid)->count();
+      if ($shiftNumber > $totalEndShift + 1) {
+        throw new \InvalidArgumentException("shift not found");
+      }
+      if ($shiftNumber <= $totalEndShift) {
+        $detail = DayShiftDetailModel::where('dayshift_ulid', $dayshift_ulid)->where('shift_number', $shiftNumber)->first();
+        if (!$detail) {
+          throw new \InvalidArgumentException("shift not found");
+        }
+        $raw = self::GetReportPerShift($detail->ulid);
+      } else {
+        $raw = self::GetReportCurrentShiftforTampilan($dayshift_ulid);
+      }
+    } elseif ($scope === 'shift') {
+      $raw = self::GetReportCurrentShiftforTampilan($dayshift_ulid);
+    } else {
+      $raw = self::GetReportDayshiftorEndDay($dayshift_ulid);
+    }
+
+    if (!isset($raw['dayin_user_name'])) {
+      // GetReportDayshiftorEndDay()/GetReportPerShift() tidak membawa 2 field ini (dipakai print, yang mencari
+      // sendiri) -- dilengkapi di sini supaya bentuk response V3 SAMA untuk semua scope. Query sama dengan
+      // GetReportCurrentShiftforTampilan(): dayshift_detail di-JOIN mr_user (shift_user_name).
+      $raw['dayshift_detail'] = DB::table('tr_dayshift_detail')
+        ->leftJoin('mr_user', 'mr_user.id', '=', 'tr_dayshift_detail.shift_user_id')
+        ->where('tr_dayshift_detail.dayshift_ulid', $dayshift_ulid)
+        ->select('tr_dayshift_detail.*', 'mr_user.fullname as shift_user_name')
+        ->get();
+      $raw['dayin_user_name'] = DB::table('mr_user')
+        ->where('id', $raw['dayshift']->dayin_user_id ?? null)
+        ->value('fullname') ?? '';
+    }
     $recap = $raw['sales_recapitulation'];
     // 2026-11-24: baca recap BY KEY (bukan index posisi) -- index lama bergeser 1 dari urutan array
     // yang sebenarnya (pb1 kebaca VAT, vat kebaca Gross Sales, gross_sales kebaca Pax Total,
@@ -1791,10 +1847,14 @@ class DayShiftServices
       ];
     }
 
-    return [
+    $result = [
       "dayshift" => $raw['dayshift'],
       "dayin_user_name" => $raw['dayin_user_name'],
       "dayshift_detail" => $raw['dayshift_detail'],
+      // scope data yang dipakai: 'dayshift' (seluruh dayshift, default) atau 'shift' (shift berjalan).
+      "scope" => $scope,
+      // nomor shift yang diminta (?shift_number=N), null kalau bukan laporan per shift.
+      "shift_number" => $shiftNumber,
 
       // blok "report_detail" (2026-11-13, baru di V3) -- membungkus 8 section (7 sales +
       // cash_flow_summary), sebelumnya semua ini flat di top-level sama kayak V2.
@@ -1843,6 +1903,8 @@ class DayShiftServices
         ],
       ],
     ];
+
+    return $result;
   }
 
 

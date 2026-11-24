@@ -130,9 +130,35 @@ Response (struktur ringkas — isi lengkap sangat panjang, lihat kode untuk deta
 ## Report V3 (2026-11-13, baru)
 
 ```
-GET /api/dayshift/report-v3/{dayshift_ulid}
+GET /api/dayshift/report-v3/{dayshift_ulid}?scope=dayshift|shift&shift_number=N
 ```
 
+**Parameter `scope` (query string, opsional, 2026-11-24):** menentukan periode data.
+
+| `scope` | Periode data | Kapan dipakai |
+|---|---|---|
+| `dayshift` (**default** — dipakai juga kalau parameter tidak dikirim) | **seluruh dayshift**: `dayin_time` sampai `dayout_time` (atau sampai sekarang kalau belum End Day) | halaman/dialog End Day. Angka **tidak berubah saat ganti shift**, sama dengan struk End Day |
+| `shift` | **shift berjalan saja**: dari End Shift terakhir (atau `dayin_time` kalau belum pernah End Shift) sampai `dayout_time`/sekarang | tampilan per shift. Angka **mulai dari nol setiap End Shift** |
+| `scope=shift&shift_number=N` (**per shift**, 2026-11-24) | **shift ke-N**. N = `tr_dayshift_detail.shift_number` untuk shift yang sudah di-End Shift (laporan dari akhir shift sebelumnya, atau `dayin_time`, sampai `shift_time` shift itu). N = **jumlah End Shift + 1** = shift berjalan | tab/laporan per shift. Contoh: `GET /api/dayshift/report-v3/{dayshift_ulid}?scope=shift&shift_number=2` |
+
+**Response per shift (`shift_number` dikirim) SAMA persis dengan scope lain** (lengkap: `dayshift`, `dayin_user_name`, `dayshift_detail`, `report_detail`, `scope`) ditambah field `shift_number` di top-level:
+```json
+{ "code": 0, "data": { "dayshift": {}, "dayin_user_name": "", "dayshift_detail": [], "scope": "shift", "shift_number": 2, "report_detail": { "sales_summary": {}, "...": "..." } } }
+```
+- `shift_number` (field **baru**, 2026-11-24) = nomor shift yang diminta; **`null`** untuk panggilan lain (tanpa `shift_number`). Berguna untuk memastikan response cocok dengan tab yang dipilih.
+- `dayshift_detail` berisi **semua** End Shift milik dayshift itu (bukan hanya shift yang diminta), sama seperti scope lain.
+- Isi `report_detail` sama persis (kunci dan rumus) dengan scope lain.
+
+Aturan `shift_number` (selalu `code: 100` bila dilanggar):
+- hanya boleh bersama `scope=shift` → `shift_number requires scope=shift`.
+- harus bilangan bulat ≥ 1 → `invalid shift_number`.
+- lebih dari jumlah End Shift + 1 → `shift not found`.
+- `scope=shift` **tanpa** `shift_number` tetap shift berjalan dengan response lengkap seperti sebelumnya.
+- Jumlah semua shift (1 sampai N+1) = total seluruh dayshift (`total_bills` dan `bill_count`); sudah diverifikasi di tes.
+
+- Nilai `scope` tidak sensitif huruf besar/kecil (`DAYSHIFT` = `dayshift`). Nilai lain → `{ "code": 100, "message": "invalid scope, use 'dayshift' or 'shift'" }`.
+- Response berisi field top-level `scope` (`"dayshift"` atau `"shift"`) yang menyatakan periode yang dipakai, dan `shift_number` (angka untuk laporan per shift, `null` untuk lainnya). Bentuk response (kunci `report_detail`, `sales_summary`, `dayshift_detail`, `dayin_user_name`) **sama** untuk **semua mode** (seluruh dayshift, shift berjalan, dan per shift).
+- `starting_cash` selalu modal awal **dayshift** (bukan saldo awal tiap shift). Pada `scope=shift` (berjalan maupun per shift), `cash_in` hanya shift itu, jadi `expected_cash`/`variance` pada scope itu **tidak bermakna dan tidak cocok untuk dialog End Day** — pakai `scope=dayshift` (default).
 **Sama persis [`Report V2`](#report-v2-deprecated-usang-dan-kurang-lengkap-pakai-report-v3-saja)** — **struktur** dan section lain identik (reuse logic yang sama); khusus `sales_summary` isinya sudah berbeda dari V2 sejak 2026-11-24 (lihat catatan PERHATIAN di bawah) — bedanya 2 hal:
 1. **Minus 2 field passthrough**: `sales_by_menu` dan `sales_by_table` **tidak ada** di response.
 2. **8 section dibungkus** dalam 1 blok baru `"report_detail"` (7 section sales + `cash_flow_summary`) — sebelumnya semua ini flat di top-level sama kayak V2.
@@ -227,7 +253,7 @@ Report V2 sudah **deprecated** (usang dan kurang lengkap). Kalau halaman Anda ma
 
 **3. Perubahan scope (periode data)**
 
-Endpoint `report-v3` melaporkan **shift yang sedang berjalan** (dari End Shift terakhir, atau dari jam buka kalau belum pernah End Shift, sampai sekarang atau sampai jam tutup). Ini bukan total satu hari penuh kalau sudah ada End Shift. Detail dan tabel window ada di bagian "Sales Summary: scope & rumus" di bawah.
+Sejak 2026-11-24 `report-v3` punya parameter `?scope=dayshift|shift`. **Tanpa parameter = `dayshift`** (seluruh dayshift, angka tidak berubah saat ganti shift). Untuk shift berjalan kirim `?scope=shift`, dan untuk shift tertentu kirim `?scope=shift&shift_number=N` (N = nomor shift; N terakhir = jumlah End Shift + 1 = shift berjalan; response tetap lengkap, ditambah field `shift_number`). Sebelum 2026-11-24 V3 selalu berperilaku seperti `scope=shift`, jadi kalau ada tampilan yang bergantung pada itu, tambahkan `?scope=shift` secara eksplisit. Detail dan tabel window ada di bagian "Sales Summary: scope & rumus" di bawah.
 
 **4. Endpoint print**
 
@@ -253,7 +279,10 @@ Window per endpoint (awal inklusif `>=`, akhir eksklusif `<`):
 
 | Endpoint | Fungsi hitung | Awal | Akhir |
 |---|---|---|---|
-| `report/{id}`, `report-v2/{id}`, `report-v3/{id}` | `GetReportCurrentShiftforTampilan` | `shift_time` baris `tr_dayshift_detail` terakhir; **kalau belum ada baris detail** = `dayin_time` (1 shift utuh) | `dayout_time` kalau dayshift sudah di-End Day, kalau belum = sampai sekarang |
+| `report-v3/{id}` **tanpa parameter atau `?scope=dayshift`** | `GetReportDayshiftorEndDay` | `dayin_time` | `dayout_time` kalau dayshift sudah di-End Day, kalau belum = sampai sekarang |
+| `report-v3/{id}?scope=shift&shift_number=N` (N ≤ jumlah End Shift) | `GetReportPerShift` | `shift_time` shift sebelumnya (shift 1 = `dayin_time`) | `shift_time` shift ke-N |
+| `report-v3/{id}?scope=shift&shift_number=N` (N = jumlah End Shift + 1) | `GetReportCurrentShiftforTampilan` (= shift berjalan) | `shift_time` End Shift terakhir | `dayout_time` kalau sudah tutup, kalau belum = sampai sekarang |
+| `report/{id}`, `report-v2/{id}`, `report-v3/{id}?scope=shift` | `GetReportCurrentShiftforTampilan` | `shift_time` baris `tr_dayshift_detail` terakhir; **kalau belum ada baris detail** = `dayin_time` (1 shift utuh) | `dayout_time` kalau dayshift sudah di-End Day, kalau belum = sampai sekarang |
 
 Catatan penting:
 - `tr_dayshift_detail.shift_time` adalah waktu **AKHIR** sebuah shift (saat End Shift ditekan), bukan awal. `EndDay` tidak membuat baris detail, jadi shift terakhir hanya bisa dilaporkan lewat jalur "shift berjalan".
@@ -383,3 +412,9 @@ Diupdate 2026-11-24 (lanjutan 2): **ITEM BY CATEGORY SUMMARY** — head diurutka
 Diupdate 2026-11-24 (lanjutan 3): ditambahkan **Other Cost** (status `other_cost`, FOC/fasilitas) sebagai baris terpisah di `report-v3` (`other_cost`, `other_cost_count`) dan 4 struk — nilai apa adanya, tidak masuk hitungan pendapatan. Hanya logika laporan; logika pembayaran/status order tidak diubah. Dites live (304 pemeriksaan total lulus, 0 gagal, termasuk bahwa order other_cost tidak bocor ke Total Bills/Net/Gross/Category).
 
 Diupdate 2026-11-24 (lanjutan 4): (1) **Cash Flow Summary**: `expected_cash = cash_in + starting_cash` (aturan owner, V3 + 4 struk); `cash_in` diverifikasi memakai `payment_method_type_id = 1` (id) di keempat fungsi sumber data, tidak ada perbandingan teks. (2) **Frontend `posv1-vue` disesuaikan**: summary dipindah ke `report-v3`, baris Sales Summary memakai field baru, `ReportV2` hanya untuk `sales_by_menu`/`sales_by_table`. Build FE (`vite build`) sukses; tampilan di browser belum dicoba.
+
+Diupdate 2026-11-24 (lanjutan 8): **`report-v3` mendapat parameter `scope`** (`dayshift` default, `shift`) — penyebab: setelah End Shift angka V3 "mulai dari nol" (hanya shift baru) sedangkan `starting_cash` tetap modal dayshift, sehingga `expected_cash` di dialog End Day tercampur dan salah (contoh data uji: seharusnya 190.000, tampil 140.000). Default `dayshift` memperbaikinya; `shift` tetap tersedia. Dites live (323 pemeriksaan total lulus, 0 gagal): default = `scope=dayshift`, `scope=shift` = shift berjalan, bentuk response sama, scope tidak valid ditolak, dan lewat controller (`?scope=` kosong/`shift`/huruf besar/tidak valid). FE `posv1-vue` tidak perlu diubah (memanggil V3 tanpa parameter, kini otomatis seluruh dayshift).
+
+Diupdate 2026-11-24 (lanjutan 9): **`report-v3` mendapat parameter `shift_number`** untuk laporan per shift: `GET /api/dayshift/report-v3/{dayshift_ulid}?scope=shift&shift_number=N`, response awalnya HANYA `report_detail` (**sudah diubah menjadi lengkap, lihat lanjutan 10 di bawah**). Shift selesai memakai `GetReportPerShift()`, shift berjalan (N = jumlah End Shift + 1) memakai fungsi shift berjalan. Dites live (347 pemeriksaan total lulus, 0 gagal): shift 1/2/3 sesuai hitungan manual, jumlah shift 1+2+3 = total dayshift (228.100, 4 bill), sama dengan struk per shift, kunci `report_detail` sama, error `shift not found`/`invalid shift_number`/`shift_number requires scope=shift` (service dan controller). Belum dites lewat HTTP asli dan FE belum memakai parameter ini.
+
+Diupdate 2026-11-24 (lanjutan 10): response per shift (`shift_number`) **dikembalikan menjadi lengkap** (sebelumnya sempat dibuat hanya `report_detail`), plus field baru `shift_number` (null untuk panggilan tanpa nomor). Dites ulang: 353 pemeriksaan lulus, 0 gagal (bentuk sama dengan scope dayshift, `shift_number` benar, `dayshift_detail` memuat semua End Shift, jumlah shift 1+2+3 = total dayshift).

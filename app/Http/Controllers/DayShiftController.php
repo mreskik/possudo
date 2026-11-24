@@ -165,11 +165,36 @@ class DayShiftController extends Controller
     {
         try {
 
-            $data = DayShiftServices::GetReportSummaryV3($request->dayshift_ulid);
+            // query ?scope=dayshift (default, seluruh dayshift) | shift (shift berjalan) -- 2026-11-24
+            // ?scope=shift&shift_number=N -> shift ke-N, response HANYA report_detail
+            $scope = strtolower((string) $request->query('scope', 'dayshift'));
+            if (!in_array($scope, ['dayshift', 'shift'], true)) {
+                return response()->json([
+                    "code" => 100,
+                    "message" => "invalid scope, use 'dayshift' or 'shift'"
+                ]);
+            }
+            $shiftNumber = null;
+            if ($request->query->has('shift_number')) {
+                $raw = (string) $request->query('shift_number');
+                if ($scope !== 'shift') {
+                    return response()->json(["code" => 100, "message" => "shift_number requires scope=shift"]);
+                }
+                if (!ctype_digit($raw) || (int) $raw < 1) {
+                    return response()->json(["code" => 100, "message" => "invalid shift_number"]);
+                }
+                $shiftNumber = (int) $raw;
+            }
+            $data = DayShiftServices::GetReportSummaryV3($request->dayshift_ulid, $scope, $shiftNumber);
 
             return response()->json([
                 "code" => 0,
                 "data" => $data
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                "code" => 100,
+                "message" => $e->getMessage()
             ]);
         } catch (\Throwable $e) {
             return response()->json([

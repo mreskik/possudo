@@ -202,7 +202,17 @@ class OrderServices
         // lain di POS.
         $branchSetting = MasterBranchSettingModel::first();
         if ($branchSetting && $branchSetting->flag_notification_end && !empty($branchSetting->notification_end)) {
-          if (now()->format('H:i:s') >= $branchSetting->notification_end) {
+          // Kondisi tambahan (2026-11-24, permintaan owner) -- bandingkan TANGGAL komputer dengan
+          // tanggal start day (dayin_time dayshift aktif):
+          //   - tanggal komputer SAMA dengan start day -> masih aman, order baru boleh.
+          //   - tanggal komputer SUDAH LEBIH dari start day DAN jam sekarang >= notification_end -> tolak.
+          // Untuk cabang yang buka lewat tengah malam: seluruh hari start day aman, baru ditolak
+          // setelah hari berganti DAN jam sudah lewat notification_end. dayin_time kosong (seharusnya
+          // tidak mungkin untuk dayshift aktif) -> tanggal start day dianggap tidak diketahui, jadi
+          // aturan lama (cek jam saja) tetap berlaku.
+          $startDay = $dayshift->dayin_time ? \Carbon\Carbon::parse($dayshift->dayin_time)->toDateString() : null;
+          $dateAfterStartDay = $startDay === null || now()->toDateString() > $startDay;
+          if ($dateAfterStartDay && now()->format('H:i:s') >= $branchSetting->notification_end) {
             throw new \Exception("cannot create new order, you must end day first!");
           }
         }

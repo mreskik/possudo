@@ -180,6 +180,29 @@ class PrintServices
       str_pad($kanan, $col3Width, ' ', STR_PAD_LEFT) . "\n";
   }
 
+  // fitLabel (2026-11-24): potong NAMA supaya "<indent><nama><suffix>" muat di kolom kiri kirikakan()
+  // (lebar printer - 10 kolom angka, disisakan 1 spasi pemisah) -- kirikakan() sendiri TIDAK memotong,
+  // nama yang kepanjangan bikin kolom angka terdorong keluar baris. Nama dipotong dan diakhiri ".."
+  // (suffix mis. " (3)" tetap utuh supaya qty tidak hilang). Sengaja fungsi terpisah, BUKAN mengubah
+  // kirikakan(), supaya struk lain yang memakai kirikakan() tidak ikut berubah.
+  //
+  // Printer sangat sempit (mis. 20 kolom): kalau awalan + suffix saja sudah menyisakan < 3 huruf untuk
+  // nama, awalan DISUSUTKAN dulu (spasi di depan dikurangi satu-satu, lalu "- " dibuang) sebelum nama
+  // dipotong. Hasil akhir dijamin tidak lebih panjang dari kolom kiri (lebar - 11).
+  public static function fitLabel(string $indent, string $name, string $suffix, int $width): string
+  {
+    $maxLabel = max(1, $width - 10 - 1);
+    while ($indent !== '' && $maxLabel - strlen($indent) - strlen($suffix) < 3) {
+      $indent = $indent[0] === ' ' ? substr($indent, 1) : '';
+    }
+    $room = max(1, $maxLabel - strlen($indent) - strlen($suffix));
+    if (mb_strlen($name) > $room) {
+      $name = $room > 2 ? mb_substr($name, 0, $room - 2) . '..' : mb_substr($name, 0, $room);
+    }
+    $label = $indent . $name . $suffix;
+    return strlen($label) > $maxLabel ? substr($label, 0, $maxLabel) : $label;
+  }
+
   public static function threeline2($qty, string $item, string $harga, int $width = 0)
   {
     // bagi lebar jadi 3 bagian
@@ -224,7 +247,7 @@ class PrintServices
 
     foreach ($rows as $r) {
       $percent = $grandTotal > 0 ? round(($r['amount'] / $grandTotal) * 100) : 0;
-      $print->text(self::kirikakan($r['label'], $percent . "%", $charPerLine));
+      $print->text(self::kirikakan(self::fitLabel('', (string) $r['label'], '', $charPerLine), $percent . "%", $charPerLine));
       $print->text(self::kirikakan("  - Qty", (string) $r['qty'], $charPerLine));
       $print->text(self::kirikakan("  - Total", number_format($r['amount'], 0, ',', '.'), $charPerLine));
       $print->text("\n");
@@ -232,7 +255,7 @@ class PrintServices
 
     $print->text(self::separator("-", $charPerLine));
     $print->setEmphasis(true);
-    $print->text(self::kirikakan($totalLabel, number_format($grandTotal, 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan(self::fitLabel('', $totalLabel, '', $charPerLine), number_format($grandTotal, 0, ',', '.'), $charPerLine));
     $print->setEmphasis(false);
   }
 
@@ -272,9 +295,9 @@ class PrintServices
 
     foreach ($byStaff as $staffName => $staff) {
       $percent = $grandTotal > 0 ? round(($staff['total'] / $grandTotal) * 100) : 0;
-      $print->text(self::kirikakan($staffName, $percent . "%", $charPerLine));
+      $print->text(self::kirikakan(self::fitLabel('', (string) $staffName, '', $charPerLine), $percent . "%", $charPerLine));
       foreach ($staff['methods'] as $m) {
-        $print->text(self::kirikakan("  - " . $m['payment_method_name'] . " (" . $m['qty'] . ")", number_format($m['amount'], 0, ',', '.'), $charPerLine));
+        $print->text(self::kirikakan(self::fitLabel("  - ", (string) $m['payment_method_name'], " (" . $m['qty'] . ")", $charPerLine), number_format($m['amount'], 0, ',', '.'), $charPerLine));
       }
       $print->text(self::kirikakan("  - Total", number_format($staff['total'], 0, ',', '.'), $charPerLine));
       $print->text("\n");
@@ -282,7 +305,7 @@ class PrintServices
 
     $print->text(self::separator("-", $charPerLine));
     $print->setEmphasis(true);
-    $print->text(self::kirikakan("Total Staff Payment", number_format($grandTotal, 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan(self::fitLabel('', "Total Staff Payment", '', $charPerLine), number_format($grandTotal, 0, ',', '.'), $charPerLine));
     $print->setEmphasis(false);
   }
 
@@ -329,9 +352,13 @@ class PrintServices
 
     foreach ($byCategory as $categoryName => $category) {
       $percent = $grandTotal > 0 ? round(($category['total'] / $grandTotal) * 100) : 0;
-      $print->text(self::kirikakan($categoryName, $percent . "%", $charPerLine));
+      $print->text(self::kirikakan(self::fitLabel('', $categoryName, '', $charPerLine), $percent . "%", $charPerLine));
       foreach ($category['items'] as $item) {
-        $print->text(self::kirikakan("  - " . $item['menu_name'] . " (" . $item['qty'] . ")", number_format($item['amount'], 0, ',', '.'), $charPerLine));
+        // HEAD dan BODY (isi package) dicetak RATA, awalan sama (2 spasi) -- sempat dibuat menjorok untuk
+        // body (2026-11-24) lalu dibatalkan, diratakan lagi atas permintaan owner. Pembeda head/body cuma
+        // urutan (head di atas, body di bawah, lihat usort di atas). Nama menu dipotong otomatis
+        // (fitLabel) kalau melebihi lebar printer.
+        $print->text(self::kirikakan(self::fitLabel("  - ", (string) $item['menu_name'], " (" . $item['qty'] . ")", $charPerLine), number_format($item['amount'], 0, ',', '.'), $charPerLine));
       }
       $print->text(self::kirikakan("  - Total", number_format($category['total'], 0, ',', '.'), $charPerLine));
       $print->text("\n");
@@ -339,7 +366,7 @@ class PrintServices
 
     $print->text(self::separator("-", $charPerLine));
     $print->setEmphasis(true);
-    $print->text(self::kirikakan("Total Item By Category", number_format($grandTotal, 0, ',', '.'), $charPerLine));
+    $print->text(self::kirikakan(self::fitLabel('', "Total Item By Category", '', $charPerLine), number_format($grandTotal, 0, ',', '.'), $charPerLine));
     $print->setEmphasis(false);
   }
 
@@ -2011,7 +2038,7 @@ class PrintServices
       $print->text(self::kirikakan("Order Fee         :", number_format($recapAmt("Netsales Order Fee"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Delivery Cost     :", number_format($recapAmt("Netsales Delivery Cost"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Rounding          :", number_format($recapAmt("Rounding"), 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($recapAmt("Netsales PB1 Total"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("PB1               :", number_format($recapAmt("Netsales PB1 Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("VAT               :", number_format($recapAmt("Netsales VAT Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
@@ -2238,7 +2265,7 @@ class PrintServices
       $print->text(self::kirikakan("Order Fee         :", number_format($recapAmt("Netsales Order Fee"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Delivery Cost     :", number_format($recapAmt("Netsales Delivery Cost"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Rounding          :", number_format($recapAmt("Rounding"), 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($recapAmt("Netsales PB1 Total"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("PB1               :", number_format($recapAmt("Netsales PB1 Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("VAT               :", number_format($recapAmt("Netsales VAT Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
@@ -2479,7 +2506,7 @@ class PrintServices
       $print->text(self::kirikakan("Order Fee         :", number_format($recapAmt("Netsales Order Fee"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Delivery Cost     :", number_format($recapAmt("Netsales Delivery Cost"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Rounding          :", number_format($recapAmt("Rounding"), 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($recapAmt("Netsales PB1 Total"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("PB1               :", number_format($recapAmt("Netsales PB1 Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("VAT               :", number_format($recapAmt("Netsales VAT Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
@@ -2742,7 +2769,7 @@ class PrintServices
       $print->text(self::kirikakan("Order Fee         :", number_format($recapAmt("Netsales Order Fee"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Delivery Cost     :", number_format($recapAmt("Netsales Delivery Cost"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Rounding          :", number_format($recapAmt("Rounding"), 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($recapAmt("Netsales PB1 Total"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("PB1               :", number_format($recapAmt("Netsales PB1 Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("VAT               :", number_format($recapAmt("Netsales VAT Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
@@ -3080,9 +3107,21 @@ class PrintServices
         // GeneralLabel::sikat()), lebih kepake buat ngecek visual char width-nya doang.
         $charPerLine = $data_station->line_character ?: 40;
 
+        // Baris nama station (2026-11-24, permintaan owner) -- format sama dengan versi thermal
+        // ("Station: <nama>"), ditaruh PALING ATAS. Dipotong sesuai line_character (label kecil), dan
+        // tanda kutip ganda diganti kutip tunggal karena teks disisipkan mentah ke perintah label
+        // TEXT x,y,"font",0,1,1,"<teks>" (kutip ganda di nama station akan merusak perintahnya).
+        $stationLine = "Station: " . str_replace('"', "'", (string) $data_station->name);
+        if (mb_strlen($stationLine) > $charPerLine) {
+          $stationLine = $charPerLine > 2
+            ? mb_substr($stationLine, 0, $charPerLine - 2) . '..'
+            : mb_substr($stationLine, 0, $charPerLine);
+        }
+
         $ngeprintasek = new GeneralLabel;
         $ngeprintasek->setMargin(0, 2);
         $ngeprintasek->setNamePrinter($data_station);
+        $ngeprintasek->setText($stationLine);
         $ngeprintasek->setText(self::numberRuler($charPerLine));
         $ngeprintasek->setText("Printer OK");
         $ngeprintasek->sikat();
