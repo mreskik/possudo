@@ -72,6 +72,58 @@ class DayShiftServices
     ";
   }
 
+  // recapAmount (2026-11-24) -- baca 1 elemen sales_recapitulation berdasarkan teks "key"-nya,
+  // BUKAN index posisi. Sebelumnya print/V3 baca pakai index literal ($recap[13], [7], [8], [9])
+  // dan index-nya bergeser 1 dari urutan array yang sebenarnya (PB1 kebaca VAT, VAT kebaca Gross
+  // Sales, Gross Sales kebaca Pax Total, dst). Dengan lookup by key, urutan array boleh berubah
+  // tanpa merusak pembacanya. Key tidak ketemu -> 0 (bukan error).
+  public static function recapAmount($recap, string $key): float
+  {
+    foreach ($recap ?? [] as $row) {
+      if (($row['key'] ?? null) === $key) {
+        return (float) ($row['amount'] ?? 0);
+      }
+    }
+    return 0.0;
+  }
+
+  // GetReportOrderList (2026-11-24) -- daftar order untuk 1 window laporan (dayshift/shift),
+  // dibedakan lewat STATUS order + kolom waktu yang SESUAI statusnya: paid -> order_out,
+  // cancel -> cancel_at, void -> void_at. order_in/dayshift_ulid TIDAK dipakai (order hold boleh
+  // lintas dayshift, dan order yang dibuka di shift 1 tapi dibayar di shift 2 harus masuk shift
+  // 2). $start inklusif (>=), $end eksklusif (<) dan boleh null (= sampai sekarang).
+  // pending/hold SENGAJA tidak lewat sini -- diambil global (outstanding) oleh pemanggil.
+  // other_cost (2026-11-24): order yang dibayar pakai payment type OTHER (FOC/fasilitas, mis. karyawan) --
+  // datanya nyata (barang keluar, ada nilai), tapi BUKAN pendapatan (jurnal ERP tidak membuat Revenue buat
+  // order ini). Dipilih di sini supaya bisa ditampilkan sebagai baris terpisah "Other Cost", dan SENGAJA
+  // tidak dimasukkan ke hitungan penjualan (Total Bills/Net/Gross/kategori/payment).
+  //
+  // paid pakai order_out, BUKAN payment_at (2026-11-24, keputusan user): order_out = kapan POS
+  // MEMPROSES order (order POS: sama dengan payment_at, sama-sama now() saat bayar; order mobile/QR:
+  // saat POS menarik order -- MobileOrderPullServices, selalu di dalam dayshift aktif). payment_at
+  // order mobile = waktu customer bayar (dari sudomobile) yang bisa jatuh SEBELUM dayin_time dayshift
+  // tempat order ditarik (POS tutup) -> order hilang dari semua window; atau jatuh di dayshift
+  // sebelumnya padahal jurnal End Day-nya sudah terkirim. order_out aman di sini karena yang dibaca
+  // cuma status 'paid' -- Void() yang menimpa order_out hanya terjadi saat status berubah jadi
+  // 'void' (dihitung lewat void_at), jadi order berstatus paid tidak pernah tertimpa.
+  private static function GetReportOrderList(string $start, ?string $end): array
+  {
+    $cols = ['paid' => 'order_out', 'other_cost' => 'order_out', 'cancel' => 'cancel_at', 'void' => 'void_at'];
+    $conds = [];
+    $params = [];
+    foreach ($cols as $status => $col) {
+      $cond = "(tro.status = '{$status}' AND tro.{$col} >= ?";
+      $params[] = $start;
+      if ($end !== null) {
+        $cond .= " AND tro.{$col} < ?";
+        $params[] = $end;
+      }
+      $conds[] = $cond . ")";
+    }
+
+    return DB::select("SELECT tro.* FROM tr_order tro WHERE " . implode(" OR ", $conds), $params);
+  }
+
   public static function GetDayShift()
   {
     try {
@@ -1104,34 +1156,26 @@ class DayShiftServices
         ->select('tr_dayshift_detail.*', 'mr_user.fullname as shift_user_name')
         ->get();
       $data_dayshift = DaySiftModel::where('ulid', $dayshift_ulid)->first();
+      // urut shift_time (bukan ulid) -- sama dengan GetReportPerShift(), tidak ambigu.
       $data_dayshift_detail = DayShiftDetailModel::where('dayshift_ulid', $dayshift_ulid)
-        ->orderBy('ulid', 'desc')->first();
+        ->orderBy('shift_time', 'desc')->first();
       if ($data_dayshift_detail) {
         $pakai_header = false;
       }
 
+      // awal window = End Shift terakhir (shift_time), atau dayin_time kalau dayshift belum
+      // pernah End Shift (= 1 shift utuh).
       if ($pakai_header) {
         $starttime = $data_dayshift->dayin_time;
       } else {
         $starttime = $data_dayshift_detail->shift_time;
       }
+      // akhir window = dayout_time kalau dayshift sudah di-End Day (supaya order dayshift
+      // SESUDAHNYA tidak ikut terhitung), NULL kalau masih berjalan (sampai sekarang).
+      $endtime = $data_dayshift->dayout_time ?? null;
 
-      // ambil data 
-      //////bawahnya ini sama dengan report biasa 
-
-      // kueri ambil data start time sampai sekarang 
-
-      $data_order_list = DB::select("
-        SELECT
-        tro.*,
-        COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
-        FROM
-        tr_order tro " .
-          self::NettSalesJoinSql() . "
-        WHERE
-        tro.order_in >= ?
-
-        ", [$starttime]);
+      // ambil data -- scope pakai STATUS + order_out(paid)/cancel_at/void_at (lihat GetReportOrderList)
+      $data_order_list = self::GetReportOrderList($starttime, $endtime);
 
       // if (count($data_order_list) == 0) {
       //   throw new \Exception('tidak ada transaksi !');
@@ -1152,6 +1196,9 @@ class DayShiftServices
 
       // hitung per order
       $netsales = 0;
+      $subtotal_total = 0;      // SUM(sub_total) order paid -- "Sales (Subtotal)", SEBELUM diskon
+      $rounding_total = 0;      // SUM(rounding_amount) order paid
+      $total_billing_total = 0; // SUM(total_billing) order paid -- "Total Bills" & "Gross Sales"
       $netsales_dc_total = 0;
       $netsales_of_total = 0;
       $netsales_sc_total = 0;
@@ -1170,6 +1217,8 @@ class DayShiftServices
       $cancel_total = 0;
       $void_total = 0;
       $discount_total = 0;
+      $other_cost_total = 0; // SUM(total_billing) order other_cost (FOC) -- BUKAN pendapatan
+      $other_cost_count = 0;
 
 
       $orderpendinghold = TrOrderModel::whereIn('status', ['pending', 'hold'])->get();
@@ -1193,20 +1242,25 @@ class DayShiftServices
       $list_payment_number = [];
       foreach ($data_order_list as $orderitem) {
 
-        //itungan net sales -- pakai nett_sales_real (SUM qty*dpp per order, lihat NettSalesJoinSql()),
-        //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
+        // 2026-11-24: Net Sales = total_billing - total_tax (pajak = titipan ke pemerintah; service
+        // charge/order fee/delivery cost/rounding = pendapatan kita, jadi ikut Net Sales).
+        // Gross Sales/Total Bills = total_billing. Semua dari kolom header tr_order, tidak dihitung ulang.
         if ($orderitem->status == "paid") {
+          $net_order = ($orderitem->total_billing ?? 0) - ($orderitem->total_tax ?? 0);
           $number_of_bill += 1;
           $discount_total += $orderitem->total_discount;
-          $netsales += ($orderitem->nett_sales_real ?? 0);
+          $netsales += $net_order;
+          $subtotal_total += ($orderitem->sub_total ?? 0);
+          $rounding_total += ($orderitem->rounding_amount ?? 0);
+          $total_billing_total += ($orderitem->total_billing ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
           $netsales_sc_total += $orderitem->total_service_charge;
           $pax_total += $orderitem->pax;
 
-          $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
+          $avg_netsales_per_pax += $net_order;
           $avg_grosssales_per_pax += ($orderitem->total_billing);
-          $avg_netsales_per_bill += ($orderitem->nett_sales_real ?? 0);
+          $avg_netsales_per_bill += $net_order;
           $avg_grosssales_per_bill += $orderitem->total_billing;
 
           //kita masukkan ke list order number paid
@@ -1221,6 +1275,12 @@ class DayShiftServices
         if ($orderitem->status == "void") {
           $list_ordernumber->void[] = $orderitem->order_number;
           $void_total += $orderitem->sub_total;
+        }
+        // other_cost: cuma ditampung ke baris "Other Cost" -- TIDAK masuk $list_ordernumber->paid, jadi tidak
+        // ikut penjualan/pajak/kategori/payment.
+        if ($orderitem->status == "other_cost") {
+          $other_cost_total += ($orderitem->total_billing ?? 0);
+          $other_cost_count += 1;
         }
       }
 
@@ -1265,20 +1325,26 @@ class DayShiftServices
         $dpp_total += ($opd->dpp * $opd->qty);
       }
 
+      // qty efektif package = qty parent x qty package (sama dengan RecalculateOrderTotals()).
+      $parent_qty_by_ulid = [];
+      foreach ($order_paid_detail as $parent) {
+        $parent_qty_by_ulid[$parent->ulid] = $parent->qty;
+      }
       foreach ($order_paid_detail_package as $opd) {
+        $pkg_qty = ($parent_qty_by_ulid[$opd->tr_order_detail_ulid] ?? 1) * $opd->qty;
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += $opd->tax_amount * $opd->qty;
+          $netsales_pb1_total += $opd->tax_amount * $pkg_qty;
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += $opd->tax_amount * $opd->qty;
+          $netsales_vat_total += $opd->tax_amount * $pkg_qty;
         }
-        $dpp_total += ($opd->dpp * $opd->qty);
+        $dpp_total += ($opd->dpp * $pkg_qty);
       }
 
       $total_tax_total = $netsales_pb1_total + $netsales_vat_total;
 
 
-      $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
-        $netsales_sc_total + $netsales_pb1_total + $netsales_vat_total;
+      // Gross Sales = SUM(total_billing) -- sudah termasuk pajak, SC, order fee, delivery cost, rounding.
+      $gross_sales = $total_billing_total;
 
       $order_number_concat = "";
       $ulid_orderdetail_concat = "";
@@ -1345,56 +1411,61 @@ class DayShiftServices
         menu_name
       ");
 
+        // sales_by_category (CATEGORY SUMMARY) -- diperbaiki 2026-11-24 (permintaan owner):
+        //   * qty    = qty HEAD saja (baris tr_order_detail). Isi package (body, tr_order_detail_package)
+        //              TIDAK menambah qty (qty body = 0).
+        //   * amount = HEAD + BODY. Body dihitung dengan qty efektif = qty head x qty package, dan
+        //              dimasukkan ke kategori HEAD-nya (package dijual sebagai 1 kesatuan di bawah head),
+        //              BUKAN ke kategori menu anak.
+        //   * semua nilai moneter dikali qty -- kolom tod.total disimpan PER SATU UNIT (lihat
+        //     OrderServices::CalculateLineItem), dulu grand_total tidak dikali qty sehingga item
+        //     dengan qty > 1 dan isi package kekecilan.
         $sales_by_category = DB::select("SELECT
-				mcc.name as category_name,
-        sum( gabungan.qty ) as qty,
-        sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_amount ) as discount_amount,
-        sum( gabungan.vat_amount ) as vat_amount,
-        sum( gabungan.pb1_amount ) as pb1_amount,
-        sum( gabungan.grand_total )  as grand_total
-      FROM
-        (
-        SELECT
-					mi.category_id as category_id,
-          mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total 
+          mcc.name AS category_name,
+          SUM( gabungan.qty ) AS qty,
+          SUM( gabungan.sub_total ) AS sub_total,
+          SUM( gabungan.discount_amount ) AS discount_amount,
+          SUM( gabungan.vat_amount ) AS vat_amount,
+          SUM( gabungan.pb1_amount ) AS pb1_amount,
+          SUM( gabungan.grand_total ) AS grand_total
         FROM
-          tr_order_detail tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id 
-        WHERE
-          tod.order_number IN (" . $order_number_concat . ") 
-          AND tod.cancel_at IS NULL UNION ALL
-        SELECT
-          mi.category_id as category_id,
-					mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total 
-        FROM
-          tr_order_detail_package tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id 
-        WHERE
-          tod.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ") 
-        ) AS gabungan 
-				
-				JOIN mr_category mcc on mcc.id = gabungan.category_id
-      GROUP BY
-        category_name");
+          (
+          SELECT
+            mi.category_id AS category_id,
+            tod.qty AS qty,
+            ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+            ( tod.discount_amount * tod.qty ) AS discount_amount,
+            IF( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+            IF( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+            ( tod.total * tod.qty ) AS grand_total
+          FROM
+            tr_order_detail tod
+            JOIN mr_item_conv mic ON mic.id = tod.menu_id
+            JOIN mr_item mi ON mi.id = mic.item_id
+          WHERE
+            tod.order_number IN (" . $order_number_concat . ")
+            AND tod.cancel_at IS NULL
+          UNION ALL
+          SELECT
+            mi.category_id AS category_id,
+            0 AS qty,
+            ( (CASE WHEN pkg.flag_inclusive_tax = 1 THEN pkg.price_pos / (1 + pkg.tax_rate/100) ELSE pkg.price_pos END) * (head.qty * pkg.qty) ) AS sub_total,
+            ( pkg.discount_amount * (head.qty * pkg.qty) ) AS discount_amount,
+            IF( pkg.tax_type = 'vat', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS vat_amount,
+            IF( pkg.tax_type = 'pb1', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS pb1_amount,
+            ( pkg.total * (head.qty * pkg.qty) ) AS grand_total
+          FROM
+            tr_order_detail_package pkg
+            JOIN tr_order_detail head ON head.ulid = pkg.tr_order_detail_ulid
+            JOIN mr_item_conv mic ON mic.id = head.menu_id
+            JOIN mr_item mi ON mi.id = mic.item_id
+          WHERE
+            pkg.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
+            AND head.cancel_at IS NULL
+          ) AS gabungan
+          JOIN mr_category mcc ON mcc.id = gabungan.category_id
+        GROUP BY
+          category_name");
       }
 
 
@@ -1512,6 +1583,12 @@ class DayShiftServices
           ["pl" => 1, "key" => "Cancel Total", "amount" => $cancel_total],
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
           ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
+          // elemen baru (2026-11-24) -- SELALU ditambah di akhir; pembaca pakai DayShiftServices::recapAmount() by key
+          ["pl" => 1, "key" => "Sales Subtotal", "amount" => $subtotal_total],
+          ["pl" => 1, "key" => "Rounding", "amount" => $rounding_total],
+          ["pl" => 1, "key" => "Total Bills", "amount" => $total_billing_total],
+          ["pl" => 1, "key" => "Other Cost", "amount" => $other_cost_total],
+          ["pl" => 1, "key" => "Other Cost Count", "amount" => $other_cost_count],
         ],
         "dpp_total" => $dpp_total,
         "total_tax_total" => $total_tax_total,
@@ -1557,6 +1634,9 @@ class DayShiftServices
   // Reuse GetReportCurrentShiftforTampilan() buat raw data (endpoint lama /report/:id TETAP ADA,
   // gak dihapus, cuma gak dipakai lagi sama DayStartEndPage.vue setelah pindah ke v2 ini) --
   // dipakai endpoint baru GET /dayshift/report-v2/:id.
+  // DEPRECATED (2026-11-24) -- usang & kurang lengkap, PAKAI GetReportSummaryV3() SAJA. Pembacaan
+  // sales_recapitulation di sini masih pakai index posisi yang bergeser 1, dan tidak punya field baru
+  // (bill_count, order_fee, delivery_cost, rounding, other_cost). Sengaja TIDAK diperbaiki.
   static function GetReportSummaryV2($dayshift_ulid)
   {
     $raw = self::GetReportCurrentShiftforTampilan($dayshift_ulid);
@@ -1664,8 +1744,11 @@ class DayShiftServices
   {
     $raw = self::GetReportCurrentShiftforTampilan($dayshift_ulid);
     $recap = $raw['sales_recapitulation'];
-    $amountAt = function (int $i) use ($recap) {
-      return (float) ($recap[$i]['amount'] ?? 0);
+    // 2026-11-24: baca recap BY KEY (bukan index posisi) -- index lama bergeser 1 dari urutan array
+    // yang sebenarnya (pb1 kebaca VAT, vat kebaca Gross Sales, gross_sales kebaca Pax Total,
+    // total_bills kebaca Avg Netsales Per Bill). Lihat DayShiftServices::recapAmount().
+    $amountAt = function (string $key) use ($recap) {
+      return self::recapAmount($recap, $key);
     };
 
     // ORDER SOURCE SUMMARY: 4 kategori FIXED (pos/qr/mobile/kiosk), selalu ditampilkan semua
@@ -1694,7 +1777,7 @@ class DayShiftServices
     $startingCash = (float) ($raw['dayshift']->dayin_total ?? 0);
     $cashIn = (float) ($raw['cash_in_total'] ?? 0);
     $cashOut = 0;
-    $expectedCash = $startingCash + $cashIn - $cashOut;
+    $expectedCash = $startingCash + $cashIn; // 2026-11-24 (owner): expected = cash in + starting cash
     $actualCash = (float) ($raw['dayshift']->dayout_total ?? 0);
 
     // STAFF PAYMENT SUMMARY -- label digabung "Nama - Metode" DI SINI, sama alasan+bug yang
@@ -1717,20 +1800,31 @@ class DayShiftServices
       // cash_flow_summary), sebelumnya semua ini flat di top-level sama kayak V2.
       "report_detail" => [
         "sales_summary" => [
-          "total_bills" => $amountAt(13),
-          "average_per_bill" => $amountAt(14),
-          "on_hold" => $amountAt(0),
-          "pending" => $amountAt(1),
-          "sales_subtotal" => $amountAt(2),
-          // index 17 ("Discount Total"), BUKAN 18 -- lihat komentar sama di GetReportSummaryV2().
-          "discount" => $amountAt(17),
+          // total_bills = SUM(total_billing) order paid (AMOUNT, bukan jumlah -- berubah 2026-11-24).
+          // Jumlah order paid ada di bill_count; average_per_bill = total_bills / bill_count.
+          "total_bills" => $amountAt("Total Bills"),
+          "bill_count" => (int) $amountAt("Number Of Bills"),
+          "average_per_bill" => $amountAt("Avg Gross Sales Per Bill"),
+          "on_hold" => $amountAt("Hold Sales"),
+          "pending" => $amountAt("Pending Sales"),
+          // other_cost = SUM(total_billing) order bayar tipe OTHER (FOC/fasilitas) -- nilai nyata tapi BUKAN pendapatan,
+          // TIDAK termasuk total_bills/net_sales/gross_sales. other_cost_count = jumlah ordernya.
+          "other_cost" => $amountAt("Other Cost"),
+          "other_cost_count" => (int) $amountAt("Other Cost Count"),
+          // sales_subtotal = SUM(tr_order.sub_total), SEBELUM diskon (bukan lagi sama dengan net_sales).
+          "sales_subtotal" => $amountAt("Sales Subtotal"),
+          "discount" => $amountAt("Discount Total"),
           "dpp" => (float) ($raw['dpp_total'] ?? 0),
-          "service_charge" => $amountAt(5),
-          "pb1" => $amountAt(7),
-          "vat" => $amountAt(8),
+          "service_charge" => $amountAt("Netsales Service Charge"),
+          "order_fee" => $amountAt("Netsales Order Fee"),
+          "delivery_cost" => $amountAt("Netsales Delivery Cost"),
+          "rounding" => $amountAt("Rounding"),
+          "pb1" => $amountAt("Netsales PB1 Total"),
+          "vat" => $amountAt("Netsales VAT Total"),
           "total_tax" => (float) ($raw['total_tax_total'] ?? 0),
-          "net_sales" => $amountAt(2),
-          "gross_sales" => $amountAt(9),
+          // net_sales = SUM(total_billing - total_tax); gross_sales = SUM(total_billing).
+          "net_sales" => $amountAt("Net Sales"),
+          "gross_sales" => $amountAt("Gross Sales"),
         ],
         "sales_type_summary" => self::breakdownWithPercent($raw['sales_by_visit_purpose'], "visit_purpose_name", "total_amount"),
         "order_source_summary" => $orderSourceSummary,
@@ -1784,32 +1878,9 @@ class DayShiftServices
 
       // kueri ambil data start time sampai sekarang
 
-      if ($endtime) {
-        $data_order_list = DB::select("
-          SELECT
-          tro.*,
-          COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
-          FROM
-          tr_order tro " .
-          self::NettSalesJoinSql() . "
-          WHERE
-          tro.order_in >= ? AND
-          tro.order_out <= ?
-
-          ", [$starttime, $endtime]);
-      } else {
-        $data_order_list = DB::select("
-          SELECT
-          tro.*,
-          COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
-          FROM
-          tr_order tro " .
-          self::NettSalesJoinSql() . "
-          WHERE
-          tro.order_in >= ?
-
-          ", [$starttime]);
-      }
+      // scope pakai STATUS + order_out(paid)/cancel_at/void_at (lihat GetReportOrderList) -- $endtime
+      // NULL (dayshift masih berjalan) otomatis = tanpa batas atas.
+      $data_order_list = self::GetReportOrderList($starttime, $endtime);
 
       // if (count($data_order_list) == 0) {
       //   throw new \Exception('tidak ada transaksi !');
@@ -1830,6 +1901,9 @@ class DayShiftServices
 
       // hitung per order
       $netsales = 0;
+      $subtotal_total = 0;      // SUM(sub_total) order paid -- "Sales (Subtotal)", SEBELUM diskon
+      $rounding_total = 0;      // SUM(rounding_amount) order paid
+      $total_billing_total = 0; // SUM(total_billing) order paid -- "Total Bills" & "Gross Sales"
       $netsales_dc_total = 0;
       $netsales_of_total = 0;
       $netsales_sc_total = 0;
@@ -1848,6 +1922,8 @@ class DayShiftServices
       $cancel_total = 0;
       $void_total = 0;
       $discount_total = 0;
+      $other_cost_total = 0; // SUM(total_billing) order other_cost (FOC) -- BUKAN pendapatan
+      $other_cost_count = 0;
 
 
       $orderpendinghold = TrOrderModel::whereIn('status', ['pending', 'hold'])->get();
@@ -1871,20 +1947,25 @@ class DayShiftServices
       $list_payment_number = [];
       foreach ($data_order_list as $orderitem) {
 
-        //itungan net sales -- pakai nett_sales_real (SUM qty*dpp per order, lihat NettSalesJoinSql()),
-        //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
+        // 2026-11-24: Net Sales = total_billing - total_tax (pajak = titipan ke pemerintah; service
+        // charge/order fee/delivery cost/rounding = pendapatan kita, jadi ikut Net Sales).
+        // Gross Sales/Total Bills = total_billing. Semua dari kolom header tr_order, tidak dihitung ulang.
         if ($orderitem->status == "paid") {
+          $net_order = ($orderitem->total_billing ?? 0) - ($orderitem->total_tax ?? 0);
           $number_of_bill += 1;
           $discount_total += $orderitem->total_discount;
-          $netsales += ($orderitem->nett_sales_real ?? 0);
+          $netsales += $net_order;
+          $subtotal_total += ($orderitem->sub_total ?? 0);
+          $rounding_total += ($orderitem->rounding_amount ?? 0);
+          $total_billing_total += ($orderitem->total_billing ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
           $netsales_sc_total += $orderitem->total_service_charge;
           $pax_total += $orderitem->pax;
 
-          $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
+          $avg_netsales_per_pax += $net_order;
           $avg_grosssales_per_pax += ($orderitem->total_billing);
-          $avg_netsales_per_bill += ($orderitem->nett_sales_real ?? 0);
+          $avg_netsales_per_bill += $net_order;
           $avg_grosssales_per_bill += $orderitem->total_billing;
 
           //kita masukkan ke list order number paid
@@ -1899,6 +1980,12 @@ class DayShiftServices
         if ($orderitem->status == "void") {
           $list_ordernumber->void[] = $orderitem->order_number;
           $void_total += $orderitem->sub_total;
+        }
+        // other_cost: cuma ditampung ke baris "Other Cost" -- TIDAK masuk $list_ordernumber->paid, jadi tidak
+        // ikut penjualan/pajak/kategori/payment.
+        if ($orderitem->status == "other_cost") {
+          $other_cost_total += ($orderitem->total_billing ?? 0);
+          $other_cost_count += 1;
         }
       }
 
@@ -1948,20 +2035,26 @@ class DayShiftServices
         $dpp_total += ($opd->dpp * $opd->qty);
       }
 
+      // qty efektif package = qty parent x qty package (sama dengan RecalculateOrderTotals()).
+      $parent_qty_by_ulid = [];
+      foreach ($order_paid_detail as $parent) {
+        $parent_qty_by_ulid[$parent->ulid] = $parent->qty;
+      }
       foreach ($order_paid_detail_package as $opd) {
+        $pkg_qty = ($parent_qty_by_ulid[$opd->tr_order_detail_ulid] ?? 1) * $opd->qty;
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += $opd->tax_amount * $opd->qty;
+          $netsales_pb1_total += $opd->tax_amount * $pkg_qty;
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += $opd->tax_amount * $opd->qty;
+          $netsales_vat_total += $opd->tax_amount * $pkg_qty;
         }
-        $dpp_total += ($opd->dpp * $opd->qty);
+        $dpp_total += ($opd->dpp * $pkg_qty);
       }
 
       $total_tax_total = $netsales_pb1_total + $netsales_vat_total;
 
 
-      $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
-        $netsales_sc_total + $netsales_pb1_total + $netsales_vat_total;
+      // Gross Sales = SUM(total_billing) -- sudah termasuk pajak, SC, order fee, delivery cost, rounding.
+      $gross_sales = $total_billing_total;
 
       $order_number_concat = "";
       $ulid_orderdetail_concat = "";
@@ -2029,56 +2122,61 @@ class DayShiftServices
         menu_name
       ");
 
+        // sales_by_category (CATEGORY SUMMARY) -- diperbaiki 2026-11-24 (permintaan owner):
+        //   * qty    = qty HEAD saja (baris tr_order_detail). Isi package (body, tr_order_detail_package)
+        //              TIDAK menambah qty (qty body = 0).
+        //   * amount = HEAD + BODY. Body dihitung dengan qty efektif = qty head x qty package, dan
+        //              dimasukkan ke kategori HEAD-nya (package dijual sebagai 1 kesatuan di bawah head),
+        //              BUKAN ke kategori menu anak.
+        //   * semua nilai moneter dikali qty -- kolom tod.total disimpan PER SATU UNIT (lihat
+        //     OrderServices::CalculateLineItem), dulu grand_total tidak dikali qty sehingga item
+        //     dengan qty > 1 dan isi package kekecilan.
         $sales_by_category = DB::select("SELECT
-				mcc.name as category_name,
-        sum( gabungan.qty ) as qty,
-        sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_amount ) as discount_amount,
-        sum( gabungan.vat_amount ) as vat_amount,
-        sum( gabungan.pb1_amount ) as pb1_amount,
-        sum( gabungan.grand_total )  as grand_total
-      FROM
-        (
-        SELECT
-					mi.category_id as category_id,
-          mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total 
+          mcc.name AS category_name,
+          SUM( gabungan.qty ) AS qty,
+          SUM( gabungan.sub_total ) AS sub_total,
+          SUM( gabungan.discount_amount ) AS discount_amount,
+          SUM( gabungan.vat_amount ) AS vat_amount,
+          SUM( gabungan.pb1_amount ) AS pb1_amount,
+          SUM( gabungan.grand_total ) AS grand_total
         FROM
-          tr_order_detail tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id 
-        WHERE
-          tod.order_number IN (" . $order_number_concat . ") 
-          AND tod.cancel_at IS NULL UNION ALL
-        SELECT
-          mi.category_id as category_id,
-					mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total 
-        FROM
-          tr_order_detail_package tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id 
-        WHERE
-          tod.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ") 
-        ) AS gabungan 
-				
-				JOIN mr_category mcc on mcc.id = gabungan.category_id
-      GROUP BY
-        category_name");
+          (
+          SELECT
+            mi.category_id AS category_id,
+            tod.qty AS qty,
+            ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+            ( tod.discount_amount * tod.qty ) AS discount_amount,
+            IF( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+            IF( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+            ( tod.total * tod.qty ) AS grand_total
+          FROM
+            tr_order_detail tod
+            JOIN mr_item_conv mic ON mic.id = tod.menu_id
+            JOIN mr_item mi ON mi.id = mic.item_id
+          WHERE
+            tod.order_number IN (" . $order_number_concat . ")
+            AND tod.cancel_at IS NULL
+          UNION ALL
+          SELECT
+            mi.category_id AS category_id,
+            0 AS qty,
+            ( (CASE WHEN pkg.flag_inclusive_tax = 1 THEN pkg.price_pos / (1 + pkg.tax_rate/100) ELSE pkg.price_pos END) * (head.qty * pkg.qty) ) AS sub_total,
+            ( pkg.discount_amount * (head.qty * pkg.qty) ) AS discount_amount,
+            IF( pkg.tax_type = 'vat', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS vat_amount,
+            IF( pkg.tax_type = 'pb1', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS pb1_amount,
+            ( pkg.total * (head.qty * pkg.qty) ) AS grand_total
+          FROM
+            tr_order_detail_package pkg
+            JOIN tr_order_detail head ON head.ulid = pkg.tr_order_detail_ulid
+            JOIN mr_item_conv mic ON mic.id = head.menu_id
+            JOIN mr_item mi ON mi.id = mic.item_id
+          WHERE
+            pkg.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
+            AND head.cancel_at IS NULL
+          ) AS gabungan
+          JOIN mr_category mcc ON mcc.id = gabungan.category_id
+        GROUP BY
+          category_name");
 
         // sales_by_category_item (2026-11-23, BARU) -- breakdown NESTED kategori->item (BEDA
         // dari sales_by_category di atas yang FLAT per kategori doang, item di dalamnya
@@ -2087,57 +2185,67 @@ class DayShiftServices
         // dari dulu di subquery, cuma belum pernah di-expose. Assembly nested (kategori jadi
         // header, item jadi sub-baris) dilakukan di PrintServices::printCategoryItemBreakdownSection(),
         // bukan di sini -- hasil query ini tetap FLAT, sama filosofi sales_by_staff_payment.
+        // 2026-11-24: diperbaiki -- head (is_body=0) diurutkan DI ATAS body/isi package (is_body=1) dalam
+        // tiap kategori; nilai dikali qty; body ikut kategori head (lihat komentar di SQL).
         $sales_by_category_item = DB::select("SELECT
-				mcc.name as category_name,
-        gabungan.menu_name,
-        sum( gabungan.qty ) as qty,
-        sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_amount ) as discount_amount,
-        sum( gabungan.vat_amount ) as vat_amount,
-        sum( gabungan.pb1_amount ) as pb1_amount,
-        sum( gabungan.grand_total )  as grand_total
-      FROM
-        (
-        SELECT
-					mi.category_id as category_id,
-          mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total
+          mcc.name AS category_name,
+          gabungan.menu_name,
+          gabungan.is_body,
+          SUM( gabungan.qty ) AS qty,
+          SUM( gabungan.sub_total ) AS sub_total,
+          SUM( gabungan.discount_amount ) AS discount_amount,
+          SUM( gabungan.vat_amount ) AS vat_amount,
+          SUM( gabungan.pb1_amount ) AS pb1_amount,
+          SUM( gabungan.grand_total ) AS grand_total
         FROM
-          tr_order_detail tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id
-        WHERE
-          tod.order_number IN (" . $order_number_concat . ")
-          AND tod.cancel_at IS NULL UNION ALL
-        SELECT
-          mi.category_id as category_id,
-					mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total
-        FROM
-          tr_order_detail_package tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id
-        WHERE
-          tod.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
-        ) AS gabungan
-
-				JOIN mr_category mcc on mcc.id = gabungan.category_id
-      GROUP BY
-        category_name, menu_name");
+          (
+          -- HEAD (is_body = 0): baris tr_order_detail, qty = qty head
+          SELECT
+            mi.category_id AS category_id,
+            mi.NAME AS menu_name,
+            0 AS is_body,
+            tod.qty AS qty,
+            ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+            ( tod.discount_amount * tod.qty ) AS discount_amount,
+            IF( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+            IF( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+            ( tod.total * tod.qty ) AS grand_total
+          FROM
+            tr_order_detail tod
+            JOIN mr_item_conv mic ON mic.id = tod.menu_id
+            JOIN mr_item mi ON mi.id = mic.item_id
+          WHERE
+            tod.order_number IN (" . $order_number_concat . ")
+            AND tod.cancel_at IS NULL
+          UNION ALL
+          -- BODY (is_body = 1): isi package. Nama = menu anak, KATEGORI = kategori HEAD (sama
+          -- dengan CATEGORY SUMMARY, supaya total kedua section sama), qty efektif = qty head x qty package.
+          SELECT
+            hmi.category_id AS category_id,
+            cmi.NAME AS menu_name,
+            1 AS is_body,
+            ( head.qty * pkg.qty ) AS qty,
+            ( (CASE WHEN pkg.flag_inclusive_tax = 1 THEN pkg.price_pos / (1 + pkg.tax_rate/100) ELSE pkg.price_pos END) * (head.qty * pkg.qty) ) AS sub_total,
+            ( pkg.discount_amount * (head.qty * pkg.qty) ) AS discount_amount,
+            IF( pkg.tax_type = 'vat', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS vat_amount,
+            IF( pkg.tax_type = 'pb1', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS pb1_amount,
+            ( pkg.total * (head.qty * pkg.qty) ) AS grand_total
+          FROM
+            tr_order_detail_package pkg
+            JOIN tr_order_detail head ON head.ulid = pkg.tr_order_detail_ulid
+            JOIN mr_item_conv hmic ON hmic.id = head.menu_id
+            JOIN mr_item hmi ON hmi.id = hmic.item_id
+            JOIN mr_item_conv cmic ON cmic.id = pkg.menu_id
+            JOIN mr_item cmi ON cmi.id = cmic.item_id
+          WHERE
+            pkg.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
+            AND head.cancel_at IS NULL
+          ) AS gabungan
+          JOIN mr_category mcc ON mcc.id = gabungan.category_id
+        GROUP BY
+          category_name, menu_name, is_body
+        ORDER BY
+          category_name, is_body, menu_name");
       }
 
 
@@ -2254,6 +2362,12 @@ class DayShiftServices
           ["pl" => 1, "key" => "Cancel Total", "amount" => $cancel_total],
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
           ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
+          // elemen baru (2026-11-24) -- SELALU ditambah di akhir; pembaca pakai DayShiftServices::recapAmount() by key
+          ["pl" => 1, "key" => "Sales Subtotal", "amount" => $subtotal_total],
+          ["pl" => 1, "key" => "Rounding", "amount" => $rounding_total],
+          ["pl" => 1, "key" => "Total Bills", "amount" => $total_billing_total],
+          ["pl" => 1, "key" => "Other Cost", "amount" => $other_cost_total],
+          ["pl" => 1, "key" => "Other Cost Count", "amount" => $other_cost_count],
         ],
         // dpp_total/total_tax_total (BARU) -- dipakai baris "DPP"/"Total Tax" section SALES
         // SUMMARY, dihitung di loop tax breakdown di atas (bukan array sales_recapitulation
@@ -2285,34 +2399,26 @@ class DayShiftServices
 
       $data_dayshift = DaySiftModel::where('ulid', $dayshift_ulid)->first();
       $daftar_dayshift_detail = DayShiftDetailModel::where('dayshift_ulid', $dayshift_ulid)->get();
+      // urut shift_time (bukan ulid) -- sama dengan GetReportPerShift(), tidak ambigu.
       $data_dayshift_detail = DayShiftDetailModel::where('dayshift_ulid', $dayshift_ulid)
-        ->orderBy('ulid', 'desc')->first();
+        ->orderBy('shift_time', 'desc')->first();
       if ($data_dayshift_detail) {
         $pakai_header = false;
       }
 
+      // awal window = End Shift terakhir (shift_time), atau dayin_time kalau dayshift belum
+      // pernah End Shift (= 1 shift utuh).
       if ($pakai_header) {
         $starttime = $data_dayshift->dayin_time;
       } else {
         $starttime = $data_dayshift_detail->shift_time;
       }
+      // akhir window = dayout_time kalau dayshift sudah di-End Day (supaya order dayshift
+      // SESUDAHNYA tidak ikut terhitung), NULL kalau masih berjalan (sampai sekarang).
+      $endtime = $data_dayshift->dayout_time ?? null;
 
-      // ambil data 
-      //////bawahnya ini sama dengan report biasa 
-
-      // kueri ambil data start time sampai sekarang 
-
-      $data_order_list = DB::select("
-        SELECT
-        tro.*,
-        COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
-        FROM
-        tr_order tro " .
-          self::NettSalesJoinSql() . "
-        WHERE
-        tro.order_in >= ?
-
-        ", [$starttime]);
+      // ambil data -- scope pakai STATUS + order_out(paid)/cancel_at/void_at (lihat GetReportOrderList)
+      $data_order_list = self::GetReportOrderList($starttime, $endtime);
 
       // if (count($data_order_list) == 0) {
       //   throw new \Exception('tidak ada transaksi !');
@@ -2333,6 +2439,9 @@ class DayShiftServices
 
       // hitung per order
       $netsales = 0;
+      $subtotal_total = 0;      // SUM(sub_total) order paid -- "Sales (Subtotal)", SEBELUM diskon
+      $rounding_total = 0;      // SUM(rounding_amount) order paid
+      $total_billing_total = 0; // SUM(total_billing) order paid -- "Total Bills" & "Gross Sales"
       $netsales_dc_total = 0;
       $netsales_of_total = 0;
       $netsales_sc_total = 0;
@@ -2351,6 +2460,8 @@ class DayShiftServices
       $cancel_total = 0;
       $void_total = 0;
       $discount_total = 0;
+      $other_cost_total = 0; // SUM(total_billing) order other_cost (FOC) -- BUKAN pendapatan
+      $other_cost_count = 0;
 
 
       $orderpendinghold = TrOrderModel::whereIn('status', ['pending', 'hold'])->get();
@@ -2374,20 +2485,25 @@ class DayShiftServices
       $list_payment_number = [];
       foreach ($data_order_list as $orderitem) {
 
-        //itungan net sales -- pakai nett_sales_real (SUM qty*dpp per order, lihat NettSalesJoinSql()),
-        //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
+        // 2026-11-24: Net Sales = total_billing - total_tax (pajak = titipan ke pemerintah; service
+        // charge/order fee/delivery cost/rounding = pendapatan kita, jadi ikut Net Sales).
+        // Gross Sales/Total Bills = total_billing. Semua dari kolom header tr_order, tidak dihitung ulang.
         if ($orderitem->status == "paid") {
+          $net_order = ($orderitem->total_billing ?? 0) - ($orderitem->total_tax ?? 0);
           $number_of_bill += 1;
           $discount_total += $orderitem->total_discount;
-          $netsales += ($orderitem->nett_sales_real ?? 0);
+          $netsales += $net_order;
+          $subtotal_total += ($orderitem->sub_total ?? 0);
+          $rounding_total += ($orderitem->rounding_amount ?? 0);
+          $total_billing_total += ($orderitem->total_billing ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
           $netsales_sc_total += $orderitem->total_service_charge;
           $pax_total += $orderitem->pax;
 
-          $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
+          $avg_netsales_per_pax += $net_order;
           $avg_grosssales_per_pax += ($orderitem->total_billing);
-          $avg_netsales_per_bill += ($orderitem->nett_sales_real ?? 0);
+          $avg_netsales_per_bill += $net_order;
           $avg_grosssales_per_bill += $orderitem->total_billing;
 
           //kita masukkan ke list order number paid
@@ -2402,6 +2518,12 @@ class DayShiftServices
         if ($orderitem->status == "void") {
           $list_ordernumber->void[] = $orderitem->order_number;
           $void_total += $orderitem->sub_total;
+        }
+        // other_cost: cuma ditampung ke baris "Other Cost" -- TIDAK masuk $list_ordernumber->paid, jadi tidak
+        // ikut penjualan/pajak/kategori/payment.
+        if ($orderitem->status == "other_cost") {
+          $other_cost_total += ($orderitem->total_billing ?? 0);
+          $other_cost_count += 1;
         }
       }
 
@@ -2445,20 +2567,26 @@ class DayShiftServices
         $dpp_total += ($opd->dpp * $opd->qty);
       }
 
+      // qty efektif package = qty parent x qty package (sama dengan RecalculateOrderTotals()).
+      $parent_qty_by_ulid = [];
+      foreach ($order_paid_detail as $parent) {
+        $parent_qty_by_ulid[$parent->ulid] = $parent->qty;
+      }
       foreach ($order_paid_detail_package as $opd) {
+        $pkg_qty = ($parent_qty_by_ulid[$opd->tr_order_detail_ulid] ?? 1) * $opd->qty;
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += $opd->tax_amount * $opd->qty;
+          $netsales_pb1_total += $opd->tax_amount * $pkg_qty;
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += $opd->tax_amount * $opd->qty;
+          $netsales_vat_total += $opd->tax_amount * $pkg_qty;
         }
-        $dpp_total += ($opd->dpp * $opd->qty);
+        $dpp_total += ($opd->dpp * $pkg_qty);
       }
 
       $total_tax_total = $netsales_pb1_total + $netsales_vat_total;
 
 
-      $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
-        $netsales_sc_total + $netsales_pb1_total + $netsales_vat_total;
+      // Gross Sales = SUM(total_billing) -- sudah termasuk pajak, SC, order fee, delivery cost, rounding.
+      $gross_sales = $total_billing_total;
 
       $order_number_concat = "";
       $ulid_orderdetail_concat = "";
@@ -2526,56 +2654,61 @@ class DayShiftServices
         menu_name
       ");
 
+        // sales_by_category (CATEGORY SUMMARY) -- diperbaiki 2026-11-24 (permintaan owner):
+        //   * qty    = qty HEAD saja (baris tr_order_detail). Isi package (body, tr_order_detail_package)
+        //              TIDAK menambah qty (qty body = 0).
+        //   * amount = HEAD + BODY. Body dihitung dengan qty efektif = qty head x qty package, dan
+        //              dimasukkan ke kategori HEAD-nya (package dijual sebagai 1 kesatuan di bawah head),
+        //              BUKAN ke kategori menu anak.
+        //   * semua nilai moneter dikali qty -- kolom tod.total disimpan PER SATU UNIT (lihat
+        //     OrderServices::CalculateLineItem), dulu grand_total tidak dikali qty sehingga item
+        //     dengan qty > 1 dan isi package kekecilan.
         $sales_by_category = DB::select("SELECT
-				mcc.name as category_name,
-        sum( gabungan.qty ) as qty,
-        sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_amount ) as discount_amount,
-        sum( gabungan.vat_amount ) as vat_amount,
-        sum( gabungan.pb1_amount ) as pb1_amount,
-        sum( gabungan.grand_total )  as grand_total
-      FROM
-        (
-        SELECT
-					mi.category_id as category_id,
-          mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total 
+          mcc.name AS category_name,
+          SUM( gabungan.qty ) AS qty,
+          SUM( gabungan.sub_total ) AS sub_total,
+          SUM( gabungan.discount_amount ) AS discount_amount,
+          SUM( gabungan.vat_amount ) AS vat_amount,
+          SUM( gabungan.pb1_amount ) AS pb1_amount,
+          SUM( gabungan.grand_total ) AS grand_total
         FROM
-          tr_order_detail tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id 
-        WHERE
-          tod.order_number IN (" . $order_number_concat . ") 
-          AND tod.cancel_at IS NULL UNION ALL
-        SELECT
-          mi.category_id as category_id,
-					mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total 
-        FROM
-          tr_order_detail_package tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id 
-        WHERE
-          tod.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ") 
-        ) AS gabungan 
-				
-				JOIN mr_category mcc on mcc.id = gabungan.category_id
-      GROUP BY
-        category_name");
+          (
+          SELECT
+            mi.category_id AS category_id,
+            tod.qty AS qty,
+            ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+            ( tod.discount_amount * tod.qty ) AS discount_amount,
+            IF( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+            IF( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+            ( tod.total * tod.qty ) AS grand_total
+          FROM
+            tr_order_detail tod
+            JOIN mr_item_conv mic ON mic.id = tod.menu_id
+            JOIN mr_item mi ON mi.id = mic.item_id
+          WHERE
+            tod.order_number IN (" . $order_number_concat . ")
+            AND tod.cancel_at IS NULL
+          UNION ALL
+          SELECT
+            mi.category_id AS category_id,
+            0 AS qty,
+            ( (CASE WHEN pkg.flag_inclusive_tax = 1 THEN pkg.price_pos / (1 + pkg.tax_rate/100) ELSE pkg.price_pos END) * (head.qty * pkg.qty) ) AS sub_total,
+            ( pkg.discount_amount * (head.qty * pkg.qty) ) AS discount_amount,
+            IF( pkg.tax_type = 'vat', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS vat_amount,
+            IF( pkg.tax_type = 'pb1', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS pb1_amount,
+            ( pkg.total * (head.qty * pkg.qty) ) AS grand_total
+          FROM
+            tr_order_detail_package pkg
+            JOIN tr_order_detail head ON head.ulid = pkg.tr_order_detail_ulid
+            JOIN mr_item_conv mic ON mic.id = head.menu_id
+            JOIN mr_item mi ON mi.id = mic.item_id
+          WHERE
+            pkg.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
+            AND head.cancel_at IS NULL
+          ) AS gabungan
+          JOIN mr_category mcc ON mcc.id = gabungan.category_id
+        GROUP BY
+          category_name");
 
         // sales_by_category_item (2026-11-23, BARU) -- breakdown NESTED kategori->item (BEDA
         // dari sales_by_category di atas yang FLAT per kategori doang, item di dalamnya
@@ -2584,57 +2717,67 @@ class DayShiftServices
         // dari dulu di subquery, cuma belum pernah di-expose. Assembly nested (kategori jadi
         // header, item jadi sub-baris) dilakukan di PrintServices::printCategoryItemBreakdownSection(),
         // bukan di sini -- hasil query ini tetap FLAT, sama filosofi sales_by_staff_payment.
+        // 2026-11-24: diperbaiki -- head (is_body=0) diurutkan DI ATAS body/isi package (is_body=1) dalam
+        // tiap kategori; nilai dikali qty; body ikut kategori head (lihat komentar di SQL).
         $sales_by_category_item = DB::select("SELECT
-				mcc.name as category_name,
-        gabungan.menu_name,
-        sum( gabungan.qty ) as qty,
-        sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_amount ) as discount_amount,
-        sum( gabungan.vat_amount ) as vat_amount,
-        sum( gabungan.pb1_amount ) as pb1_amount,
-        sum( gabungan.grand_total )  as grand_total
-      FROM
-        (
-        SELECT
-					mi.category_id as category_id,
-          mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total
+          mcc.name AS category_name,
+          gabungan.menu_name,
+          gabungan.is_body,
+          SUM( gabungan.qty ) AS qty,
+          SUM( gabungan.sub_total ) AS sub_total,
+          SUM( gabungan.discount_amount ) AS discount_amount,
+          SUM( gabungan.vat_amount ) AS vat_amount,
+          SUM( gabungan.pb1_amount ) AS pb1_amount,
+          SUM( gabungan.grand_total ) AS grand_total
         FROM
-          tr_order_detail tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id
-        WHERE
-          tod.order_number IN (" . $order_number_concat . ")
-          AND tod.cancel_at IS NULL UNION ALL
-        SELECT
-          mi.category_id as category_id,
-					mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total
-        FROM
-          tr_order_detail_package tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id
-        WHERE
-          tod.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
-        ) AS gabungan
-
-				JOIN mr_category mcc on mcc.id = gabungan.category_id
-      GROUP BY
-        category_name, menu_name");
+          (
+          -- HEAD (is_body = 0): baris tr_order_detail, qty = qty head
+          SELECT
+            mi.category_id AS category_id,
+            mi.NAME AS menu_name,
+            0 AS is_body,
+            tod.qty AS qty,
+            ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+            ( tod.discount_amount * tod.qty ) AS discount_amount,
+            IF( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+            IF( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+            ( tod.total * tod.qty ) AS grand_total
+          FROM
+            tr_order_detail tod
+            JOIN mr_item_conv mic ON mic.id = tod.menu_id
+            JOIN mr_item mi ON mi.id = mic.item_id
+          WHERE
+            tod.order_number IN (" . $order_number_concat . ")
+            AND tod.cancel_at IS NULL
+          UNION ALL
+          -- BODY (is_body = 1): isi package. Nama = menu anak, KATEGORI = kategori HEAD (sama
+          -- dengan CATEGORY SUMMARY, supaya total kedua section sama), qty efektif = qty head x qty package.
+          SELECT
+            hmi.category_id AS category_id,
+            cmi.NAME AS menu_name,
+            1 AS is_body,
+            ( head.qty * pkg.qty ) AS qty,
+            ( (CASE WHEN pkg.flag_inclusive_tax = 1 THEN pkg.price_pos / (1 + pkg.tax_rate/100) ELSE pkg.price_pos END) * (head.qty * pkg.qty) ) AS sub_total,
+            ( pkg.discount_amount * (head.qty * pkg.qty) ) AS discount_amount,
+            IF( pkg.tax_type = 'vat', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS vat_amount,
+            IF( pkg.tax_type = 'pb1', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS pb1_amount,
+            ( pkg.total * (head.qty * pkg.qty) ) AS grand_total
+          FROM
+            tr_order_detail_package pkg
+            JOIN tr_order_detail head ON head.ulid = pkg.tr_order_detail_ulid
+            JOIN mr_item_conv hmic ON hmic.id = head.menu_id
+            JOIN mr_item hmi ON hmi.id = hmic.item_id
+            JOIN mr_item_conv cmic ON cmic.id = pkg.menu_id
+            JOIN mr_item cmi ON cmi.id = cmic.item_id
+          WHERE
+            pkg.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
+            AND head.cancel_at IS NULL
+          ) AS gabungan
+          JOIN mr_category mcc ON mcc.id = gabungan.category_id
+        GROUP BY
+          category_name, menu_name, is_body
+        ORDER BY
+          category_name, is_body, menu_name");
       }
 
 
@@ -2734,6 +2877,12 @@ class DayShiftServices
           ["pl" => 1, "key" => "Cancel Total", "amount" => $cancel_total],
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
           ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
+          // elemen baru (2026-11-24) -- SELALU ditambah di akhir; pembaca pakai DayShiftServices::recapAmount() by key
+          ["pl" => 1, "key" => "Sales Subtotal", "amount" => $subtotal_total],
+          ["pl" => 1, "key" => "Rounding", "amount" => $rounding_total],
+          ["pl" => 1, "key" => "Total Bills", "amount" => $total_billing_total],
+          ["pl" => 1, "key" => "Other Cost", "amount" => $other_cost_total],
+          ["pl" => 1, "key" => "Other Cost Count", "amount" => $other_cost_count],
         ],
         "dpp_total" => $dpp_total,
         "total_tax_total" => $total_tax_total,
@@ -2795,18 +2944,9 @@ class DayShiftServices
 
       // kueri ambil data start time sampai sekarang 
 
-      $data_order_list = DB::select("
-        SELECT
-        tro.*,
-        COALESCE(nett_join.nett_sales_real, 0) AS nett_sales_real
-        FROM
-        tr_order tro " .
-          self::NettSalesJoinSql() . "
-        WHERE
-        tro.order_in >= ? AND
-        tro.order_out <= ?
-
-        ", [$starttime, $endtime]);
+      // scope pakai STATUS + order_out(paid)/cancel_at/void_at (lihat GetReportOrderList) -- window
+      // = [akhir shift sebelumnya (atau dayin_time), shift_time shift ini).
+      $data_order_list = self::GetReportOrderList($starttime, $endtime);
 
       // if (count($data_order_list) == 0) {
       //   throw new \Exception('tidak ada transaksi !');
@@ -2827,6 +2967,9 @@ class DayShiftServices
 
       // hitung per order
       $netsales = 0;
+      $subtotal_total = 0;      // SUM(sub_total) order paid -- "Sales (Subtotal)", SEBELUM diskon
+      $rounding_total = 0;      // SUM(rounding_amount) order paid
+      $total_billing_total = 0; // SUM(total_billing) order paid -- "Total Bills" & "Gross Sales"
       $netsales_dc_total = 0;
       $netsales_of_total = 0;
       $netsales_sc_total = 0;
@@ -2845,6 +2988,8 @@ class DayShiftServices
       $cancel_total = 0;
       $void_total = 0;
       $discount_total = 0;
+      $other_cost_total = 0; // SUM(total_billing) order other_cost (FOC) -- BUKAN pendapatan
+      $other_cost_count = 0;
 
 
       $orderpendinghold = TrOrderModel::whereIn('status', ['pending', 'hold'])->get();
@@ -2868,20 +3013,25 @@ class DayShiftServices
       $list_payment_number = [];
       foreach ($data_order_list as $orderitem) {
 
-        //itungan net sales -- pakai nett_sales_real (SUM qty*dpp per order, lihat NettSalesJoinSql()),
-        //BUKAN sub_total - total_discount (basisnya nyampur net-of-tax vs gross, understated buat inclusive tax + diskon)
+        // 2026-11-24: Net Sales = total_billing - total_tax (pajak = titipan ke pemerintah; service
+        // charge/order fee/delivery cost/rounding = pendapatan kita, jadi ikut Net Sales).
+        // Gross Sales/Total Bills = total_billing. Semua dari kolom header tr_order, tidak dihitung ulang.
         if ($orderitem->status == "paid") {
+          $net_order = ($orderitem->total_billing ?? 0) - ($orderitem->total_tax ?? 0);
           $number_of_bill += 1;
           $discount_total += $orderitem->total_discount;
-          $netsales += ($orderitem->nett_sales_real ?? 0);
+          $netsales += $net_order;
+          $subtotal_total += ($orderitem->sub_total ?? 0);
+          $rounding_total += ($orderitem->rounding_amount ?? 0);
+          $total_billing_total += ($orderitem->total_billing ?? 0);
           $netsales_dc_total += $orderitem->delivery_cost;
           $netsales_of_total += $orderitem->order_fee;
           $netsales_sc_total += $orderitem->total_service_charge;
           $pax_total += $orderitem->pax;
 
-          $avg_netsales_per_pax += ($orderitem->nett_sales_real ?? 0);
+          $avg_netsales_per_pax += $net_order;
           $avg_grosssales_per_pax += ($orderitem->total_billing);
-          $avg_netsales_per_bill += ($orderitem->nett_sales_real ?? 0);
+          $avg_netsales_per_bill += $net_order;
           $avg_grosssales_per_bill += $orderitem->total_billing;
 
           //kita masukkan ke list order number paid
@@ -2896,6 +3046,12 @@ class DayShiftServices
         if ($orderitem->status == "void") {
           $list_ordernumber->void[] = $orderitem->order_number;
           $void_total += $orderitem->sub_total;
+        }
+        // other_cost: cuma ditampung ke baris "Other Cost" -- TIDAK masuk $list_ordernumber->paid, jadi tidak
+        // ikut penjualan/pajak/kategori/payment.
+        if ($orderitem->status == "other_cost") {
+          $other_cost_total += ($orderitem->total_billing ?? 0);
+          $other_cost_count += 1;
         }
       }
 
@@ -2939,19 +3095,25 @@ class DayShiftServices
         $dpp_total += ($opd->dpp * $opd->qty);
       }
 
+      // qty efektif package = qty parent x qty package (sama dengan RecalculateOrderTotals()).
+      $parent_qty_by_ulid = [];
+      foreach ($order_paid_detail as $parent) {
+        $parent_qty_by_ulid[$parent->ulid] = $parent->qty;
+      }
       foreach ($order_paid_detail_package as $opd) {
+        $pkg_qty = ($parent_qty_by_ulid[$opd->tr_order_detail_ulid] ?? 1) * $opd->qty;
         if ($opd->tax_type == 'pb1') {
-          $netsales_pb1_total += $opd->tax_amount * $opd->qty;
+          $netsales_pb1_total += $opd->tax_amount * $pkg_qty;
         } else if ($opd->tax_type == 'vat') {
-          $netsales_vat_total += $opd->tax_amount * $opd->qty;
+          $netsales_vat_total += $opd->tax_amount * $pkg_qty;
         }
-        $dpp_total += ($opd->dpp * $opd->qty);
+        $dpp_total += ($opd->dpp * $pkg_qty);
       }
 
       $total_tax_total = $netsales_pb1_total + $netsales_vat_total;
 
-      $gross_sales = $netsales + $netsales_dc_total + $netsales_of_total +
-        $netsales_sc_total + $netsales_pb1_total + $netsales_vat_total;
+      // Gross Sales = SUM(total_billing) -- sudah termasuk pajak, SC, order fee, delivery cost, rounding.
+      $gross_sales = $total_billing_total;
 
       $order_number_concat = "";
       $ulid_orderdetail_concat = "";
@@ -3019,56 +3181,61 @@ class DayShiftServices
         menu_name
       ");
 
+        // sales_by_category (CATEGORY SUMMARY) -- diperbaiki 2026-11-24 (permintaan owner):
+        //   * qty    = qty HEAD saja (baris tr_order_detail). Isi package (body, tr_order_detail_package)
+        //              TIDAK menambah qty (qty body = 0).
+        //   * amount = HEAD + BODY. Body dihitung dengan qty efektif = qty head x qty package, dan
+        //              dimasukkan ke kategori HEAD-nya (package dijual sebagai 1 kesatuan di bawah head),
+        //              BUKAN ke kategori menu anak.
+        //   * semua nilai moneter dikali qty -- kolom tod.total disimpan PER SATU UNIT (lihat
+        //     OrderServices::CalculateLineItem), dulu grand_total tidak dikali qty sehingga item
+        //     dengan qty > 1 dan isi package kekecilan.
         $sales_by_category = DB::select("SELECT
-				mcc.name as category_name,
-        sum( gabungan.qty ) as qty,
-        sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_amount ) as discount_amount,
-        sum( gabungan.vat_amount ) as vat_amount,
-        sum( gabungan.pb1_amount ) as pb1_amount,
-        sum( gabungan.grand_total )  as grand_total
-      FROM
-        (
-        SELECT
-					mi.category_id as category_id,
-          mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total 
+          mcc.name AS category_name,
+          SUM( gabungan.qty ) AS qty,
+          SUM( gabungan.sub_total ) AS sub_total,
+          SUM( gabungan.discount_amount ) AS discount_amount,
+          SUM( gabungan.vat_amount ) AS vat_amount,
+          SUM( gabungan.pb1_amount ) AS pb1_amount,
+          SUM( gabungan.grand_total ) AS grand_total
         FROM
-          tr_order_detail tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id 
-        WHERE
-          tod.order_number IN (" . $order_number_concat . ") 
-          AND tod.cancel_at IS NULL UNION ALL
-        SELECT
-          mi.category_id as category_id,
-					mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total 
-        FROM
-          tr_order_detail_package tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id 
-        WHERE
-          tod.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ") 
-        ) AS gabungan 
-				
-				JOIN mr_category mcc on mcc.id = gabungan.category_id
-      GROUP BY
-        category_name");
+          (
+          SELECT
+            mi.category_id AS category_id,
+            tod.qty AS qty,
+            ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+            ( tod.discount_amount * tod.qty ) AS discount_amount,
+            IF( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+            IF( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+            ( tod.total * tod.qty ) AS grand_total
+          FROM
+            tr_order_detail tod
+            JOIN mr_item_conv mic ON mic.id = tod.menu_id
+            JOIN mr_item mi ON mi.id = mic.item_id
+          WHERE
+            tod.order_number IN (" . $order_number_concat . ")
+            AND tod.cancel_at IS NULL
+          UNION ALL
+          SELECT
+            mi.category_id AS category_id,
+            0 AS qty,
+            ( (CASE WHEN pkg.flag_inclusive_tax = 1 THEN pkg.price_pos / (1 + pkg.tax_rate/100) ELSE pkg.price_pos END) * (head.qty * pkg.qty) ) AS sub_total,
+            ( pkg.discount_amount * (head.qty * pkg.qty) ) AS discount_amount,
+            IF( pkg.tax_type = 'vat', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS vat_amount,
+            IF( pkg.tax_type = 'pb1', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS pb1_amount,
+            ( pkg.total * (head.qty * pkg.qty) ) AS grand_total
+          FROM
+            tr_order_detail_package pkg
+            JOIN tr_order_detail head ON head.ulid = pkg.tr_order_detail_ulid
+            JOIN mr_item_conv mic ON mic.id = head.menu_id
+            JOIN mr_item mi ON mi.id = mic.item_id
+          WHERE
+            pkg.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
+            AND head.cancel_at IS NULL
+          ) AS gabungan
+          JOIN mr_category mcc ON mcc.id = gabungan.category_id
+        GROUP BY
+          category_name");
 
         // sales_by_category_item (2026-11-23, BARU) -- breakdown NESTED kategori->item (BEDA
         // dari sales_by_category di atas yang FLAT per kategori doang, item di dalamnya
@@ -3077,57 +3244,67 @@ class DayShiftServices
         // dari dulu di subquery, cuma belum pernah di-expose. Assembly nested (kategori jadi
         // header, item jadi sub-baris) dilakukan di PrintServices::printCategoryItemBreakdownSection(),
         // bukan di sini -- hasil query ini tetap FLAT, sama filosofi sales_by_staff_payment.
+        // 2026-11-24: diperbaiki -- head (is_body=0) diurutkan DI ATAS body/isi package (is_body=1) dalam
+        // tiap kategori; nilai dikali qty; body ikut kategori head (lihat komentar di SQL).
         $sales_by_category_item = DB::select("SELECT
-				mcc.name as category_name,
-        gabungan.menu_name,
-        sum( gabungan.qty ) as qty,
-        sum( gabungan.sub_total ) as sub_total,
-        sum( gabungan.discount_amount ) as discount_amount,
-        sum( gabungan.vat_amount ) as vat_amount,
-        sum( gabungan.pb1_amount ) as pb1_amount,
-        sum( gabungan.grand_total )  as grand_total
-      FROM
-        (
-        SELECT
-					mi.category_id as category_id,
-          mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total
+          mcc.name AS category_name,
+          gabungan.menu_name,
+          gabungan.is_body,
+          SUM( gabungan.qty ) AS qty,
+          SUM( gabungan.sub_total ) AS sub_total,
+          SUM( gabungan.discount_amount ) AS discount_amount,
+          SUM( gabungan.vat_amount ) AS vat_amount,
+          SUM( gabungan.pb1_amount ) AS pb1_amount,
+          SUM( gabungan.grand_total ) AS grand_total
         FROM
-          tr_order_detail tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id
-        WHERE
-          tod.order_number IN (" . $order_number_concat . ")
-          AND tod.cancel_at IS NULL UNION ALL
-        SELECT
-          mi.category_id as category_id,
-					mi.NAME AS menu_name,
-          tod.qty,
-          ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
-          ( tod.discount_amount * tod.qty ) AS discount_amount,
-        IF
-          ( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
-        IF
-          ( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
-          tod.total AS grand_total
-        FROM
-          tr_order_detail_package tod
-          JOIN mr_item_conv mic ON mic.id = tod.menu_id
-          JOIN mr_item mi ON mi.id = mic.item_id
-        WHERE
-          tod.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
-        ) AS gabungan
-
-				JOIN mr_category mcc on mcc.id = gabungan.category_id
-      GROUP BY
-        category_name, menu_name");
+          (
+          -- HEAD (is_body = 0): baris tr_order_detail, qty = qty head
+          SELECT
+            mi.category_id AS category_id,
+            mi.NAME AS menu_name,
+            0 AS is_body,
+            tod.qty AS qty,
+            ( (CASE WHEN tod.flag_inclusive_tax = 1 THEN tod.price_pos / (1 + tod.tax_rate/100) ELSE tod.price_pos END) * tod.qty ) AS sub_total,
+            ( tod.discount_amount * tod.qty ) AS discount_amount,
+            IF( tod.tax_type = 'vat', tod.tax_amount * tod.qty, 0 ) AS vat_amount,
+            IF( tod.tax_type = 'pb1', tod.tax_amount * tod.qty, 0 ) AS pb1_amount,
+            ( tod.total * tod.qty ) AS grand_total
+          FROM
+            tr_order_detail tod
+            JOIN mr_item_conv mic ON mic.id = tod.menu_id
+            JOIN mr_item mi ON mi.id = mic.item_id
+          WHERE
+            tod.order_number IN (" . $order_number_concat . ")
+            AND tod.cancel_at IS NULL
+          UNION ALL
+          -- BODY (is_body = 1): isi package. Nama = menu anak, KATEGORI = kategori HEAD (sama
+          -- dengan CATEGORY SUMMARY, supaya total kedua section sama), qty efektif = qty head x qty package.
+          SELECT
+            hmi.category_id AS category_id,
+            cmi.NAME AS menu_name,
+            1 AS is_body,
+            ( head.qty * pkg.qty ) AS qty,
+            ( (CASE WHEN pkg.flag_inclusive_tax = 1 THEN pkg.price_pos / (1 + pkg.tax_rate/100) ELSE pkg.price_pos END) * (head.qty * pkg.qty) ) AS sub_total,
+            ( pkg.discount_amount * (head.qty * pkg.qty) ) AS discount_amount,
+            IF( pkg.tax_type = 'vat', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS vat_amount,
+            IF( pkg.tax_type = 'pb1', pkg.tax_amount * (head.qty * pkg.qty), 0 ) AS pb1_amount,
+            ( pkg.total * (head.qty * pkg.qty) ) AS grand_total
+          FROM
+            tr_order_detail_package pkg
+            JOIN tr_order_detail head ON head.ulid = pkg.tr_order_detail_ulid
+            JOIN mr_item_conv hmic ON hmic.id = head.menu_id
+            JOIN mr_item hmi ON hmi.id = hmic.item_id
+            JOIN mr_item_conv cmic ON cmic.id = pkg.menu_id
+            JOIN mr_item cmi ON cmi.id = cmic.item_id
+          WHERE
+            pkg.tr_order_detail_ulid IN (" . $ulid_orderdetail_concat . ")
+            AND head.cancel_at IS NULL
+          ) AS gabungan
+          JOIN mr_category mcc ON mcc.id = gabungan.category_id
+        GROUP BY
+          category_name, menu_name, is_body
+        ORDER BY
+          category_name, is_body, menu_name");
       }
 
 
@@ -3227,6 +3404,12 @@ class DayShiftServices
           ["pl" => 1, "key" => "Cancel Total", "amount" => $cancel_total],
           ["pl" => 1, "key" => "Void Total", "amount" => $void_total],
           ["pl" => 1, "key" => "Discount Total", "amount" => $discount_total],
+          // elemen baru (2026-11-24) -- SELALU ditambah di akhir; pembaca pakai DayShiftServices::recapAmount() by key
+          ["pl" => 1, "key" => "Sales Subtotal", "amount" => $subtotal_total],
+          ["pl" => 1, "key" => "Rounding", "amount" => $rounding_total],
+          ["pl" => 1, "key" => "Total Bills", "amount" => $total_billing_total],
+          ["pl" => 1, "key" => "Other Cost", "amount" => $other_cost_total],
+          ["pl" => 1, "key" => "Other Cost Count", "amount" => $other_cost_count],
         ],
         "dpp_total" => $dpp_total,
         "total_tax_total" => $total_tax_total,

@@ -56,6 +56,51 @@ Cetak laporan dayshift (`PrintServices::PrintReportDaysift()`) — nama fungsi m
 
 `GetReportDayshiftorEndDay()` (service di balik fungsi ini) **sejak 2026-11-23 bisa dipanggil untuk dayshift AKTIF** (`dayout_time` NULL) — scope datanya otomatis jadi "dari jam buka sampai SEKARANG" (bukan sampai jam tutup, karena belum ada). Sebelumnya fungsi ini SELALU melempar exception `"end day has not been done yet!"` kalau dayshift belum ditutup — guard itu sudah dihapus.
 
+## Sales Summary: scope & rumus (2026-11-24)
+
+Section "SALES SUMMARY" di keempat struk (`PrintEndDay()`, `PrintReportDaysift()`, `PrintCurrentShift()`, `PrintPerShiftv2()`) memakai data, rumus, dan aturan scope yang **sama persis** dengan `report-v3` — rumus lengkap + penjelasan ada di [`LIST AND DETAIL.md`](LIST%20AND%20DETAIL.md#sales-summary-scope--rumus-2026-11-24), tidak diulang di sini.
+
+Scope window per endpoint print (awal inklusif `>=`, akhir eksklusif `<`; order dipilih lewat **status + `order_out` (paid) / `cancel_at` / `void_at`**, pending/hold tanpa window — alasan paid pakai `order_out` bukan `payment_at`: lihat [`LIST AND DETAIL.md`](LIST%20AND%20DETAIL.md#sales-summary-scope--rumus-2026-11-24)):
+
+| Endpoint | Fungsi print | Fungsi hitung | Awal | Akhir |
+|---|---|---|---|---|
+| `print-current-shift-report/{id}` | `PrintCurrentShift()` | `GetReportCurrentShift()` | `shift_time` detail terakhir; kalau belum ada detail = `dayin_time` | `dayout_time` kalau sudah tutup, kalau belum = sampai sekarang |
+| `print-endday-report/{id}` (hanya dayshift aktif) | `PrintReportDaysift()` | `GetReportDayshiftorEndDay()` | `dayin_time` | sampai sekarang |
+| `print-report-dayshift/{id}` (+ panggilan otomatis End Day) | `PrintReportDaysift()` | `GetReportDayshiftorEndDay()` | `dayin_time` | `dayout_time` kalau sudah tutup, kalau belum = sampai sekarang |
+| `print-report-shift/{detail_id}` | `PrintPerShiftv2()` | `GetReportPerShift()` | `shift_time` shift sebelumnya (shift 1 = `dayin_time`) | `shift_time` shift ini |
+| *(tanpa endpoint HTTP aktif)* | `PrintEndDay()` | `GetReportDayshiftorEndDay()` | sama dengan `print-report-dayshift` | sama |
+
+`tr_dayshift_detail.shift_time` = waktu **akhir** shift (saat End Shift). Shift terakhir (setelah End Shift terakhir sampai End Day) tidak punya baris detail sendiri, jadi **hanya bisa dicetak lewat `print-current-shift-report`**, bukan `print-report-shift`.
+
+Isi baris SALES SUMMARY sekarang (urutan cetak):
+
+```
+Total Bills       (SUM total_billing, amount)
+Bill Count        (jumlah order paid)           <- baris baru
+Average / Bill    (Total Bills / Bill Count)
+On Hold
+Pending
+Other Cost        (order other_cost/FOC, bukan pendapatan)   <- baris baru
+-----
+Sales (Subtotal)  (SUM sub_total, sebelum diskon)
+Discount
+DPP
+Service Charge
+Order Fee                                         <- baris baru
+Delivery Cost                                     <- baris baru
+Rounding                                          <- baris baru
+PB1 (Tax)
+VAT
+Total Tax
+-----
+Net Sales         (SUM total_billing - total_tax)
+Gross Sales       (SUM total_billing)
+```
+
+**CATEGORY SUMMARY** (di keempat struk) sekarang: **qty = head saja, amount = head + body** (body = isi package, masuk kategori head-nya, nilai dikali qty) — aturan lengkap di [`LIST AND DETAIL.md`](LIST%20AND%20DETAIL.md#category-summary-item_category_summary--section-category-summary--2026-11-24). Section **ITEM BY CATEGORY SUMMARY** di struk yang sama ikut diperbaiki (2026-11-24): dalam tiap kategori **item HEAD dicetak di atas, item BODY (isi package) di bawah**, body ikut kategori head, nilai dikali qty — jadi `Total Item By Category` sama dengan `Total Category`.
+
+Semua nilai dibaca **by key** lewat `DayShiftServices::recapAmount()`, bukan index posisi `$sales_recap[N]` — index lama bergeser 1 (PB1 tercetak angka VAT, VAT tercetak Gross Sales, Gross Sales tercetak Pax Total, Total Bills tercetak Avg Netsales Per Bill) di keempat struk.
+
 ## Alur Implementasi
 
 Dipanggil dari berbagai tombol "Print"/"Reprint" di `DayStartEndPage.vue` — karena semuanya trigger-and-forget tanpa validasi hasil cetak yang jelas (sama pola [`../ORDER/PRINT BILL.md`](../ORDER/PRINT%20BILL.md)), FE tidak bisa mengandalkan response untuk konfirmasi print benar-benar terjadi di printer fisik.
@@ -83,3 +128,13 @@ Diupdate 2026-11-23: (1) semua endpoint print di file ini jadi non-blocking (`di
 Diupdate 2026-11-23 (lanjutan): section "Detail List" DIPINDAH ke [`LIST AND DETAIL.md`](LIST%20AND%20DETAIL.md#detail-list) — judul file disesuaikan jadi "Print Reports" doang (bukan lagi "& Detail List"), karena sekarang isinya murni endpoint print, tidak ada lagi endpoint data biasa di sini.
 
 Diupdate 2026-11-23 (lanjutan lagi): file di-rename `PRINT AND DETAIL LIST.md` -> `PRINT.md` (lebih pendek, sesuai isinya yang sekarang murni print doang).
+
+Diupdate 2026-11-24: section SALES SUMMARY di 4 struk dibenahi — scope window berbasis status (`order_out` untuk paid, `cancel_at`, `void_at`), rumus baru, 4 baris baru (Bill Count, Order Fee, Delivery Cost, Rounding), pembacaan by key. Lihat section "Sales Summary: scope & rumus". **Dites live**: 4 fungsi print dipanggil sungguhan dengan data uji sementara dan station Network sementara yang menunjuk ke listener TCP lokal (bukan printer fisik) — byte ESC/POS yang diterima diparse, angka Sales Summary tiap struk cocok dengan hitungan manual (End Day tutup: Total Bills 228.100 / 4 bill; shift berjalan 25.050 / 1 bill; shift 2: 62.000 / 1 bill). Station dan data uji dihapus setelahnya. Cetak ke printer fisik sungguhan **tidak** dites.
+
+Diupdate 2026-11-24 (lanjutan): CATEGORY SUMMARY di 4 struk mengikuti aturan owner (qty head saja, amount head + body). Contoh struk End Day data uji: Qty 8, Total 228.050 (sebelumnya Qty 11, Total 105.850). Dites lewat listener TCP lokal, printer fisik tidak dites.
+
+Diupdate 2026-11-24 (lanjutan 2): ITEM BY CATEGORY SUMMARY mengurutkan head di atas body. Contoh struk data uji (package qty 2): `NASI LEMAK NUSANTARA (8) 166.050` (head) lalu `CARAME MACHIATO (2) 40.000` dan `NASI LEMAK NUSANTARA (4) 22.000` (body); `Total Item By Category` 228.050 = `Total Category`. Dites lewat listener TCP lokal.
+
+Diupdate 2026-11-24 (lanjutan 3): baris **Other Cost** ditambahkan di SALES SUMMARY (setelah Pending) — nilai order berstatus `other_cost` (FOC/fasilitas) apa adanya, tidak ikut Total Bills/Net Sales/Gross Sales.
+
+Diupdate 2026-11-24 (lanjutan 4): CASH FLOW SUMMARY di 4 struk — `Expected Cash` = `Cash In + Starting Cash` (baris `Cash Out` tetap tercetak tapi selalu 0 dan tidak ikut rumus). `Cash In` hanya metode bertipe CASH (`payment_method_type_id = 1`). Rumus lengkap: [`LIST AND DETAIL.md`](LIST%20AND%20DETAIL.md#cash-flow-summary-cash_flow_summary--2026-11-24).

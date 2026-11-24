@@ -245,6 +245,7 @@ Route::prefix('dayshift')->group(function () {
   // v2 -- struktur JSON key-value 1:1 sama kayak yang dicetak PrintServices::PrintEndDay(),
   // BUKAN array numeric-index kayak Report()/GetReportCurrentShiftforTampilan() (endpoint lama
   // TETAP ADA, gak dihapus, cuma gak dipakai lagi sama DayStartEndPage.vue).
+  // DEPRECATED (2026-11-24): usang & kurang lengkap, pakai report-v3 saja.
   Route::get("report-v2/{dayshift_ulid}", [DayShiftController::class, 'ReportV2']);
   // Report V3 (2026-11-13) -- sama persis V2, minus "sales_by_menu"/"sales_by_table".
   Route::get("report-v3/{dayshift_ulid}", [DayShiftController::class, 'ReportV3']);

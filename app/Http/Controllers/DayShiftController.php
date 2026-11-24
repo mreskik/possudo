@@ -138,6 +138,9 @@ class DayShiftController extends Controller
     // ReportV2 -- struktur response key-value, 1:1 sama kayak section yang dicetak
     // PrintServices::PrintEndDay() (SALES SUMMARY/SALES TYPE SUMMARY/ORDER SOURCE SUMMARY/ITEM
     // CATEGORY SUMMARY/STAFF SALES SUMMARY/PAYMENT METHOD SUMMARY/CASH FLOW SUMMARY).
+    // DEPRECATED (2026-11-24) -- usang & kurang lengkap, PAKAI ReportV3() SAJA. sales_summary V2 masih
+    // baca recap lewat index posisi (bergeser) dan belum punya field baru. Dibiarkan ada (belum dihapus)
+    // karena FE lama masih bisa memanggilnya. Lihat DOKUMENTASI API/POS/POS/DAYSHIFT/LIST AND DETAIL.md.
     function ReportV2(Request $request)
     {
         try {

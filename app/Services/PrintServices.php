@@ -309,6 +309,13 @@ class PrintServices
       $byCategory[$r['category_name']]['items'][] = $r;
     }
 
+    // urutan item dalam kategori (2026-11-24, permintaan owner): HEAD (is_body = 0) di atas, BODY/isi
+    // package (is_body = 1) di bawah. usort stabil di PHP 8 -> urutan nama dari SQL tetap terjaga di tiap grup.
+    foreach ($byCategory as &$cat) {
+      usort($cat['items'], fn($a, $b) => ($a['is_body'] ?? 0) <=> ($b['is_body'] ?? 0));
+    }
+    unset($cat);
+
     // urutan kategori: total amount terbesar dulu.
     uasort($byCategory, fn($a, $b) => $b['total'] <=> $a['total']);
 
@@ -1984,24 +1991,33 @@ class PrintServices
       $print->text("\n");
       $sales_recap = $datareport['sales_recapitulation'];
 
-      // Total Bills / Average per Bill: index 13/14 sales_recapitulation ("Number Of Bills",
-      // "Avg Netsales Per Bill") -- udah dihitung dari dulu, cuma belum pernah dicetak.
-      $print->text(self::kirikakan("Total Bills       :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Average / Bill    :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("On Hold           :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+      // 2026-11-24: semua nilai dibaca BY KEY lewat DayShiftServices::recapAmount(), BUKAN index
+      // posisi ($sales_recap[13] dst) -- index lama bergeser 1 dari urutan array sebenarnya (PB1
+      // kebaca VAT, VAT kebaca Gross Sales, Gross Sales kebaca Pax Total, Total Bills kebaca Avg
+      // Netsales Per Bill). Total Bills = SUM(total_billing) order paid (AMOUNT); jumlah order paid
+      // dicetak di baris "Bill Count"; Average / Bill = Total Bills / Bill Count.
+      $recapAmt = fn(string $key) => DayShiftServices::recapAmount($sales_recap, $key);
+      $print->text(self::kirikakan("Total Bills       :", number_format($recapAmt("Total Bills"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Bill Count        :", number_format($recapAmt("Number Of Bills"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Average / Bill    :", number_format($recapAmt("Avg Gross Sales Per Bill"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("On Hold           :", number_format($recapAmt("Hold Sales"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Pending           :", number_format($recapAmt("Pending Sales"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Other Cost        :", number_format($recapAmt("Other Cost"), 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
-      $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[17]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($recapAmt("Sales Subtotal"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Discount          :", number_format($recapAmt("Discount Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("VAT               :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Service Charge    :", number_format($recapAmt("Netsales Service Charge"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Order Fee         :", number_format($recapAmt("Netsales Order Fee"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Delivery Cost     :", number_format($recapAmt("Netsales Delivery Cost"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Rounding          :", number_format($recapAmt("Rounding"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($recapAmt("Netsales PB1 Total"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("VAT               :", number_format($recapAmt("Netsales VAT Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
       $print->setEmphasis(true);
-      $print->text(self::kirikakan("Net Sales         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Gross Sales       :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Net Sales         :", number_format($recapAmt("Net Sales"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Gross Sales       :", number_format($recapAmt("Gross Sales"), 0, ',', '.'), $charPerLine));
       $print->setEmphasis(false);
       $print->text(self::separator("-", $charPerLine));
     }
@@ -2052,7 +2068,7 @@ class PrintServices
     if ($printReportSetting->endday_item_by_category_summary) {
       $categoryItemRows = [];
       foreach ($datareport['sales_by_category_item'] as $item) {
-        $categoryItemRows[] = ["category_name" => $item->category_name, "menu_name" => $item->menu_name, "qty" => $item->qty, "amount" => $item->grand_total];
+        $categoryItemRows[] = ["category_name" => $item->category_name, "menu_name" => $item->menu_name, "is_body" => (int) ($item->is_body ?? 0), "qty" => $item->qty, "amount" => $item->grand_total];
       }
       self::printCategoryItemBreakdownSection($print, $categoryItemRows, $charPerLine);
     }
@@ -2094,7 +2110,7 @@ class PrintServices
       $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
       $cashIn = (float) ($datareport['cash_in_total'] ?? 0);
       $cashOut = 0;
-      $expectedCash = $startingCash + $cashIn - $cashOut;
+      $expectedCash = $startingCash + $cashIn; // 2026-11-24 (owner): expected = cash in + starting cash
       $actualCash = (float) ($datareport['dayshift']->dayout_total ?? 0);
       $variance = $actualCash - $expectedCash;
       $closingNote = $datareport['dayshift']->dayout_notes ?? '';
@@ -2202,22 +2218,33 @@ class PrintServices
       $print->text("\n");
       $sales_recap = $datareport['sales_recapitulation'];
 
-      $print->text(self::kirikakan("Total Bills       :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Average / Bill    :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("On Hold           :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+      // 2026-11-24: semua nilai dibaca BY KEY lewat DayShiftServices::recapAmount(), BUKAN index
+      // posisi ($sales_recap[13] dst) -- index lama bergeser 1 dari urutan array sebenarnya (PB1
+      // kebaca VAT, VAT kebaca Gross Sales, Gross Sales kebaca Pax Total, Total Bills kebaca Avg
+      // Netsales Per Bill). Total Bills = SUM(total_billing) order paid (AMOUNT); jumlah order paid
+      // dicetak di baris "Bill Count"; Average / Bill = Total Bills / Bill Count.
+      $recapAmt = fn(string $key) => DayShiftServices::recapAmount($sales_recap, $key);
+      $print->text(self::kirikakan("Total Bills       :", number_format($recapAmt("Total Bills"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Bill Count        :", number_format($recapAmt("Number Of Bills"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Average / Bill    :", number_format($recapAmt("Avg Gross Sales Per Bill"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("On Hold           :", number_format($recapAmt("Hold Sales"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Pending           :", number_format($recapAmt("Pending Sales"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Other Cost        :", number_format($recapAmt("Other Cost"), 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
-      $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[17]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($recapAmt("Sales Subtotal"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Discount          :", number_format($recapAmt("Discount Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("VAT               :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Service Charge    :", number_format($recapAmt("Netsales Service Charge"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Order Fee         :", number_format($recapAmt("Netsales Order Fee"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Delivery Cost     :", number_format($recapAmt("Netsales Delivery Cost"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Rounding          :", number_format($recapAmt("Rounding"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($recapAmt("Netsales PB1 Total"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("VAT               :", number_format($recapAmt("Netsales VAT Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
       $print->setEmphasis(true);
-      $print->text(self::kirikakan("Net Sales         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Gross Sales       :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Net Sales         :", number_format($recapAmt("Net Sales"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Gross Sales       :", number_format($recapAmt("Gross Sales"), 0, ',', '.'), $charPerLine));
       $print->setEmphasis(false);
       $print->text(self::separator("-", $charPerLine));
     }
@@ -2261,7 +2288,7 @@ class PrintServices
     if ($printReportSetting->endday_item_by_category_summary) {
       $categoryItemRows = [];
       foreach ($datareport['sales_by_category_item'] as $item) {
-        $categoryItemRows[] = ["category_name" => $item->category_name, "menu_name" => $item->menu_name, "qty" => $item->qty, "amount" => $item->grand_total];
+        $categoryItemRows[] = ["category_name" => $item->category_name, "menu_name" => $item->menu_name, "is_body" => (int) ($item->is_body ?? 0), "qty" => $item->qty, "amount" => $item->grand_total];
       }
       self::printCategoryItemBreakdownSection($print, $categoryItemRows, $charPerLine);
     }
@@ -2296,7 +2323,7 @@ class PrintServices
       $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
       $cashIn = (float) ($datareport['cash_in_total'] ?? 0);
       $cashOut = 0;
-      $expectedCash = $startingCash + $cashIn - $cashOut;
+      $expectedCash = $startingCash + $cashIn; // 2026-11-24 (owner): expected = cash in + starting cash
       $actualCash = (float) ($datareport['dayshift']->dayout_total ?? 0);
       $variance = $actualCash - $expectedCash;
       $closingNote = $datareport['dayshift']->dayout_notes ?? '';
@@ -2432,22 +2459,33 @@ class PrintServices
       $print->text("\n");
       $sales_recap = $datareport['sales_recapitulation'];
 
-      $print->text(self::kirikakan("Total Bills       :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Average / Bill    :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("On Hold           :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+      // 2026-11-24: semua nilai dibaca BY KEY lewat DayShiftServices::recapAmount(), BUKAN index
+      // posisi ($sales_recap[13] dst) -- index lama bergeser 1 dari urutan array sebenarnya (PB1
+      // kebaca VAT, VAT kebaca Gross Sales, Gross Sales kebaca Pax Total, Total Bills kebaca Avg
+      // Netsales Per Bill). Total Bills = SUM(total_billing) order paid (AMOUNT); jumlah order paid
+      // dicetak di baris "Bill Count"; Average / Bill = Total Bills / Bill Count.
+      $recapAmt = fn(string $key) => DayShiftServices::recapAmount($sales_recap, $key);
+      $print->text(self::kirikakan("Total Bills       :", number_format($recapAmt("Total Bills"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Bill Count        :", number_format($recapAmt("Number Of Bills"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Average / Bill    :", number_format($recapAmt("Avg Gross Sales Per Bill"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("On Hold           :", number_format($recapAmt("Hold Sales"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Pending           :", number_format($recapAmt("Pending Sales"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Other Cost        :", number_format($recapAmt("Other Cost"), 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
-      $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[17]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($recapAmt("Sales Subtotal"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Discount          :", number_format($recapAmt("Discount Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("VAT               :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Service Charge    :", number_format($recapAmt("Netsales Service Charge"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Order Fee         :", number_format($recapAmt("Netsales Order Fee"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Delivery Cost     :", number_format($recapAmt("Netsales Delivery Cost"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Rounding          :", number_format($recapAmt("Rounding"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($recapAmt("Netsales PB1 Total"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("VAT               :", number_format($recapAmt("Netsales VAT Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
       $print->setEmphasis(true);
-      $print->text(self::kirikakan("Net Sales         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Gross Sales       :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Net Sales         :", number_format($recapAmt("Net Sales"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Gross Sales       :", number_format($recapAmt("Gross Sales"), 0, ',', '.'), $charPerLine));
       $print->setEmphasis(false);
       $print->text(self::separator("-", $charPerLine));
     }
@@ -2491,7 +2529,7 @@ class PrintServices
     if ($printReportSetting->shift_item_by_category_summary) {
       $categoryItemRows = [];
       foreach ($datareport['sales_by_category_item'] as $item) {
-        $categoryItemRows[] = ["category_name" => $item->category_name, "menu_name" => $item->menu_name, "qty" => $item->qty, "amount" => $item->grand_total];
+        $categoryItemRows[] = ["category_name" => $item->category_name, "menu_name" => $item->menu_name, "is_body" => (int) ($item->is_body ?? 0), "qty" => $item->qty, "amount" => $item->grand_total];
       }
       self::printCategoryItemBreakdownSection($print, $categoryItemRows, $charPerLine);
     }
@@ -2532,7 +2570,7 @@ class PrintServices
       $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
       $cashIn = (float) ($datareport['cash_in_total'] ?? 0);
       $cashOut = 0;
-      $expectedCash = $startingCash + $cashIn - $cashOut;
+      $expectedCash = $startingCash + $cashIn; // 2026-11-24 (owner): expected = cash in + starting cash
       $actualCash = (float) ($datareport['dayshift']->dayout_total ?? 0);
       $variance = $actualCash - $expectedCash;
       $closingNote = $datareport['dayshift']->dayout_notes ?? '';
@@ -2684,22 +2722,33 @@ class PrintServices
       $print->text("\n");
       $sales_recap = $datareport['sales_recapitulation'];
 
-      $print->text(self::kirikakan("Total Bills       :", number_format($sales_recap[13]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Average / Bill    :", number_format($sales_recap[14]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("On Hold           :", number_format($sales_recap[0]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Pending           :", number_format($sales_recap[1]["amount"], 0, ',', '.'), $charPerLine));
+      // 2026-11-24: semua nilai dibaca BY KEY lewat DayShiftServices::recapAmount(), BUKAN index
+      // posisi ($sales_recap[13] dst) -- index lama bergeser 1 dari urutan array sebenarnya (PB1
+      // kebaca VAT, VAT kebaca Gross Sales, Gross Sales kebaca Pax Total, Total Bills kebaca Avg
+      // Netsales Per Bill). Total Bills = SUM(total_billing) order paid (AMOUNT); jumlah order paid
+      // dicetak di baris "Bill Count"; Average / Bill = Total Bills / Bill Count.
+      $recapAmt = fn(string $key) => DayShiftServices::recapAmount($sales_recap, $key);
+      $print->text(self::kirikakan("Total Bills       :", number_format($recapAmt("Total Bills"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Bill Count        :", number_format($recapAmt("Number Of Bills"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Average / Bill    :", number_format($recapAmt("Avg Gross Sales Per Bill"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("On Hold           :", number_format($recapAmt("Hold Sales"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Pending           :", number_format($recapAmt("Pending Sales"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Other Cost        :", number_format($recapAmt("Other Cost"), 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
-      $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Discount          :", number_format($sales_recap[17]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Sales (Subtotal)  :", number_format($recapAmt("Sales Subtotal"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Discount          :", number_format($recapAmt("Discount Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("DPP               :", number_format($datareport['dpp_total'] ?? 0, 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Service Charge    :", number_format($sales_recap[5]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($sales_recap[7]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("VAT               :", number_format($sales_recap[8]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Service Charge    :", number_format($recapAmt("Netsales Service Charge"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Order Fee         :", number_format($recapAmt("Netsales Order Fee"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Delivery Cost     :", number_format($recapAmt("Netsales Delivery Cost"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Rounding          :", number_format($recapAmt("Rounding"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("PB1 (Tax)         :", number_format($recapAmt("Netsales PB1 Total"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("VAT               :", number_format($recapAmt("Netsales VAT Total"), 0, ',', '.'), $charPerLine));
       $print->text(self::kirikakan("Total Tax         :", number_format($datareport['total_tax_total'] ?? 0, 0, ',', '.'), $charPerLine));
       $print->text(self::separator("-", $charPerLine));
       $print->setEmphasis(true);
-      $print->text(self::kirikakan("Net Sales         :", number_format($sales_recap[2]["amount"], 0, ',', '.'), $charPerLine));
-      $print->text(self::kirikakan("Gross Sales       :", number_format($sales_recap[9]["amount"], 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Net Sales         :", number_format($recapAmt("Net Sales"), 0, ',', '.'), $charPerLine));
+      $print->text(self::kirikakan("Gross Sales       :", number_format($recapAmt("Gross Sales"), 0, ',', '.'), $charPerLine));
       $print->setEmphasis(false);
       $print->text(self::separator("-", $charPerLine));
     }
@@ -2743,7 +2792,7 @@ class PrintServices
     if ($printReportSetting->shift_item_by_category_summary) {
       $categoryItemRows = [];
       foreach ($datareport['sales_by_category_item'] as $item) {
-        $categoryItemRows[] = ["category_name" => $item->category_name, "menu_name" => $item->menu_name, "qty" => $item->qty, "amount" => $item->grand_total];
+        $categoryItemRows[] = ["category_name" => $item->category_name, "menu_name" => $item->menu_name, "is_body" => (int) ($item->is_body ?? 0), "qty" => $item->qty, "amount" => $item->grand_total];
       }
       self::printCategoryItemBreakdownSection($print, $categoryItemRows, $charPerLine);
     }
@@ -2780,7 +2829,7 @@ class PrintServices
       $startingCash = (float) ($datareport['dayshift']->dayin_total ?? 0);
       $cashIn = (float) ($datareport['cash_in_total'] ?? 0);
       $cashOut = 0;
-      $expectedCash = $startingCash + $cashIn - $cashOut;
+      $expectedCash = $startingCash + $cashIn; // 2026-11-24 (owner): expected = cash in + starting cash
       $actualCash = (float) ($datareport['dayshift']->dayout_total ?? 0);
       $variance = $actualCash - $expectedCash;
       $closingNote = $datareport['dayshift']->dayout_notes ?? '';

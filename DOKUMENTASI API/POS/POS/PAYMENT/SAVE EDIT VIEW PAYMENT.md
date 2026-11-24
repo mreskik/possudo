@@ -15,7 +15,7 @@ POST /api/payment/save-payment
   "payment_detail": [
     {
       "payment_method_id": 1,
-      "payment_amount": "125000.00",
+      "payment_amount": "123123.00",
       "change_amount": "1877.00",
       "info": null
     }
@@ -27,8 +27,8 @@ POST /api/payment/save-payment
 - **`member_id` TIDAK DIBACA LAGI** (2026-11-17, keputusan user) — kalau tetap dikirim di body, field itu diabaikan sepenuhnya. `tr_order.member_id` sekarang murni cuma dari [`SaveOrder()`](../ORDER/SAVE%20ORDER.md) (dipilih di halaman Order) — **tidak bisa lagi** diubah/dipilih lewat halaman Payment.
 - `payment_detail[]` — array, **support split payment** (>1 baris metode berbeda):
   - `payment_method_id` — wajib.
-  - `payment_amount` — wajib, nominal bayar baris ini.
-  - `change_amount` — opsional, default `0` kalau tidak dikirim (`$item['change_amount'] ?? 0`) — cuma relevan untuk CASH.
+  - `payment_amount` — wajib, nominal yang **dihitung membayar tagihan** untuk baris ini — **BERSIH, tidak termasuk kembalian**. FE (`paymentPage.vue`) mengirim `min(uang diterima, sisa tagihan)`, jadi untuk tagihan 123.123 dibayar tunai 125.000: `payment_amount` = `123123.00` dan `change_amount` = `1877.00`. Uang yang benar-benar diterima kasir (125.000) **tidak dikirim** ke backend; = `payment_amount + change_amount`.
+  - `change_amount` — opsional, default `0` kalau tidak dikirim (`$item['change_amount'] ?? 0`) — cuma relevan untuk CASH. Kembalian disimpan **terpisah** dari `payment_amount` (disepakati 2026-08-31) supaya laporan/rekonsiliasi cash drawer bisa membedakan "uang diterima" dari "yang dihitung membayar tagihan".
   - `info` — opsional, default `null` kalau tidak dikirim (`$item['info'] ?? null`) — field bebas teks.
   - **Tidak ada `mdr_amount` di request** — dihitung server-side, lihat poin di bawah.
 
@@ -41,11 +41,11 @@ POST /api/payment/save-payment
 - **Guard payment type OTHER gak boleh dipakai di order yang ke-apply discount (2026-11-17, BARU)** — kalau salah satu baris `payment_detail[]` type-nya OTHER (`payment_method_type_id = 4`), DAN order ini punya minimal 1 item (`tr_order_detail.discount_amount > 0`) **atau** sub-item package (`tr_order_detail_package.discount_amount > 0`) yang ke-discount, ditolak **sebelum** `payment_number` di-generate/transaksi dibuka → `{ "code": 100, "message": "payment method type other cannot be applied to a discounted order" }` (pesan Bahasa Inggris, konsisten pesan error customer-facing lain). Dicek independen dari guard di atas — berlaku juga kalau OTHER-nya sendirian (1 baris, lolos guard pertama), tetap ditolak kalau order-nya ada discount.
 
 - `payment_detail[]` — **support split payment** (array, bisa >1 baris metode berbeda).
-- `change_amount` — kembalian tunai, cuma relevan untuk CASH, default `0` untuk metode lain.
+- `change_amount` — kembalian tunai, cuma relevan untuk CASH, default `0` untuk metode lain. **Tidak** termasuk di `payment_amount` (lihat penjelasan di atas) — laporan Dayshift (Payment Method Summary, Cash In) menjumlah `payment_amount` apa adanya, jadi angkanya sudah bersih dari kembalian.
 - `info` — field bebas teks (pengganti `card_number`/`bank_name`/`account_name`/`verification_code` lama, migration 2026-09-30) — diisi kasir apa adanya untuk metode non-cash.
 - **`mdr_amount` DIHITUNG SERVER-SIDE** (`calculateMdrAmount()`, dari `mr_payment_method.mdr`), **bukan** dikirim dari client — sengaja, supaya tidak bisa dimanipulasi FE. Ini pengecualian dari pola umum "server tidak pernah hitung ulang" (lihat [`../ORDER/SAVE ORDER.md`](../ORDER/SAVE%20ORDER.md)) — murni informasi, tidak ada jurnal akuntansi yang terpengaruh nilai ini.
 - Sukses → `status` order jadi `paid`, `payment_number`/`payment_at` ter-update (`member_id` TIDAK lagi ikut di-update sejak 2026-11-17, lihat poin di atas), **otomatis print struk** (`PrintServices::PrintPayment()`) — **kecuali** order dari Kiosk yang terminal-nya `flag_printer_frontend = true` (printing dilakukan di browser Kiosk, bukan server).
-- **`status` jadi `other_cost` kalau dibayar pakai payment type OTHER (2026-11-17, BARU)** — MENGGANTIKAN `paid` sepenuhnya (bukan status tambahan): order yang baris `payment_detail`-nya `payment_method_type_id = 4` (OTHER, otomatis cuma 1 baris karena guard di atas) **tidak pernah** tercatat `status = paid` sama sekali, langsung `other_cost`. **Konsekuensi disengaja**: modul lain yang filter `status = 'paid'` (laporan Sales, Report V2/V3, EndDay sudocore2, dll) **TIDAK** ikut menghitung order jenis ini — scope perubahan ini murni status order, modul lain MENYUSUL terpisah kalau memang diperlukan nanti.
+- **`status` jadi `other_cost` kalau dibayar pakai payment type OTHER (2026-11-17, BARU)** — MENGGANTIKAN `paid` sepenuhnya (bukan status tambahan): order yang baris `payment_detail`-nya `payment_method_type_id = 4` (OTHER, otomatis cuma 1 baris karena guard di atas) **tidak pernah** tercatat `status = paid` sama sekali, langsung `other_cost`. **Konsekuensi disengaja**: modul yang filter `status = 'paid'` **tidak** menghitung order jenis ini sebagai penjualan — `other_cost` adalah FOC/fasilitas (mis. untuk karyawan): barangnya nyata keluar dan ada nilainya, tapi **bukan pendapatan**. Update 2026-11-24: laporan Dayshift (**Report V3** dan 4 print) sekarang menampilkannya sebagai baris terpisah **Other Cost** (nilai `total_billing` apa adanya + jumlah order), **tidak** masuk Total Bills/Net Sales/Gross Sales/Category/Payment — lihat [`../DAYSHIFT/LIST AND DETAIL.md`](../DAYSHIFT/LIST%20AND%20DETAIL.md#sales-summary-scope--rumus-2026-11-24). Report V2 tetap tidak menampilkannya (deprecated). Jurnal End Day ERP memprosesnya sendiri (hanya tahap COGS, tanpa Revenue).
 - **Khusus order dari Kiosk**: payment sukses juga trigger print kitchen (ditunda sejak `SaveOrder()`, baru sekarang karena Kiosk perlu kepastian bayar dulu) dan insert ke `tr_kiosk_order_notif` (trigger toast notifikasi order baru di POS, lihat [`../ORDER/ORDER NOTIF.md`](../ORDER/ORDER%20NOTIF.md)) — order Kiosk yang dibuat tapi tidak jadi dibayar **tidak pernah** muncul sebagai notifikasi.
 - **`print_checker_on === 'save_payment'` (2026-11-04, BARU)** — SELAIN Kiosk, print kitchen (`PrintTableChecker2`/`PrintMainChecker2`/`PrintPriparationStation`) di sini juga jalan untuk order **non-Kiosk** kalau `mr_table_section.print_checker_on` order itu di-set `'save_payment'` (bukan default `'save_order'`) — 2 kondisi independen, digabung OR (`order_source === 'kiosk' || print_checker_on === 'save_payment'`). Kasus ini TIDAK nge-print di `SaveOrder()` sama sekali, satu-satunya titik cetak checker-nya di sini. Detail lengkap + tabel kombinasi lihat [`../ORDER/SAVE ORDER.md`](../ORDER/SAVE%20ORDER.md#print-checker--kapan-di-trigger-2026-11-04).
 
@@ -63,7 +63,7 @@ POST /api/payment/edit-payment
   "payment_detail": [
     {
       "payment_method_id": 1,
-      "payment_amount": "125000.00",
+      "payment_amount": "123123.00",
       "change_amount": "1877.00",
       "info": null
     }
@@ -167,3 +167,5 @@ Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifik
 **Status order `other_cost` ditambahkan, tervalidasi live (2026-11-17)**: `SavePayment()` nentuin `status` lewat `$isOtherPayment ? 'other_cost' : 'paid'` — flag `$isOtherPayment` di-set `true` di loop guard discount yang sudah ada (reuse lookup `MasterPaymentMethodModel`, gak nambah query baru), **perbandingannya pakai `payment_method_type_id` (ID numerik, bukan nama/`name` "OTHER")** — sengaja, biar aman kalau admin ubah nama type-nya di `mr_payment_method_type` kapan pun, logic ini gak ikut rusak. Dites via tinker: order test dibayar pakai payment method test (`id=9001`, `payment_method_type_id=4`) → `status` jadi `other_cost`. Regression check: order test lain dibayar pakai CASH (`payment_method_type_id=1`) → `status` tetap `paid` seperti semula, gak ada yang berubah buat payment method biasa. Migration komentar (`2026_04_23_100709_transaction_data.php`) diupdate nambahin `other_cost` ke daftar status yang dicatat (kolomnya `string` biasa, BUKAN `enum`/`CHECK` constraint — gak perlu migration schema buat nilai status baru). **Scope sengaja CUMA status order** — modul lain yang filter `status = 'paid'` (laporan Sales, EndDay, dll) TIDAK disentuh/disesuaikan di sesi ini (keputusan user, menyusul terpisah kalau perlu). `php -l` bersih. Data test dibersihkan setelah verifikasi.
 
 **Guard `other_cost` tidak bisa diedit ditambahkan, tervalidasi live (2026-11-17)**: `EditPayment()` ditambah pengecekan `$dataorder->status === 'other_cost'` **paling awal** (sebelum guard `payment_number`/`total_billing`) → `throw new \Exception("order with other cost status cannot be edited")`. Dites via tinker: order test dengan `status: other_cost` + 1 baris payment existing → `EditPayment()` ditolak dengan pesan yang benar, payment lama TETAP UTUH (`count: 1`, gak ke-delete). Regression check: order test yang sama diubah `status` ke `paid` → `EditPayment()` sukses normal (`"update payment success!"`), membuktikan guard ini cuma ngeblok `other_cost` doang, gak ngaruh ke order `paid` biasa. `php -l` bersih. Data test dibersihkan setelah verifikasi.
+
+Diupdate 2026-11-24: contoh request Save Payment/Edit Payment diperbaiki (`payment_amount` 125000 → 123123; contoh lama menganggap `payment_amount` = uang yang diserahkan, padahal FE mengirim nilai bersih dan kembalian terpisah di `change_amount`, sesuai komentar `paymentPage.vue` 2026-08-31) dan konsekuensi status `other_cost` diperbarui. Murni koreksi dokumentasi, tidak ada perubahan kode pembayaran.

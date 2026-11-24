@@ -50,7 +50,7 @@ POST /api/dayshift/end-day
 
 **Response:** `{ "code": 0, "message": "end day success!" }` — **SELALU sukses** kalau step SAVE (lihat di bawah) berhasil, walau push/jurnal ke ERP gagal di background.
 
-**Guard pending order (baru, 2026-11-17)** — dicek **PALING AWAL** di `DayShiftController::EndDay()`, SEBELUM memanggil `DayShiftServices::EndDay()` sama sekali (jadi tahap VALIDASI/SAVE/PUSH/JURNAL di bawah tidak akan jalan kalau guard ini gagal). Query-nya diadopsi langsung dari [`GET /api/dayshift/pending-order`](#pending-order) (`TrOrderModel::where('status', 'pending')->get()`) — **status `pending` GLOBAL, TIDAK difilter per `dayshift_ulid`**, sama persis behavior endpoint itu.
+**Guard pending order (baru, 2026-11-17)** — dicek **PALING AWAL** di `DayShiftController::EndDay()`, SEBELUM memanggil `DayShiftServices::EndDay()` sama sekali (jadi tahap VALIDASI/SAVE/PUSH/JURNAL di bawah tidak akan jalan kalau guard ini gagal). Query-nya diadopsi langsung dari [`GET /api/dayshift/pending-order`](#pending-order) (`TrOrderModel::where('status', 'pending')->get()`) — **status `pending` GLOBAL, TIDAK difilter per `dayshift_ulid`**, sama persis behavior endpoint itu. **Status `hold` SENGAJA tidak ikut diblokir** (2026-11-24, dikonfirmasi) — order hold memang dirancang boleh menginap lintas dayshift; konsekuensinya laporan dayshift/shift memakai `order_out` (paid) / `cancel_at` / `void_at` (bukan `dayshift_ulid`) sebagai penentu masuk window mana — lihat [`LIST AND DETAIL.md`](LIST%20AND%20DETAIL.md#sales-summary-scope--rumus-2026-11-24).
 
 Kalau ada order pending:
 ```json

@@ -126,7 +126,7 @@ Route `/dashboard/day-start-end/:id?` — `src/modules/dashboard/daystart_end/Da
 
 | Endpoint | Dok |
 |---|---|
-| `GET /dayshift/report/{id}` (v1), `GET /dayshift/report-v2/{id}` | [`DAYSHIFT/LIST AND DETAIL.md`](DAYSHIFT/LIST%20AND%20DETAIL.md) — dipanggil paralel saat buka halaman |
+| `GET /dayshift/report/{id}` (v1), `GET /dayshift/report-v2/{id}` **(DEPRECATED: usang & kurang lengkap, pakai `report-v3` saja)** | [`DAYSHIFT/LIST AND DETAIL.md`](DAYSHIFT/LIST%20AND%20DETAIL.md) — dipanggil paralel saat buka halaman |
 | `GET /dayshift/end-shift/{id}` | [`DAYSHIFT/START END DAY.md`](DAYSHIFT/START%20END%20DAY.md) — tombol End Shift, lalu refresh report v1+v2 |
 | `GET /dayshift/print-report-shift/{id}`, `GET /dayshift/print-current-shift-report/{ulid}`, `GET /dayshift/print-report-dayshift/{ulid}` | [`DAYSHIFT/PRINT.md`](DAYSHIFT/PRINT.md) |
 | `GET /dayshift/pending-order` | [`DAYSHIFT/LIST AND DETAIL.md`](DAYSHIFT/LIST%20AND%20DETAIL.md) — dicek sebelum dialog End Day dibuka |
