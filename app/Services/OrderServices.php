@@ -177,6 +177,39 @@ class OrderServices
     }
   }
 
+  // ValidatePromoBillExclusive (2026-11-26) -- promo type 'bill' (Bill Discount, diskon untuk seluruh
+  // tagihan) EKSKLUSIF: kalau ada promo bill di order, SEMUA promoId yang dipakai di order (baris item
+  // + sub-item package, termasuk baris free-item) harus 1 id yang sama, yaitu promo bill itu sendiri.
+  // Promo lain apa pun (percent/rupiah/freeitem, atau promo bill kedua) bareng promo bill ditolak.
+  // Item tanpa promoId tidak dihitung. Dicek terhadap SELURUH payload listOrder (termasuk baris lama
+  // ber-ulid yang dikirim ulang saat tambah pesanan), jadi tidak ikut dilewati seperti
+  // ValidatePromoActive(); selalu jalan, juga untuk SaveMoveItem. Dipanggil SEBELUM tulis DB apa pun.
+  private static function ValidatePromoBillExclusive(array $listOrder): void
+  {
+    $usedPromoIds = [];
+    foreach ($listOrder as $item) {
+      if (!empty($item['promoId'])) {
+        $usedPromoIds[] = $item['promoId'];
+      }
+      foreach (($item['menuPackageList'] ?? []) as $pkg) {
+        if (!empty($pkg['promoId'])) {
+          $usedPromoIds[] = $pkg['promoId'];
+        }
+      }
+    }
+    $usedPromoIds = array_values(array_unique($usedPromoIds));
+    if (count($usedPromoIds) < 2) {
+      return;
+    }
+
+    $billPromo = \App\Models\MasterPromoModel::whereIn('id', $usedPromoIds)
+      ->where('type', 'bill')
+      ->first();
+    if ($billPromo) {
+      throw new \Exception("Bill discount promo \"{$billPromo->name}\" cannot be combined with other promos");
+    }
+  }
+
   // ReserveStock (2026-11-26) -- pengecekan + pengurangan stok mr_item. Dipanggil di DALAM
   // transaksi (cabang order baru dan tambah pesanan). Perbaikan dari versi inline lama:
   //  (1) baris mr_item dikunci dengan SELECT ... FOR UPDATE -- sebelumnya SELECT biasa lalu
@@ -544,6 +577,9 @@ class OrderServices
         // menangani list kosong (foreach 0 iterasi, $usedPromoIds tetap kosong).
         self::ValidatePromoTierBarrier((array) $datajson->listOrder, $order['member_id'] ?? null);
 
+        // Promo bill eksklusif (2026-11-26) -- lihat ValidatePromoBillExclusive().
+        self::ValidatePromoBillExclusive((array) $datajson->listOrder);
+
         // Cek promo aktif + belum berakhir (2026-11-26) -- sebelum cek stok biar penolakan terjadi
         // sebelum ada tulis ke DB (stok mengurangi mr_item.stok_qty).
         if ($validatePromoActive) {
@@ -772,6 +808,9 @@ class OrderServices
 
         // Barrier tier promo (2026-09-30) -- sama pola kayak jalur order BARU di atas.
         self::ValidatePromoTierBarrier($listOrderUpdate, $order_update['member_id'] ?? null);
+
+        // Promo bill eksklusif (2026-11-26) -- lihat ValidatePromoBillExclusive().
+        self::ValidatePromoBillExclusive($listOrderUpdate);
 
         // Cek promo aktif + belum berakhir, CUMA item baru (tanpa ulid) -- lihat ValidatePromoActive().
         if ($validatePromoActive) {

@@ -26,3 +26,7 @@ Kalau gak ada payment method yang `payment_gateway_code`-nya keisi: `{"code":0,"
 ## Tervalidasi live (2026-08-10)
 
 Set 1 payment method `payment_gateway_code='MIDTRANS_QRIS'` dan 1 lagi `=''` (string kosong) — cuma yang `MIDTRANS_QRIS` yang muncul (`{"id":1,"name":"QRIS","code":"QRA"}`), yang `NULL` dan yang `''` keduanya ke-filter keluar. Data test udah direvert.
+
+## Hanya metode aktif (2026-11-26)
+
+`GetPaymentMethodList` kiosk sekarang juga memfilter `mr_payment_method.is_active = true` (selain `payment_gateway_code` terisi). Dicek lewat `php -l`; belum diuji lewat HTTP.

@@ -547,6 +547,7 @@ class KioskController extends Controller
         try {
             $data = DB::table('mr_payment_method')
                 ->select('id', 'name', 'code')
+                ->where('is_active', true)
                 ->whereNotNull('payment_gateway_code')
                 ->where('payment_gateway_code', '!=', '')
                 ->get();

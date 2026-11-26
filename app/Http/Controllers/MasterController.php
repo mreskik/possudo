@@ -194,7 +194,8 @@ class MasterController extends Controller
                 LEFT JOIN mr_payment_method_type mpmt ON mpmt.id = mpm.payment_method_type_id
                 LEFT JOIN mr_payment_method_group mpmg ON mpmg.id = mpm.group_payment_id
             WHERE
-                (mpm.flag_all_visit_purpose = true OR mpmvp.id IS NOT NULL)
+                mpm.is_active = true
+                AND (mpm.flag_all_visit_purpose = true OR mpmvp.id IS NOT NULL)
             ORDER BY mpmt.id, mpmg.id, mpm.id
             ", [$visit_purpose_id]);
 
@@ -637,6 +638,7 @@ class MasterController extends Controller
                     mp.code,
                     mp.type,
                     mp.type_rupiah_amount,
+                    mp.type_bill_amount,
                     mp.type_percent_rate,
                     mp.type_percent_limit_amount,
                     mp.type_freeitem_item_id,

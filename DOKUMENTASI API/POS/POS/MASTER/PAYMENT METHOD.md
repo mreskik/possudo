@@ -176,3 +176,7 @@ Dipanggil saat halaman Payment dibuka, `visit_purpose_id` dari order yang sedang
 ## Status
 
 Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung. **2026-11-19**: 2 bug ditemukan & diperbaiki (lihat "Catatan Bug Fix" di atas) — tervalidasi live via `php artisan tinker` langsung manggil controller ke data DB dev asli (bukan HTTP request penuh, tapi behavior-nya identik karena cuma manggil method yang sama).
+
+## Hanya metode aktif (2026-11-26)
+
+Endpoint ini hanya mengembalikan metode dengan `mr_payment_method.is_active = true` (kolom diisi sync dari ERP, lihat `SYNC PULL.md`). Metode yang dinonaktifkan di ERP tidak lagi muncul setelah sync berikutnya. Validasi `save-payment` terhadap metode nonaktif tidak diubah. Dicek lewat `php -l`; belum diuji lewat HTTP.

@@ -24,6 +24,7 @@ Promo yang **eligible** buat 1 visit purpose saat ini (barrier struktural: aktif
       "code": "DISC20",
       "type": "percent",
       "type_rupiah_amount": "0.00",
+      "type_bill_amount": "0.00",
       "type_percent_rate": "20.00",
       "type_percent_limit_amount": "50000.00",
       "type_freeitem_item_id": null,
@@ -44,6 +45,7 @@ Promo yang **eligible** buat 1 visit purpose saat ini (barrier struktural: aktif
       "code": "FREEITEM1",
       "type": "freeitem",
       "type_rupiah_amount": "0.00",
+      "type_bill_amount": "0.00",
       "type_percent_rate": "0.00",
       "type_percent_limit_amount": "0.00",
       "type_freeitem_item_id": 120,
@@ -108,6 +110,7 @@ Promo yang **eligible** buat 1 visit purpose saat ini (barrier struktural: aktif
       "code": "FREEITEM2",
       "type": "freeitem",
       "type_rupiah_amount": "0.00",
+      "type_bill_amount": "0.00",
       "type_percent_rate": "0.00",
       "type_percent_limit_amount": "0.00",
       "type_freeitem_item_id": 120,
@@ -212,3 +215,5 @@ Karena resolve dilakukan per PROMO (bukan di-cache per item), 2 promo `freeitem`
 Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung (belum ada verifikasi ulang lewat HTTP request live di sesi ini). Alur apply/validasi final promo ke order akan ditelusuri lebih dalam saat menulis [`../ORDER/SAVE ORDER.md`](../ORDER/SAVE%20ORDER.md).
 
 **`type_freeitem_item_detail` (2026-11-17)**: syntax check (`php -l`) bersih, **belum divalidasi live lewat HTTP request** di sesi ini (DB access sempat diblokir classifier saat sesi berjalan) — logic-nya mengikuti pola `GetMasterMenuList()`/`ResolveNotesMenu()` yang sudah terbukti jalan di Menu List, tapi field baru ini sendiri belum dicoba end-to-end ke promo `type='freeitem'` yang `type_freeitem_item_id`-nya terisi beneran. Perlu ditest manual sebelum deploy.
+
+**`type_bill_amount` dan tipe `bill` (2026-11-26)** — `mr_promo.type` kini bisa `bill` (Bill Discount: potongan nominal untuk seluruh tagihan), nominalnya di field baru `type_bill_amount` (`decimal(20,2)`, default `0`, string di JSON seperti `type_rupiah_amount`; `0.00` untuk tipe lain). Datanya dibawa sync promo dari ERP (sudocore2 migration 357, kolom POS lewat migration `2026_11_26_000001_add_type_bill_amount_to_mr_promo`). Endpoint ini mengembalikan semua tipe tanpa filter, jadi promo `bill` ikut muncul; **backend POS belum punya logika hitung diskon bill** — FE yang menentukan cara memakainya. Dicek lewat `php -l`/migration jalan; belum diuji lewat HTTP.
