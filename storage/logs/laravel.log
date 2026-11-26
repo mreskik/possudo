@@ -116,3 +116,448 @@
 #1 C:/Users/LENOVO/AppData/Local/Temp/claude/6f19ffee8e52814f/78d9802d-9f85-4373-8fc1-34a16af70c18/scratchpad/map_check.php(7): Illuminate/Foundation/Bootstrap/HandleExceptions->{closure:Illuminate/Foundation/Bootstrap/HandleExceptions::forwardsTo():257}()
 #2 {main}
 "} 
+[2026-11-26 10:34:43] local.INFO:   
+[2026-11-26 10:34:44] local.INFO:   
+[2026-11-26 10:36:23] local.INFO: ==========================  
+[2026-11-26 10:36:23] local.INFO: {"code":0,"message":"success","data":[{"id":245,"table_section_id":38,"sub_category_id":42,"station_id":21,"category_id":54},{"id":246,"table_section_id":38,"sub_category_id":42,"station_id":22,"category_id":56},{"id":247,"table_section_id":38,"sub_category_id":14,"station_id":21,"category_id":28},{"id":248,"table_section_id":38,"sub_category_id":17,"station_id":21,"category_id":25},{"id":249,"table_section_id":38,"sub_category_id":19,"station_id":21,"category_id":39},{"id":245,"table_section_id":31,"sub_category_id":42,"station_id":21,"category_id":54},{"id":246,"table_section_id":31,"sub_category_id":42,"station_id":22,"category_id":56},{"id":247,"table_section_id":31,"sub_category_id":14,"station_id":21,"category_id":28},{"id":248,"table_section_id":31,"sub_category_id":17,"station_id":21,"category_id":25},{"id":249,"table_section_id":31,"sub_category_id":19,"station_id":21,"category_id":39}]}  
+[2026-11-26 10:36:24] local.INFO: array (
+  0 => 
+  array (
+    'id' => 1,
+    'name' => 'QRIS',
+    'code' => 'QRA',
+    'coa_account_id' => 99,
+    'payment_method_type_id' => 2,
+    'mdr' => '0.70',
+    'printer_count' => 2,
+    'open_cash_drawer' => false,
+    'group_payment_id' => 1,
+    'color_theme' => 'feaw',
+    'use_authorization' => false,
+    'fixed_amount' => '0.00',
+    'verification_code_mandatory' => false,
+    'card_number_code_mandatory' => false,
+    'payment_gateway_code' => 'MIDTRANS_QRIS',
+    'flag_all_visit_purpose' => true,
+    'flag_mandatory_note' => false,
+  ),
+  1 => 
+  array (
+    'id' => 63,
+    'name' => 'MANDIRI CARD',
+    'code' => 'MAN-002',
+    'coa_account_id' => 97,
+    'payment_method_type_id' => 2,
+    'mdr' => '1.00',
+    'printer_count' => 0,
+    'open_cash_drawer' => false,
+    'group_payment_id' => 16,
+    'color_theme' => '#ffffff',
+    'use_authorization' => false,
+    'fixed_amount' => '0.00',
+    'verification_code_mandatory' => false,
+    'card_number_code_mandatory' => false,
+    'payment_gateway_code' => '',
+    'flag_all_visit_purpose' => false,
+    'flag_mandatory_note' => false,
+  ),
+  2 => 
+  array (
+    'id' => 64,
+    'name' => 'WALLET BALANCE',
+    'code' => 'BCA-001',
+    'coa_account_id' => 97,
+    'payment_method_type_id' => 5,
+    'mdr' => '1.00',
+    'printer_count' => 1,
+    'open_cash_drawer' => false,
+    'group_payment_id' => 19,
+    'color_theme' => '#ffffff',
+    'use_authorization' => false,
+    'fixed_amount' => '0.00',
+    'verification_code_mandatory' => false,
+    'card_number_code_mandatory' => false,
+    'payment_gateway_code' => '',
+    'flag_all_visit_purpose' => true,
+    'flag_mandatory_note' => false,
+  ),
+  3 => 
+  array (
+    'id' => 65,
+    'name' => 'CASH - TONA',
+    'code' => 'CAS-001',
+    'coa_account_id' => 96,
+    'payment_method_type_id' => 1,
+    'mdr' => '0.00',
+    'printer_count' => 0,
+    'open_cash_drawer' => false,
+    'group_payment_id' => 10,
+    'color_theme' => '#ffffff',
+    'use_authorization' => false,
+    'fixed_amount' => '0.00',
+    'verification_code_mandatory' => false,
+    'card_number_code_mandatory' => false,
+    'payment_gateway_code' => '',
+    'flag_all_visit_purpose' => false,
+    'flag_mandatory_note' => false,
+  ),
+  4 => 
+  array (
+    'id' => 66,
+    'name' => 'BCA - TONA',
+    'code' => 'BCA-002',
+    'coa_account_id' => 96,
+    'payment_method_type_id' => 2,
+    'mdr' => '11.00',
+    'printer_count' => 1,
+    'open_cash_drawer' => false,
+    'group_payment_id' => 18,
+    'color_theme' => '#ffffff',
+    'use_authorization' => false,
+    'fixed_amount' => '0.00',
+    'verification_code_mandatory' => false,
+    'card_number_code_mandatory' => false,
+    'payment_gateway_code' => '',
+    'flag_all_visit_purpose' => true,
+    'flag_mandatory_note' => false,
+  ),
+  5 => 
+  array (
+    'id' => 67,
+    'name' => 'FOC',
+    'code' => 'GRA-001',
+    'coa_account_id' => 96,
+    'payment_method_type_id' => 4,
+    'mdr' => '0.00',
+    'printer_count' => 1,
+    'open_cash_drawer' => false,
+    'group_payment_id' => 20,
+    'color_theme' => '#ffffff',
+    'use_authorization' => false,
+    'fixed_amount' => '0.00',
+    'verification_code_mandatory' => false,
+    'card_number_code_mandatory' => false,
+    'payment_gateway_code' => '',
+    'flag_all_visit_purpose' => true,
+    'flag_mandatory_note' => false,
+  ),
+  6 => 
+  array (
+    'id' => 68,
+    'name' => 'QRIS',
+    'code' => 'BCA-003',
+    'coa_account_id' => 96,
+    'payment_method_type_id' => 2,
+    'mdr' => '0.00',
+    'printer_count' => 1,
+    'open_cash_drawer' => false,
+    'group_payment_id' => 18,
+    'color_theme' => '#ffffff',
+    'use_authorization' => false,
+    'fixed_amount' => '0.00',
+    'verification_code_mandatory' => false,
+    'card_number_code_mandatory' => false,
+    'payment_gateway_code' => '',
+    'flag_all_visit_purpose' => false,
+    'flag_mandatory_note' => false,
+  ),
+  7 => 
+  array (
+    'id' => 69,
+    'name' => 'FOC',
+    'code' => 'GRA-002',
+    'coa_account_id' => 96,
+    'payment_method_type_id' => 4,
+    'mdr' => '0.00',
+    'printer_count' => 0,
+    'open_cash_drawer' => false,
+    'group_payment_id' => 20,
+    'color_theme' => '#ffffff',
+    'use_authorization' => false,
+    'fixed_amount' => '0.00',
+    'verification_code_mandatory' => false,
+    'card_number_code_mandatory' => false,
+    'payment_gateway_code' => '',
+    'flag_all_visit_purpose' => false,
+    'flag_mandatory_note' => false,
+  ),
+  8 => 
+  array (
+    'id' => 70,
+    'name' => 'VC',
+    'code' => 'BSI-001',
+    'coa_account_id' => 96,
+    'payment_method_type_id' => 3,
+    'mdr' => '0.00',
+    'printer_count' => 0,
+    'open_cash_drawer' => false,
+    'group_payment_id' => 15,
+    'color_theme' => '#ffffff',
+    'use_authorization' => false,
+    'fixed_amount' => '0.00',
+    'verification_code_mandatory' => false,
+    'card_number_code_mandatory' => false,
+    'payment_gateway_code' => '',
+    'flag_all_visit_purpose' => false,
+    'flag_mandatory_note' => false,
+  ),
+  9 => 
+  array (
+    'id' => 2,
+    'name' => 'CASH',
+    'code' => 'CASH',
+    'coa_account_id' => 99,
+    'payment_method_type_id' => 1,
+    'mdr' => '0.00',
+    'printer_count' => 1,
+    'open_cash_drawer' => false,
+    'group_payment_id' => 10,
+    'color_theme' => 'ewaf',
+    'use_authorization' => false,
+    'fixed_amount' => '0.00',
+    'verification_code_mandatory' => false,
+    'card_number_code_mandatory' => false,
+    'payment_gateway_code' => '',
+    'flag_all_visit_purpose' => true,
+    'flag_mandatory_note' => true,
+  ),
+)  
+[2026-11-26 10:36:31] local.INFO:   
+[2026-11-26 10:36:31] local.INFO:   
+[2026-11-26 10:36:35] local.INFO:   
+[2026-11-26 10:36:35] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:36:35] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:36:35] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:36:39] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:38:14] local.INFO: ErrorException: copy(\\LAPTOP-JIRH3U67\RECIPT): Failed to open stream: No such file or directory in D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php:378
+Stack trace:
+#0 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Bootstrap\HandleExceptions.php(258): Illuminate\Foundation\Bootstrap\HandleExceptions->handleError()
+#1 [internal function]: Illuminate\Foundation\Bootstrap\HandleExceptions->{closure:Illuminate\Foundation\Bootstrap\HandleExceptions::forwardsTo():257}()
+#2 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php(378): copy()
+#3 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php(296): Mike42\Escpos\PrintConnectors\WindowsPrintConnector->runCopy()
+#4 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php(176): Mike42\Escpos\PrintConnectors\WindowsPrintConnector->finalizeWin()
+#5 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\Printer.php(502): Mike42\Escpos\PrintConnectors\WindowsPrintConnector->finalize()
+#6 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\app\Services\PrintServices.php(692): Mike42\Escpos\Printer->close()
+#7 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\app\Http\Controllers\PrintJobController.php(33): App\Services\PrintServices::PrintTableChecker2()
+#8 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\ControllerDispatcher.php(46): App\Http\Controllers\PrintJobController->tableChecker2()
+#9 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Route.php(269): Illuminate\Routing\ControllerDispatcher->dispatch()
+#10 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Route.php(215): Illuminate\Routing\Route->runController()
+#11 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(822): Illuminate\Routing\Route->run()
+#12 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(180): Illuminate\Routing\Router->{closure:Illuminate\Routing\Router::runRouteWithinStack():821}()
+#13 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\app\Http\Middleware\RestrictToLocalhost.php(22): Illuminate\Pipeline\Pipeline->{closure:Illuminate\Pipeline\Pipeline::prepareDestination():178}()
+#14 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): App\Http\Middleware\RestrictToLocalhost->handle()
+#15 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Middleware\SubstituteBindings.php(52): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#16 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Routing\Middleware\SubstituteBindings->handle()
+#17 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(137): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#18 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(821): Illuminate\Pipeline\Pipeline->then()
+#19 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(800): Illuminate\Routing\Router->runRouteWithinStack()
+#20 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(764): Illuminate\Routing\Router->runRoute()
+#21 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(753): Illuminate\Routing\Router->dispatchToRoute()
+#22 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Kernel.php(200): Illuminate\Routing\Router->dispatch()
+#23 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(180): Illuminate\Foundation\Http\Kernel->{closure:Illuminate\Foundation\Http\Kernel::dispatchToRouter():197}()
+#24 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\TransformsRequest.php(21): Illuminate\Pipeline\Pipeline->{closure:Illuminate\Pipeline\Pipeline::prepareDestination():178}()
+#25 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull.php(31): Illuminate\Foundation\Http\Middleware\TransformsRequest->handle()
+#26 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull->handle()
+#27 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\TransformsRequest.php(21): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#28 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\TrimStrings.php(51): Illuminate\Foundation\Http\Middleware\TransformsRequest->handle()
+#29 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\TrimStrings->handle()
+#30 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\ValidatePostSize.php(27): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#31 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\ValidatePostSize->handle()
+#32 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance.php(109): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#33 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance->handle()
+#34 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\HandleCors.php(74): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#35 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\HandleCors->handle()
+#36 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\TrustProxies.php(58): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#37 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\TrustProxies->handle()
+#38 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\InvokeDeferredCallbacks.php(22): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#39 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\InvokeDeferredCallbacks->handle()
+#40 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\ValidatePathEncoding.php(28): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#41 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\ValidatePathEncoding->handle()
+#42 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(137): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#43 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Kernel.php(175): Illuminate\Pipeline\Pipeline->then()
+#44 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Kernel.php(144): Illuminate\Foundation\Http\Kernel->sendRequestThroughRouter()
+#45 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Application.php(1220): Illuminate\Foundation\Http\Kernel->handle()
+#46 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\public\index.php(20): Illuminate\Foundation\Application->handleRequest()
+#47 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\resources\server.php(23): require_once('...')
+#48 {main}  
+[2026-11-26 10:38:14] local.INFO: data order detail kosong jadi gak di print untuk order NO12TCG20261126103810  
+[2026-11-26 10:38:14] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:38:19] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:38:57] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:39:08] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:39:42] local.INFO: ErrorException: copy(\\LAPTOP-JIRH3U67\RECIPT): Failed to open stream: No such file or directory in D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php:378
+Stack trace:
+#0 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Bootstrap\HandleExceptions.php(258): Illuminate\Foundation\Bootstrap\HandleExceptions->handleError()
+#1 [internal function]: Illuminate\Foundation\Bootstrap\HandleExceptions->{closure:Illuminate\Foundation\Bootstrap\HandleExceptions::forwardsTo():257}()
+#2 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php(378): copy()
+#3 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php(296): Mike42\Escpos\PrintConnectors\WindowsPrintConnector->runCopy()
+#4 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php(176): Mike42\Escpos\PrintConnectors\WindowsPrintConnector->finalizeWin()
+#5 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\Printer.php(502): Mike42\Escpos\PrintConnectors\WindowsPrintConnector->finalize()
+#6 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\app\Services\PrintServices.php(692): Mike42\Escpos\Printer->close()
+#7 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\app\Http\Controllers\PrintJobController.php(33): App\Services\PrintServices::PrintTableChecker2()
+#8 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\ControllerDispatcher.php(46): App\Http\Controllers\PrintJobController->tableChecker2()
+#9 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Route.php(269): Illuminate\Routing\ControllerDispatcher->dispatch()
+#10 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Route.php(215): Illuminate\Routing\Route->runController()
+#11 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(822): Illuminate\Routing\Route->run()
+#12 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(180): Illuminate\Routing\Router->{closure:Illuminate\Routing\Router::runRouteWithinStack():821}()
+#13 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\app\Http\Middleware\RestrictToLocalhost.php(22): Illuminate\Pipeline\Pipeline->{closure:Illuminate\Pipeline\Pipeline::prepareDestination():178}()
+#14 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): App\Http\Middleware\RestrictToLocalhost->handle()
+#15 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Middleware\SubstituteBindings.php(52): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#16 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Routing\Middleware\SubstituteBindings->handle()
+#17 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(137): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#18 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(821): Illuminate\Pipeline\Pipeline->then()
+#19 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(800): Illuminate\Routing\Router->runRouteWithinStack()
+#20 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(764): Illuminate\Routing\Router->runRoute()
+#21 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(753): Illuminate\Routing\Router->dispatchToRoute()
+#22 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Kernel.php(200): Illuminate\Routing\Router->dispatch()
+#23 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(180): Illuminate\Foundation\Http\Kernel->{closure:Illuminate\Foundation\Http\Kernel::dispatchToRouter():197}()
+#24 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\TransformsRequest.php(21): Illuminate\Pipeline\Pipeline->{closure:Illuminate\Pipeline\Pipeline::prepareDestination():178}()
+#25 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull.php(31): Illuminate\Foundation\Http\Middleware\TransformsRequest->handle()
+#26 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull->handle()
+#27 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\TransformsRequest.php(21): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#28 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\TrimStrings.php(51): Illuminate\Foundation\Http\Middleware\TransformsRequest->handle()
+#29 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\TrimStrings->handle()
+#30 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\ValidatePostSize.php(27): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#31 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\ValidatePostSize->handle()
+#32 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance.php(109): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#33 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance->handle()
+#34 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\HandleCors.php(74): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#35 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\HandleCors->handle()
+#36 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\TrustProxies.php(58): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#37 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\TrustProxies->handle()
+#38 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\InvokeDeferredCallbacks.php(22): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#39 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\InvokeDeferredCallbacks->handle()
+#40 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\ValidatePathEncoding.php(28): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#41 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\ValidatePathEncoding->handle()
+#42 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(137): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#43 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Kernel.php(175): Illuminate\Pipeline\Pipeline->then()
+#44 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Kernel.php(144): Illuminate\Foundation\Http\Kernel->sendRequestThroughRouter()
+#45 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Application.php(1220): Illuminate\Foundation\Http\Kernel->handle()
+#46 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\public\index.php(20): Illuminate\Foundation\Application->handleRequest()
+#47 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\resources\server.php(23): require_once('...')
+#48 {main}  
+[2026-11-26 10:39:42] local.INFO: data order detail kosong jadi gak di print untuk order NO12TCG20261126103810  
+[2026-11-26 10:39:42] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:41:29] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:41:34] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:42:23] local.INFO: ErrorException: copy(\\LAPTOP-JIRH3U67\RECIPT): Failed to open stream: No such file or directory in D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php:378
+Stack trace:
+#0 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Bootstrap\HandleExceptions.php(258): Illuminate\Foundation\Bootstrap\HandleExceptions->handleError()
+#1 [internal function]: Illuminate\Foundation\Bootstrap\HandleExceptions->{closure:Illuminate\Foundation\Bootstrap\HandleExceptions::forwardsTo():257}()
+#2 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php(378): copy()
+#3 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php(296): Mike42\Escpos\PrintConnectors\WindowsPrintConnector->runCopy()
+#4 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php(176): Mike42\Escpos\PrintConnectors\WindowsPrintConnector->finalizeWin()
+#5 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\Printer.php(502): Mike42\Escpos\PrintConnectors\WindowsPrintConnector->finalize()
+#6 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\app\Services\PrintServices.php(692): Mike42\Escpos\Printer->close()
+#7 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\app\Http\Controllers\PrintJobController.php(33): App\Services\PrintServices::PrintTableChecker2()
+#8 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\ControllerDispatcher.php(46): App\Http\Controllers\PrintJobController->tableChecker2()
+#9 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Route.php(269): Illuminate\Routing\ControllerDispatcher->dispatch()
+#10 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Route.php(215): Illuminate\Routing\Route->runController()
+#11 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(822): Illuminate\Routing\Route->run()
+#12 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(180): Illuminate\Routing\Router->{closure:Illuminate\Routing\Router::runRouteWithinStack():821}()
+#13 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\app\Http\Middleware\RestrictToLocalhost.php(22): Illuminate\Pipeline\Pipeline->{closure:Illuminate\Pipeline\Pipeline::prepareDestination():178}()
+#14 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): App\Http\Middleware\RestrictToLocalhost->handle()
+#15 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Middleware\SubstituteBindings.php(52): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#16 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Routing\Middleware\SubstituteBindings->handle()
+#17 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(137): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#18 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(821): Illuminate\Pipeline\Pipeline->then()
+#19 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(800): Illuminate\Routing\Router->runRouteWithinStack()
+#20 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(764): Illuminate\Routing\Router->runRoute()
+#21 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(753): Illuminate\Routing\Router->dispatchToRoute()
+#22 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Kernel.php(200): Illuminate\Routing\Router->dispatch()
+#23 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(180): Illuminate\Foundation\Http\Kernel->{closure:Illuminate\Foundation\Http\Kernel::dispatchToRouter():197}()
+#24 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\TransformsRequest.php(21): Illuminate\Pipeline\Pipeline->{closure:Illuminate\Pipeline\Pipeline::prepareDestination():178}()
+#25 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull.php(31): Illuminate\Foundation\Http\Middleware\TransformsRequest->handle()
+#26 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull->handle()
+#27 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\TransformsRequest.php(21): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#28 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\TrimStrings.php(51): Illuminate\Foundation\Http\Middleware\TransformsRequest->handle()
+#29 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\TrimStrings->handle()
+#30 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\ValidatePostSize.php(27): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#31 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\ValidatePostSize->handle()
+#32 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance.php(109): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#33 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance->handle()
+#34 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\HandleCors.php(74): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#35 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\HandleCors->handle()
+#36 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\TrustProxies.php(58): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#37 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\TrustProxies->handle()
+#38 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\InvokeDeferredCallbacks.php(22): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#39 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\InvokeDeferredCallbacks->handle()
+#40 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\ValidatePathEncoding.php(28): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#41 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\ValidatePathEncoding->handle()
+#42 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(137): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#43 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Kernel.php(175): Illuminate\Pipeline\Pipeline->then()
+#44 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Kernel.php(144): Illuminate\Foundation\Http\Kernel->sendRequestThroughRouter()
+#45 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Application.php(1220): Illuminate\Foundation\Http\Kernel->handle()
+#46 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\public\index.php(20): Illuminate\Foundation\Application->handleRequest()
+#47 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\resources\server.php(23): require_once('...')
+#48 {main}  
+[2026-11-26 10:42:23] local.INFO: data order detail kosong jadi gak di print untuk order NO12TCG20261126104220  
+[2026-11-26 10:42:23] local.INFO: array (
+  'order_number' => 'NO12TCG20261126104220',
+  'member_id' => NULL,
+  'payment_detail' => 
+  array (
+    0 => 
+    array (
+      'payment_method_id' => 2,
+      'payment_amount' => '39000.00',
+      'change_amount' => '0.00',
+      'info' => 'ee',
+    ),
+  ),
+)  
+[2026-11-26 10:42:25] local.INFO: ErrorException: copy(\\LAPTOP-JIRH3U67\RECIPT): Failed to open stream: No such file or directory in D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php:378
+Stack trace:
+#0 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Bootstrap\HandleExceptions.php(258): Illuminate\Foundation\Bootstrap\HandleExceptions->handleError()
+#1 [internal function]: Illuminate\Foundation\Bootstrap\HandleExceptions->{closure:Illuminate\Foundation\Bootstrap\HandleExceptions::forwardsTo():257}()
+#2 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php(378): copy()
+#3 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php(296): Mike42\Escpos\PrintConnectors\WindowsPrintConnector->runCopy()
+#4 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\PrintConnectors\WindowsPrintConnector.php(176): Mike42\Escpos\PrintConnectors\WindowsPrintConnector->finalizeWin()
+#5 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\mike42\escpos-php\src\Mike42\Escpos\Printer.php(502): Mike42\Escpos\PrintConnectors\WindowsPrintConnector->finalize()
+#6 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\app\Services\PrintServices.php(1405): Mike42\Escpos\Printer->close()
+#7 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\app\Http\Controllers\PrintJobController.php(77): App\Services\PrintServices::PrintPayment()
+#8 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\ControllerDispatcher.php(46): App\Http\Controllers\PrintJobController->payment()
+#9 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Route.php(269): Illuminate\Routing\ControllerDispatcher->dispatch()
+#10 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Route.php(215): Illuminate\Routing\Route->runController()
+#11 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(822): Illuminate\Routing\Route->run()
+#12 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(180): Illuminate\Routing\Router->{closure:Illuminate\Routing\Router::runRouteWithinStack():821}()
+#13 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\app\Http\Middleware\RestrictToLocalhost.php(22): Illuminate\Pipeline\Pipeline->{closure:Illuminate\Pipeline\Pipeline::prepareDestination():178}()
+#14 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): App\Http\Middleware\RestrictToLocalhost->handle()
+#15 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Middleware\SubstituteBindings.php(52): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#16 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Routing\Middleware\SubstituteBindings->handle()
+#17 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(137): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#18 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(821): Illuminate\Pipeline\Pipeline->then()
+#19 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(800): Illuminate\Routing\Router->runRouteWithinStack()
+#20 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(764): Illuminate\Routing\Router->runRoute()
+#21 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Routing\Router.php(753): Illuminate\Routing\Router->dispatchToRoute()
+#22 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Kernel.php(200): Illuminate\Routing\Router->dispatch()
+#23 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(180): Illuminate\Foundation\Http\Kernel->{closure:Illuminate\Foundation\Http\Kernel::dispatchToRouter():197}()
+#24 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\TransformsRequest.php(21): Illuminate\Pipeline\Pipeline->{closure:Illuminate\Pipeline\Pipeline::prepareDestination():178}()
+#25 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull.php(31): Illuminate\Foundation\Http\Middleware\TransformsRequest->handle()
+#26 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull->handle()
+#27 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\TransformsRequest.php(21): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#28 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\TrimStrings.php(51): Illuminate\Foundation\Http\Middleware\TransformsRequest->handle()
+#29 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\TrimStrings->handle()
+#30 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\ValidatePostSize.php(27): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#31 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\ValidatePostSize->handle()
+#32 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance.php(109): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#33 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance->handle()
+#34 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\HandleCors.php(74): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#35 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\HandleCors->handle()
+#36 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\TrustProxies.php(58): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#37 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\TrustProxies->handle()
+#38 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Middleware\InvokeDeferredCallbacks.php(22): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#39 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Foundation\Http\Middleware\InvokeDeferredCallbacks->handle()
+#40 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Http\Middleware\ValidatePathEncoding.php(28): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#41 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(219): Illuminate\Http\Middleware\ValidatePathEncoding->handle()
+#42 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Pipeline\Pipeline.php(137): Illuminate\Pipeline\Pipeline->{closure:{closure:Illuminate\Pipeline\Pipeline::carry():194}:195}()
+#43 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Kernel.php(175): Illuminate\Pipeline\Pipeline->then()
+#44 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Http\Kernel.php(144): Illuminate\Foundation\Http\Kernel->sendRequestThroughRouter()
+#45 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\Application.php(1220): Illuminate\Foundation\Http\Kernel->handle()
+#46 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\public\index.php(20): Illuminate\Foundation\Application->handleRequest()
+#47 D:\KERJAAN\RANCANGAN ERP SUDO\dev\POS\posv1-laravel\vendor\laravel\framework\src\Illuminate\Foundation\resources\server.php(23): require_once('...')
+#48 {main}  
+[2026-11-26 10:43:03] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:43:08] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:43:12] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  
+[2026-11-26 10:46:29] local.INFO: {"ulid":"POSTCG20261126103635","branch_id":53,"dayin_time":"2026-11-26 10:36:35","dayin_total":"0.00","dayin_user_id":33,"system_cash_received":null,"dayout_time":null,"dayout_total":null,"dayout_user_id":null,"dayout_notes":null,"sync_at":null}  

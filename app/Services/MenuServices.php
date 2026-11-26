@@ -84,7 +84,8 @@ class MenuServices
   name as packageName,
   min_qty as minQty,
   max_qty as maxQty
-  FROM mr_item_package_group");
+  FROM mr_item_package_group
+  ORDER BY sequence ASC, id ASC");
 
 
     //data item package detail

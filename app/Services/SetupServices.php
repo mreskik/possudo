@@ -53,6 +53,7 @@ use App\Models\TableModel;
 use App\Models\TableSectionModel;
 use App\Models\TerminalModel;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class SetupServices
@@ -642,8 +643,11 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        MasterItemPackageGroupModel::truncate();
-        $this->insertRows(MasterItemPackageGroupModel::class, $response->json('data'));
+        // replaceRows (2026-11-26): DELETE + insert dalam SATU transaksi, ganti truncate()+insert.
+        // truncate() di MySQL itu implicit commit (tidak bisa di-rollback) -- kalau insert gagal
+        // sesudahnya (mis. kolom baru dari ERP belum ada di POS: "Unknown column 'sequence'"),
+        // tabel group jadi KOSONG permanen. Dengan transaksi, insert gagal = data lama tetap utuh.
+        $this->replaceRows(MasterItemPackageGroupModel::class, $response->json('data') ?? []);
       }
 
       return $response;
@@ -1231,6 +1235,30 @@ class SetupServices
     return $rows;
   }
 
+  /**
+   * replaceRows (2026-11-26) -- dipakai 11 sync promo (mr_promo + 10 tabel anak) sebagai ganti
+   * upsertRows(), karena upsert gak pernah menghapus: (1) promo yang di-nonaktifkan/dicabut dari
+   * branch di ERP gak ikut dikirim (query ERP filter is_active + branch), jadi baris lokalnya
+   * nyangkut is_active=true dan tetap bisa dipakai kasir; (2) Update promo di ERP itu replace-all
+   * tabel anak dengan id BARU, jadi baris lama (id lama) numpuk dan target promo jadi lebih lebar
+   * dari yang dimaksud ERP.
+   *
+   * Pakai DELETE (bukan truncate()) di dalam transaksi -- truncate di MySQL itu implicit commit,
+   * gak bisa di-rollback. Kalau insert gagal, delete ikut di-rollback, data lama tetap utuh.
+   * Data kosong ([]) SENGAJA tetap menghapus semuanya (ERP memang gak punya promo eligible lagi);
+   * ini aman karena fungsi ini cuma dipanggil kalau response code == 0 (error = code != 0, tidak
+   * sampai sini).
+   */
+  private function replaceRows(string $modelClass, array $rows): void
+  {
+    DB::transaction(function () use ($modelClass, $rows) {
+      $modelClass::query()->delete();
+      if (!empty($rows)) {
+        $modelClass::insert($this->normalizeInsertRows($rows));
+      }
+    });
+  }
+
   public function getPromoList(string $username, string $password, int $branch_id, ?string $token = null)
   {
     try {
@@ -1242,7 +1270,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPromoModel::class, $response->json('data'));
+        $this->replaceRows(MasterPromoModel::class, $response->json('data') ?? []);
       }
 
       return $response;
@@ -1262,7 +1290,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPromoBranchesModel::class, $response->json('data'));
+        $this->replaceRows(MasterPromoBranchesModel::class, $response->json('data') ?? []);
       }
 
       return $response;
@@ -1282,7 +1310,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPromoVisitPurposesModel::class, $response->json('data'));
+        $this->replaceRows(MasterPromoVisitPurposesModel::class, $response->json('data') ?? []);
       }
 
       return $response;
@@ -1302,7 +1330,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPromoTypeMembersModel::class, $response->json('data'));
+        $this->replaceRows(MasterPromoTypeMembersModel::class, $response->json('data') ?? []);
       }
 
       return $response;
@@ -1323,7 +1351,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPromoTierModel::class, $response->json('data'));
+        $this->replaceRows(MasterPromoTierModel::class, $response->json('data') ?? []);
       }
 
       return $response;
@@ -1343,7 +1371,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPromoCategoriesModel::class, $response->json('data'));
+        $this->replaceRows(MasterPromoCategoriesModel::class, $response->json('data') ?? []);
       }
 
       return $response;
@@ -1363,7 +1391,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPromoSubCategoriesModel::class, $response->json('data'));
+        $this->replaceRows(MasterPromoSubCategoriesModel::class, $response->json('data') ?? []);
       }
 
       return $response;
@@ -1383,7 +1411,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPromoItemsModel::class, $response->json('data'));
+        $this->replaceRows(MasterPromoItemsModel::class, $response->json('data') ?? []);
       }
 
       return $response;
@@ -1403,7 +1431,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPromoDaysModel::class, $response->json('data'));
+        $this->replaceRows(MasterPromoDaysModel::class, $response->json('data') ?? []);
       }
 
       return $response;
@@ -1423,7 +1451,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPromoTimesModel::class, $response->json('data'));
+        $this->replaceRows(MasterPromoTimesModel::class, $response->json('data') ?? []);
       }
 
       return $response;
@@ -1443,7 +1471,7 @@ class SetupServices
       );
 
       if ($response->json('code') == 0) {
-        $this->upsertRows(MasterPromoApplyToModel::class, $response->json('data'));
+        $this->replaceRows(MasterPromoApplyToModel::class, $response->json('data') ?? []);
       }
 
       return $response;

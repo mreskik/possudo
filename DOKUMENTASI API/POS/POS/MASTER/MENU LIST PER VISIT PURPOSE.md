@@ -123,6 +123,7 @@ Kalau `{visitPurposeId}` gak ketemu (bukan visit purpose aktif branch ini, atau 
 
 - **Array terluar DIHAPUS** — beda dari `MENU LIST.md` yang array-nya 1 baris per visit purpose, di sini `data` langsung objek 1 visit purpose (sudah difilter server-side berdasar `{visitPurposeId}` di URL).
 - Field-level, semuanya identik dengan `MENU LIST.md` — lihat bagian "Catatan" di situ buat penjelasan tiap field (`serviceCharge`/`vat`/`pb1` sebagai tax_id, `sequence`, `notesMenu`, `packageList[].menuPackageList[].defaultItem`, dkk). **Tidak diduplikasi di sini** supaya gak ada 2 sumber kebenaran yang bisa drift — kalau field baru ditambahkan di `GetMasterMenuList()`, cukup update catatan di `MENU LIST.md`.
+- **Urutan `packageList[]` (2026-11-26)** — sama persis `MENU LIST.md`: diurutkan `sequence` ASC lalu `id` ASC (endpoint ini memfilter hasil `MenuServices::GetMasterMenuList('pos')`, jadi otomatis ikut).
 - Nama key level objek tetap **`menuPriceList`** (bukan `categories`) dan **`subCategoryData`** (bukan `subcategories`) — sama persis penamaan asli di kode (`MenuServices::GetMasterMenuList()`), konsisten dengan `MENU LIST.md`.
 
 ## Alur Implementasi

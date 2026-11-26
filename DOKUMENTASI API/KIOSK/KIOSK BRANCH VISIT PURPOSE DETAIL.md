@@ -288,3 +288,5 @@ Dua field ini **sengaja NULL-safe** (`?? null`) di `mapKioskMenuItem()` — sumb
 ## Catatan performa
 
 `GetMasterMenuList()` menghitung pohon menu buat **semua** visit purpose branch ini, baru difilter ke satu `id` di controller. Belum dioptimasi buat query cuma 1 visit purpose dari awal (butuh ubah signature fungsi shared yang juga dipakai POS) — untuk sekarang masih aman karena volume data per branch relatif kecil.
+
+Diupdate 2026-11-26: urutan `package_list[]` (group package per item) sekarang mengikuti `sequence` ASC lalu `id` ASC — endpoint ini memakai `MenuServices::GetMasterMenuList('kiosk')`, jadi otomatis ikut perubahan urutan group (lihat `POS/MASTER/MENU LIST.md`). Field `sequence` tidak dikirim, hanya urutan array-nya.

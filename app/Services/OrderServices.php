@@ -41,11 +41,22 @@ class OrderServices
 
       // MODULE TAKING ORDER = TO
       $kode_modul = "NO";
-      $daydetail = now()->format("YmdHis");
 
-      //lama $komposisi = $kode_modul . $branch_data->branch_code . $branch_data->company_id . $formatnumber;
-      $komposisi = $kode_modul . $terminal_id . $branch_data->branch_code . $daydetail;
-      return $komposisi;
+      // Unik (2026-11-26) -- resolusi nomor cuma 1 detik, jadi 2 order dari terminal yang sama
+      // di detik yang sama sebelumnya menghasilkan nomor yang sama (PK tr_order bentrok). Kalau
+      // nomor sudah dipakai, waktunya digeser +1 detik sampai ketemu yang kosong -- format dan
+      // panjang nomor TIDAK berubah (tetap NO<terminal><branch_code><YmdHis>). Dipanggil di bawah
+      // lock pembuatan order baru (AcquireNewOrderLock), jadi tidak ada order lain yang sedang
+      // memilih nomor di saat yang sama.
+      $waktu = now();
+      for ($i = 0; $i < 120; $i++) {
+        $komposisi = $kode_modul . $terminal_id . $branch_data->branch_code . $waktu->format("YmdHis");
+        if (!TrOrderModel::where('order_number', $komposisi)->exists()) {
+          return $komposisi;
+        }
+        $waktu = $waktu->copy()->addSecond();
+      }
+      throw new \Exception("failed to generate a unique order number");
     } catch (\Throwable $e) {
       throw $e;
     }
@@ -166,13 +177,143 @@ class OrderServices
     }
   }
 
+  // ReserveStock (2026-11-26) -- pengecekan + pengurangan stok mr_item. Dipanggil di DALAM
+  // transaksi (cabang order baru dan tambah pesanan). Perbaikan dari versi inline lama:
+  //  (1) baris mr_item dikunci dengan SELECT ... FOR UPDATE -- sebelumnya SELECT biasa lalu
+  //      UPDATE terpisah, jadi 2 terminal yang memesan sisa stok terakhir bersamaan sama-sama
+  //      lolos cek dan stok oversell.
+  //  (2) qty digabung PER ITEM (bukan per pricelist_detail) dan dikunci terurut id item --
+  //      urutan lock yang konsisten antar request mencegah deadlock (A,B vs B,A).
+  //  (3) pricelist_detail yang tidak ketemu -> pesan jelas (sebelumnya "Undefined array key 0").
+  //  (4) flag_soldout pakai `<= 0` (sebelumnya `=== 0`, rapuh kalau tipe hasil hitung float).
+  // Aturan bisnis TIDAK berubah: stok_qty = 0 berarti tidak dilacak (unlimited), item yang
+  // flag_soldout-nya sudah true dilewati, pesan error stok sama persis.
+  private static function ReserveStock(array $qtyByPricelistDetail): void
+  {
+    if (empty($qtyByPricelistDetail)) {
+      return;
+    }
+
+    $qtyByItem = [];
+    foreach ($qtyByPricelistDetail as $pricelistDetailId => $qty) {
+      $row = DB::selectOne("SELECT mi.id
+                      FROM mr_pricelist_detail mpd
+                      JOIN mr_item_conv mic ON mic.id = mpd.item_conv_detail_id
+                      JOIN mr_item mi ON mi.id = mic.item_id
+                      WHERE mpd.id = ?", [$pricelistDetailId]);
+      if (!$row) {
+        throw new \Exception("Menu pricelist {$pricelistDetailId} was not found");
+      }
+      $qtyByItem[$row->id] = ($qtyByItem[$row->id] ?? 0) + $qty;
+    }
+    ksort($qtyByItem);
+
+    foreach ($qtyByItem as $itemId => $qty) {
+      $item = DB::selectOne("SELECT id, name, stok_qty, flag_soldout FROM mr_item WHERE id = ? FOR UPDATE", [$itemId]);
+      if ($item && $item->stok_qty > 0 && $item->flag_soldout != true) {
+        if ($qty > $item->stok_qty) {
+          throw new \Exception("Stok yang tersedia untuk " . $item->name . " hanya " . $item->stok_qty);
+        }
+
+        $sisa = $item->stok_qty - $qty;
+        MasterItemModel::where('id', $item->id)->update([
+          'stok_qty' => $sisa,
+          'flag_soldout' => ($sisa <= 0),
+        ]);
+      }
+    }
+  }
+
+  // Lock pembuatan ORDER BARU (2026-11-26) -- MySQL named lock (GET_LOCK), dipegang dari sebelum
+  // nomor order/antrian dibuat sampai order ter-commit, lalu dilepas. Tanpa ini, dua order baru
+  // bersamaan sama-sama membaca "order terakhir" sebelum salah satunya commit, jadi bisa dapat
+  // order_queue yang sama (dan order_number yang sama kalau di detik yang sama). Hanya
+  // menserialisasi pembuatan order BARU (bagian kritisnya pendek), tidak menyentuh tambah pesanan.
+  // Named lock itu level SESI (bukan transaksi) -- sengaja, supaya bertahan melewati beginTransaction().
+  private const NEW_ORDER_LOCK = 'pos_new_order';
+
+  private static function AcquireNewOrderLock(): void
+  {
+    $got = DB::selectOne("SELECT GET_LOCK(?, 10) AS got", [self::NEW_ORDER_LOCK]);
+    if (!$got || (int) $got->got !== 1) {
+      throw new \Exception("System is busy creating another order, please try again");
+    }
+  }
+
+  private static function ReleaseNewOrderLock(): void
+  {
+    DB::select("SELECT RELEASE_LOCK(?)", [self::NEW_ORDER_LOCK]);
+  }
+
+  // ValidatePromoActive (2026-11-26) -- tahap cek promo di SaveOrder(): promo yang dipakai item
+  // BARU harus (1) masih aktif (mr_promo.is_active) dan (2) belum lewat tanggal berakhir
+  // (mr_promo.period_end, kolom DATE -- promo yang berakhir HARI INI masih valid sampai hari
+  // berganti; period_end NULL = tanpa batas akhir). Dilempar sebagai \Exception dengan pesan
+  // jelas (nama promo + alasan), ditangkap catch SaveOrder() yang rollback lalu lempar ulang.
+  //
+  // CUMA item BARU (belum punya 'ulid') yang dicek -- item lama di order existing (cabang
+  // "tambah pesanan" ikut mengirim ulang baris lama yang punya ulid) SENGAJA dilewati: promo itu
+  // sah saat item dipesan, jangan sampai kasir yang nambah pesanan di meja yang ordernya pakai
+  // promo yang barusan berakhir (mis. lewat tengah malam) jadi terblokir total. Promo di
+  // menuPackageList[] ikut dicek lewat item induknya (item baru -> package-nya baru juga).
+  // Query batch sekali ke mr_promo, bukan N+1 per item.
+  private static function ValidatePromoActive(array $listOrder): void
+  {
+    $usedPromoIds = [];
+    foreach ($listOrder as $item) {
+      if (isset($item['ulid'])) {
+        continue;
+      }
+      if (!empty($item['promoId'])) {
+        $usedPromoIds[] = $item['promoId'];
+      }
+      foreach (($item['menuPackageList'] ?? []) as $pkg) {
+        if (!empty($pkg['promoId'])) {
+          $usedPromoIds[] = $pkg['promoId'];
+        }
+      }
+    }
+    if (empty($usedPromoIds)) {
+      return;
+    }
+
+    $usedPromoIds = array_values(array_unique($usedPromoIds));
+    $promos = \App\Models\MasterPromoModel::whereIn('id', $usedPromoIds)->get()->keyBy('id');
+    $today = now()->toDateString();
+
+    foreach ($usedPromoIds as $promoId) {
+      $promo = $promos->get($promoId);
+      if (!$promo) {
+        throw new \Exception("Promo (id {$promoId}) was not found, please sync promotion data");
+      }
+      if (!$promo->is_active) {
+        throw new \Exception("Promo \"{$promo->name}\" is not active anymore");
+      }
+      if (!empty($promo->period_end)) {
+        $periodEnd = substr((string) $promo->period_end, 0, 10);
+        if ($periodEnd < $today) {
+          throw new \Exception("Promo \"{$promo->name}\" has expired on {$periodEnd}");
+        }
+      }
+    }
+  }
+
   /**
    * Naming note: `$item['menuId']` (frontend cart field) and the `tr_order_detail.menu_id` /
    * `tr_order_detail_package.menu_id` columns it gets saved into are actually `mr_item_conv.id`,
    * not `mr_item.id` — see MenuServices::GetMasterMenuList() for where that id originates.
    */
-  public static function SaveOrder($datajson)
+  // $validatePromoActive (2026-11-26) -- false CUMA dipakai SaveMoveItem() (pindah item/meja:
+  // itemnya sudah ada sebelumnya, tidak boleh gagal gara-gara promonya keburu nonaktif/berakhir).
+  public static function SaveOrder($datajson, bool $validatePromoActive = true)
   {
+    // Level transaksi saat fungsi ini dipanggil (2026-11-26) -- catch di bawah CUMA rollBack
+    // kalau fungsi ini sendiri yang membuka transaksi (level naik). Sebelumnya rollBack()
+    // dipanggil tanpa syarat, jadi error validasi yang dilempar SEBELUM beginTransaction()
+    // (mis. "invalid table section!", "This table already has a pending order!", barrier promo)
+    // ikut membatalkan transaksi MILIK PEMANGGIL (mis. SaveMoveItem yang membungkus SaveOrder).
+    $startTxLevel = DB::transactionLevel();
+    $newOrderLockHeld = false;
     $batch = 0;
     try {
 
@@ -181,6 +322,10 @@ class OrderServices
         $date_now = now()->toDateString();
 
         $datetime_now = now();
+        // lock pembuatan order baru dipegang sampai commit (lihat AcquireNewOrderLock()) --
+        // meliputi pembuatan order_number dan pembacaan order_queue di bawah.
+        self::AcquireNewOrderLock();
+        $newOrderLockHeld = true;
         $order_number = self::GenerateOrderNumber($datajson->terminalId);
         $branch = BranchModel::first();
 
@@ -399,6 +544,12 @@ class OrderServices
         // menangani list kosong (foreach 0 iterasi, $usedPromoIds tetap kosong).
         self::ValidatePromoTierBarrier((array) $datajson->listOrder, $order['member_id'] ?? null);
 
+        // Cek promo aktif + belum berakhir (2026-11-26) -- sebelum cek stok biar penolakan terjadi
+        // sebelum ada tulis ke DB (stok mengurangi mr_item.stok_qty).
+        if ($validatePromoActive) {
+          self::ValidatePromoActive((array) $datajson->listOrder);
+        }
+
         //pengecekan stok
         $datagrouping_ = [];
         if ($datajson->listOrder) {
@@ -513,28 +664,8 @@ class OrderServices
         DB::beginTransaction();
 
 
-        foreach ($datagrouping_ as $inded => $qtye) {
-          $itemStockRow = DB::select("SELECT
-                      mi.*
-                      FROM mr_pricelist_detail mpd
-                      join mr_item_conv mic on mic.id = mpd.item_conv_detail_id
-                      JOIN mr_item mi on mi.id = mic.item_id
-
-                      WHERE mpd.id = ?", [$inded]);
-
-          if ($itemStockRow[0]->stok_qty > 0 && $itemStockRow[0]->flag_soldout != true) {
-
-            if ($qtye > $itemStockRow[0]->stok_qty) {
-              throw new \Exception("Stok yang tersedia untuk " . $itemStockRow[0]->name . " hanya " . $itemStockRow[0]->stok_qty);
-            }
-
-            MasterItemModel::where('id', $itemStockRow[0]->id)->update([
-              'stok_qty' => ($itemStockRow[0]->stok_qty - $qtye),
-              'flag_soldout' => (($itemStockRow[0]->stok_qty - $qtye) === 0)
-
-            ]);
-          }
-        }
+        // Reservasi stok (2026-11-26) -- baca+kunci baris mr_item (FOR UPDATE) lalu kurangi, lihat ReserveStock().
+        self::ReserveStock($datagrouping_);
 
         TrOrderModel::create($order);
         TrOrderDetailModel::insert($order_detail);
@@ -544,6 +675,9 @@ class OrderServices
         // barusan di-insert, masih di dalam transaksi yang sama (sebelum commit).
         self::RecalculateOrderTotals($order['order_number']);
         DB::commit();
+        // order sudah ter-commit -- lock dilepas SEGERA (jangan ikut menahan print dispatch di bawah).
+        self::ReleaseNewOrderLock();
+        $newOrderLockHeld = false;
 
 
         // $data_order_query = TrOrderModel::where('order_number', $order_number)->first();
@@ -582,6 +716,15 @@ class OrderServices
 
         $current_table_order = TrOrderModel::where('order_number', $order_number)->whereIn('status', ['pending', 'hold'])
           ->first();
+        // Guard order tidak ketemu / sudah ditutup (2026-11-26) -- sebelumnya langsung
+        // ->total_batch di bawah, error mentah "Attempt to read property on null" kalau order
+        // sudah dibayar/dibatalkan/nomornya salah.
+        if (!$current_table_order) {
+          throw new \Exception("Order {$order_number} was not found or is already closed, cannot add items");
+        }
+        // listOrder bisa null/tidak dikirim (2026-11-26) -- sama alasan (array) cast di jalur
+        // order baru: foreach/ValidatePromoTierBarrier(array) di bawah TypeError kalau null.
+        $listOrderUpdate = (array) $datajson->listOrder;
         $batch = $current_table_order->total_batch;
         // Log::info($datajson);
         // total_item/sub_total/total_discount/total_tax/total_service_charge/total_billing
@@ -607,7 +750,7 @@ class OrderServices
         // $current_table_order (member bisa aja baru dipilih pas nambah pesanan ini).
         if (empty($order_update['member_id'])) {
           $usedPromoIds = [];
-          foreach ($datajson->listOrder as $item) {
+          foreach ($listOrderUpdate as $item) {
             if (!empty($item['promoId'])) {
               $usedPromoIds[] = $item['promoId'];
             }
@@ -628,7 +771,20 @@ class OrderServices
         }
 
         // Barrier tier promo (2026-09-30) -- sama pola kayak jalur order BARU di atas.
-        self::ValidatePromoTierBarrier($datajson->listOrder, $order_update['member_id'] ?? null);
+        self::ValidatePromoTierBarrier($listOrderUpdate, $order_update['member_id'] ?? null);
+
+        // Cek promo aktif + belum berakhir, CUMA item baru (tanpa ulid) -- lihat ValidatePromoActive().
+        if ($validatePromoActive) {
+          self::ValidatePromoActive($listOrderUpdate);
+        }
+
+        // Transaksi dimulai DI SINI (2026-11-26, sebelumnya baru dimulai SETELAH loop item di
+        // bawah) -- update item existing (cabang ulid) dan insert/stok sekarang satu transaksi.
+        // Dulu update item existing langsung ter-commit (di luar transaksi), jadi kalau cek stok
+        // item baru gagal sesudahnya, update item lama tetap permanen dan total header tidak
+        // ter-recalculate (data setengah tersimpan). Semua validasi non-DB di atas sengaja tetap
+        // di luar transaksi (throw sebelum ada tulis ke DB).
+        DB::beginTransaction();
 
         //pengecekan stok
         $datagrouping_ = [];
@@ -636,7 +792,7 @@ class OrderServices
         // ditambahkan -- dipakai buat reset print_ke di bawah (lihat penjelasannya di situ).
         // Item yang CUMA diupdate (udah punya ulid, cabang if) TIDAK bikin ini true.
         $hasNewItem = false;
-        foreach ($datajson->listOrder as $item) {
+        foreach ($listOrderUpdate as $item) {
 
 
           // Log::info($item);
@@ -649,10 +805,18 @@ class OrderServices
             // flagInclusiveTax (cuma 8 field "ringan" yang dikirim, lihat SAVE ORDER.md) --
             // jadi 4 input itu di-SELECT ULANG dari baris existing (gak berubah dari saat
             // pertama kali dibuat), digabung sama discountAmount BARU dari request ini.
+            // order_number DITAMBAHKAN ke filter (2026-11-26) -- ulid harus milik order ini,
+            // sebelumnya ulid dari order lain ikut ter-update (total order lain jadi basi,
+            // cuma order ini yang di-recalculate). Baris null (ulid tidak dikenal / bukan milik
+            // order ini / sudah di-cancel) ditolak dengan pesan jelas, bukan error property-on-null.
             $existingRow = DB::table('tr_order_detail')
               ->where('ulid', $item['ulid'])
+              ->where('order_number', $order_number)
               ->whereNull('cancel_at')
               ->first(['price_pos', 'tax_rate', 'service_charge_rate', 'flag_inclusive_tax']);
+            if (!$existingRow) {
+              throw new \Exception("Order item {$item['ulid']} was not found in order {$order_number} or has been cancelled");
+            }
 
             $calc = self::CalculateLineItem(
               (float) $existingRow->price_pos,
@@ -664,6 +828,7 @@ class OrderServices
 
             DB::table('tr_order_detail')
               ->where('ulid', $item['ulid'])
+              ->where('order_number', $order_number)
               ->whereNull('cancel_at')
               ->update([
                 'qty'                 => $item['qty'],
@@ -786,29 +951,10 @@ class OrderServices
         }
 
         // Log::info("batch sebelumnya :" . $batch);
-        DB::beginTransaction();
+        // (DB::beginTransaction() dipindah ke sebelum loop item di atas, 2026-11-26)
 
-        foreach ($datagrouping_ as $inded => $qtye) {
-          $itemStockRow = DB::select("SELECT
-                      mi.*
-                      FROM mr_pricelist_detail mpd 
-                      join mr_item_conv mic on mic.id = mpd.item_conv_detail_id
-                      JOIN mr_item mi on mi.id = mic.item_id
-
-                      WHERE mpd.id = ?", [$inded]);
-
-          if ($itemStockRow[0]->stok_qty > 0 && $itemStockRow[0]->flag_soldout != true) {
-
-            if ($qtye > $itemStockRow[0]->stok_qty) {
-              throw new \Exception("Stok yang tersedia untuk " . $itemStockRow[0]->name . " hanya " . $itemStockRow[0]->stok_qty);
-            }
-
-            MasterItemModel::where('id', $itemStockRow[0]->id)->update([
-              'stok_qty' => ($itemStockRow[0]->stok_qty - $qtye),
-              'flag_soldout' => (($itemStockRow[0]->stok_qty - $qtye) === 0)
-            ]);
-          }
-        }
+        // Reservasi stok (2026-11-26) -- baca+kunci baris mr_item (FOR UPDATE) lalu kurangi, lihat ReserveStock().
+        self::ReserveStock($datagrouping_);
 
         // print_ke reset (2026-11-04): begitu ada item BARU ditambahkan ke order yang udah
         // pernah di-print bill (print_ke > 0), bill lama itu udah gak merepresentasikan isi
@@ -864,8 +1010,16 @@ class OrderServices
         return $order_number;
       }
     } catch (\Throwable $e) {
-      DB::rollBack();
+      if (DB::transactionLevel() > $startTxLevel) {
+        DB::rollBack();
+      }
       throw $e;
+    } finally {
+      // pengaman: lepas lock kalau masih dipegang (error sebelum commit). RELEASE_LOCK aman
+      // dipanggil walau lock sudah tidak dipegang (hasilnya NULL/0, bukan error).
+      if ($newOrderLockHeld) {
+        self::ReleaseNewOrderLock();
+      }
     }
   }
 
@@ -1331,6 +1485,9 @@ class OrderServices
 
   public static function SaveMoveItem(string $order_number_before, int $visit_purpose_id, int $to_tablesection_id, int $to_table_id, array $list_item)
   {
+    // Sama alasan SaveOrder() (2026-11-26): rollBack di catch cuma kalau fungsi ini sendiri yang
+    // membuka transaksi, bukan membatalkan transaksi pemanggil kalau error datang sebelum begin.
+    $startTxLevel = DB::transactionLevel();
     try {
 
 
@@ -1372,7 +1529,7 @@ class OrderServices
           $data->totalItem = 0;
           $data->totalTax = 0;
           $data->visitPurposeId = $visit_purpose_id;
-          $order_number_new = self::SaveOrder($data);
+          $order_number_new = self::SaveOrder($data, false);
 
           if ($order_number_new == '') {
             throw new \Exception('failed to create order number!');
@@ -1545,7 +1702,7 @@ class OrderServices
         $data->totalItem = 0;
         $data->totalTax = 0;
         $data->visitPurposeId = $visit_purpose_id;
-        $order_number_new = self::SaveOrder($data);
+        $order_number_new = self::SaveOrder($data, false);
 
         if ($order_number_new == '') {
           throw new \Exception('failed to create order number!');
@@ -1623,7 +1780,9 @@ class OrderServices
         return "success move item";
       }
     } catch (\Throwable $e) {
-      DB::rollBack();
+      if (DB::transactionLevel() > $startTxLevel) {
+        DB::rollBack();
+      }
       Log::info($e);
       throw $e;
     }

@@ -940,7 +940,7 @@ class MasterController extends Controller
             $packageIdReal = $package[0]->id ?? null;
 
             if ($packageIdReal !== null) {
-                $packageGroups = DB::select("SELECT id as packageId, name as packageName, min_qty as minQty, max_qty as maxQty FROM mr_item_package_group WHERE item_package_id = ?", [$packageIdReal]);
+                $packageGroups = DB::select("SELECT id as packageId, name as packageName, min_qty as minQty, max_qty as maxQty FROM mr_item_package_group WHERE item_package_id = ? ORDER BY sequence ASC, id ASC", [$packageIdReal]);
                 foreach ($packageGroups as $group) {
                     $group->menuPackageList = array_values(array_filter($menuPackageDetail, fn($d) => $d->package_group_id == $group->packageId));
                     foreach ($group->menuPackageList as $d) {

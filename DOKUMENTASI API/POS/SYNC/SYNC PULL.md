@@ -54,17 +54,17 @@ GET /api/sync_pull/get_xxx
 | `get_master_user` | `MasterUserModel` | **Truncate+insert** (data akses login, HARUS selalu cerminan pasti ERP) |
 | `get_master_role_access` | `RoleAccessModel` | Upsert by `id` |
 | `get_menu_app` | `MasterMenuAppModel` | Upsert by `id` |
-| `get_promo_list` | `MasterPromoModel` | Upsert by `id` |
-| `get_promo_branch` | `MasterPromoBranchesModel` | Upsert by `id` |
-| `get_promo_visit_purpose` | `MasterPromoVisitPurposesModel` | Upsert by `id` |
-| `get_promo_type_member` | `MasterPromoTypeMembersModel` | Upsert by `id` |
-| `get_promo_tier` | `MasterPromoTierModel` | Upsert by `id` |
-| `get_promo_category` | `MasterPromoCategoriesModel` | Upsert by `id` |
-| `get_promo_sub_category` | `MasterPromoSubCategoriesModel` | Upsert by `id` |
-| `get_promo_item` | `MasterPromoItemsModel` | Upsert by `id` |
-| `get_promo_day` | `MasterPromoDaysModel` | Upsert by `id` |
-| `get_promo_time` | `MasterPromoTimesModel` | Upsert by `id` |
-| `get_promo_apply_to` | `MasterPromoApplyToModel` | Upsert by `id` |
+| `get_promo_list` | `MasterPromoModel` | **Replace** (delete+insert dalam 1 transaksi, 2026-11-26) |
+| `get_promo_branch` | `MasterPromoBranchesModel` | **Replace** (delete+insert dalam 1 transaksi, 2026-11-26) |
+| `get_promo_visit_purpose` | `MasterPromoVisitPurposesModel` | **Replace** (delete+insert dalam 1 transaksi, 2026-11-26) |
+| `get_promo_type_member` | `MasterPromoTypeMembersModel` | **Replace** (delete+insert dalam 1 transaksi, 2026-11-26) |
+| `get_promo_tier` | `MasterPromoTierModel` | **Replace** (delete+insert dalam 1 transaksi, 2026-11-26) |
+| `get_promo_category` | `MasterPromoCategoriesModel` | **Replace** (delete+insert dalam 1 transaksi, 2026-11-26) |
+| `get_promo_sub_category` | `MasterPromoSubCategoriesModel` | **Replace** (delete+insert dalam 1 transaksi, 2026-11-26) |
+| `get_promo_item` | `MasterPromoItemsModel` | **Replace** (delete+insert dalam 1 transaksi, 2026-11-26) |
+| `get_promo_day` | `MasterPromoDaysModel` | **Replace** (delete+insert dalam 1 transaksi, 2026-11-26) |
+| `get_promo_time` | `MasterPromoTimesModel` | **Replace** (delete+insert dalam 1 transaksi, 2026-11-26) |
+| `get_promo_apply_to` | `MasterPromoApplyToModel` | **Replace** (delete+insert dalam 1 transaksi, 2026-11-26) |
 | `get_member_type_list` | `MasterMemberTypeModel` | Upsert by `id` |
 | `get_member_list` | `MasterMemberModel` | Upsert by `id` |
 | `get_notes_menu_list` | `MasterNotesMenuModel` | **Truncate+insert** |
@@ -73,6 +73,10 @@ GET /api/sync_pull/get_xxx
 | `get_notes_menu_detail` | `MasterNotesMenuDetailModel` | **Truncate+insert** |
 
 **Kenapa ada 2 strategi (upsert vs truncate+insert)** — `upsertRows()` dipakai default: baris lokal yang `id`-nya sudah ada di-update, yang baru di-insert, **baris lokal yang sudah tidak ada di response TIDAK ikut dihapus** (data yang dihapus/dinonaktifkan di ERP tetap nyangkut lokal sampai ditangani terpisah). Tabel yang **wajib selalu jadi cerminan pasti ERP** (data akses login, konfigurasi link/relasi yang kalau dihapus di ERP harus ikut hilang lokal) pakai `truncate()+insertRows()` — replace total tiap sync, keputusan eksplisit per tabel (dicatat di komentar kode masing-masing fungsi).
+
+**Promo (`get_promo_*`, 11 endpoint) — pakai `replaceRows()`, bukan `upsertRows()` (2026-11-26)** — `mr_promo` dan 10 tabel anak (`branches`, `visit_purposes`, `type_members`, `tier`, `categories`, `sub_categories`, `items`, `days`, `times`, `apply_to`) sekarang replace total tiap sync. Dua alasan, dua-duanya bug nyata di pola upsert lama: (1) ERP cuma mengirim promo yang `is_active = true` dan eligible untuk branch itu (`flag_all_branches` atau ada di `master_promo_branches`) — promo yang dinonaktifkan atau dicabut dari branch **tidak ikut dikirim**, jadi baris lokalnya tidak pernah di-update dan nyangkut `is_active = true`, tetap lolos filter `GetPromoList` dan masih bisa dipakai kasir; (2) Update promo di ERP itu replace-all tabel anak dengan **id baru**, jadi upsert-by-id menumpuk baris lama (id lama) di samping yang baru — target promo (item, branch, hari, jam, tier, channel) jadi lebih lebar dari yang dimaksud ERP, mis. item yang sudah dikeluarkan dari promo tetap kena promo.
+
+Cara kerja `replaceRows()` (`SetupServices.php`): `DB::transaction()` berisi `Model::query()->delete()` lalu `insert()` (sudah lewat `normalizeInsertRows()`). Pakai **DELETE, bukan `truncate()`** — di MySQL `truncate()` itu implicit commit sehingga tidak bisa di-rollback; dengan DELETE, kalau INSERT gagal, baris lama tetap utuh. **Respons kosong (`[]`/`null`) sengaja tetap menghapus semua baris** tabel itu (artinya ERP memang tidak punya promo eligible untuk branch ini); aman karena fungsi hanya sampai ke sini kalau `code == 0`, error dari server tidak menghapus apa-apa. Tidak ada FK ke `mr_promo*` di migration POS, jadi aman diganti pola. **Batasan**: transaksinya **per tabel**, belum satu transaksi untuk seluruh 11 sync — kalau satu step gagal di tengah (mis. jaringan putus di step ke-6), tabel sebelumnya sudah baru dan sisanya masih data lama. Berlaku untuk route satuan (`SyncController`) maupun grup (`SyncGroupController::syncPromotion()`), dua-duanya memanggil fungsi `SetupServices::getPromoXxx()` yang sama.
 
 ## Gambar — endpoint terpisah dari data teks
 
@@ -94,3 +98,7 @@ GET /api/sync_pull/get_xxx
 ## Status
 
 Didokumentasikan 2026-10-12, berdasar pembacaan kode langsung. Diupdate 2026-10-15: (1) dikoreksi jumlah endpoint dari "39" jadi "50" (angka lama salah, ikut jumlah panggilan `syncServices.ts` bukan total backend) sekaligus audit lengkap jalur pemanggilan tiap endpoint; (2) ditambahkan endpoint baru `get_pricelist_sub_category_sequence`; (3) diperbaiki `get_promo_tier` (dead) dan `get_promo_apply_to` (hilang dari Setup Wizard). `go build`/`php -l`/`vite build` semua bersih setelah perubahan, query baru sudah ditest manual lewat `psql`. **Belum tervalidasi lewat HTTP request live.**
+
+Diupdate 2026-11-26: 11 endpoint promo (`get_promo_*`) diganti dari upsert ke replace (`replaceRows()`, lihat paragraf "Promo" di atas). **Tervalidasi live** lewat `syncPromotion()` (`SyncGroupController`) ke branch 53: baris palsu yang disisipkan manual di `mr_promo` (id 999999, `is_active = 1`) dan `mr_promo_items` ikut terhapus, `mr_promo` turun dari 13 (+1 palsu) jadi 2 baris dan `mr_promo_items` jadi 28 — persis sama dengan hasil query langsung ke DB ERP. Route satuan (`/sync_pull/get_promo_*`) memakai fungsi service yang sama tapi belum dijalankan satu per satu. Skenario respons kosong dan rollback saat INSERT gagal belum diuji.
+
+Diupdate 2026-11-26 (package group `sequence`): `get_item_package_group` sekarang membawa kolom `sequence` (urutan tampil group di package; migration POS `2026_11_26_000000_add_sequence_to_mr_item_package_group`, `unsignedInteger default 0`). `MenuServices` dan `MasterController` membaca group `ORDER BY sequence ASC, id ASC`. **Strategi simpan diubah**: dari `truncate()` + insert menjadi `replaceRows()` (DELETE + insert dalam SATU transaksi) — `truncate()` di MySQL itu implicit commit, jadi kalau insert gagal (mis. ERP sudah mengirim `sequence` tapi POS belum di-migrate: `Unknown column 'sequence'`) tabel group jadi kosong permanen; sekarang insert gagal = data lama tetap utuh. **Urutan rilis**: migrate POS dulu, baru APIANDORDER/ERP mengirim `sequence`. Tervalidasi (`db_pos`): insert dengan kolom tidak dikenal gagal dan 23 baris lama tetap utuh dan identik; sync nyata dari APIANDORDER → `code 0`, 23 baris, `sequence` terisi (1,2,3); kedua query urutan mengembalikan urutan terbalik saat `sequence` dibalik (di dalam transaksi uji yang di-rollback).

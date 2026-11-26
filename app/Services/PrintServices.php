@@ -108,13 +108,27 @@ class PrintServices
     return $breakdown;
   }
 
+  // Lebar (px) logo header branch di struk -- SATU sumber untuk PrintPayment(), PrintTopup(), dan
+  // PrintTest() (tes print thermal), supaya ukuran logo di tes print SELALU sama dengan yang
+  // dipakai di print payment (tujuan tes: mengetahui ukuran logo sebenarnya di struk).
+  public const LOGO_PRINT_WIDTH = 180;
+
+  // resizeGambar: return TRUE kalau berhasil (2026-11-26) -- sebelumnya return null saat
+  // berhasil dan string error saat gagal, dan semua pemanggil mengabaikan return-nya, jadi
+  // gambar yang gagal di-resize (mis. format WebP/GIF) tetap lanjut memuat file output LAMA
+  // (logo_resize.png sisa sebelumnya) dan yang tercetak logo basi. Pemanggil sekarang harus
+  // mengecek `=== true`. Return string = pesan error (perilaku lama tidak berubah).
   public static function resizeGambar($source = "", $newWidth = 150, $outputPath = "logo_resize.png")
   {
     if ($source == "" || !file_exists($source)) {
       return "Gambar tidak ditemukan";
     }
 
-    list($width, $height, $type) = getimagesize($source);
+    $imageInfo = @getimagesize($source);
+    if ($imageInfo === false) {
+      return "File bukan gambar yang valid";
+    }
+    list($width, $height, $type) = $imageInfo;
 
     switch ($type) {
       case IMAGETYPE_PNG:
@@ -127,7 +141,7 @@ class PrintServices
         return "Format tidak didukung";
     }
 
-    $newHeight = ($height / $width) * $newWidth;
+    $newHeight = max(1, (int) round(($height / $width) * $newWidth));
 
     $resized = imagecreatetruecolor($newWidth, $newHeight);
     $white = imagecolorallocate($resized, 255, 255, 255);
@@ -146,10 +160,12 @@ class PrintServices
       $height
     );
 
-    imagepng($resized, $outputPath);
+    $saved = imagepng($resized, $outputPath);
 
     imagedestroy($img);
     imagedestroy($resized);
+
+    return $saved ? true : "Gagal menyimpan gambar hasil resize";
   }
 
   public static function line(string $left, string $right, int $width = 0)
@@ -1192,8 +1208,9 @@ class PrintServices
       // bukan nyetak logo default bawaan aplikasi).
       if (!empty($branch->logo_header_src)) {
         $logoSrc = public_path(ltrim($branch->logo_header_src, '/'));
-        if (file_exists($logoSrc)) {
-          self::resizeGambar($logoSrc, 180, public_path('logo_resize.png'));
+        // cek hasil resize (=== true) -- kalau gagal, JANGAN muat logo_resize.png sisa lama
+        // (logo basi tercetak), cukup lewati logo.
+        if (file_exists($logoSrc) && self::resizeGambar($logoSrc, self::LOGO_PRINT_WIDTH, public_path('logo_resize.png')) === true) {
           $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
           $print->bitImage($imageLogo);
           $print->text("\n");
@@ -1392,8 +1409,7 @@ class PrintServices
       // footer image jika ada
       if (!empty($branch->image_footer_src)) {
         $footerSrc = public_path(ltrim($branch->image_footer_src, '/'));
-        if (file_exists($footerSrc)) {
-          self::resizeGambar($footerSrc, 150, public_path('footer_resize.png'));
+        if (file_exists($footerSrc) && self::resizeGambar($footerSrc, 150, public_path('footer_resize.png')) === true) {
           $imageFooter = EscposImage::load(public_path('footer_resize.png'), false);
           $print->text("\n");
           $print->bitImage($imageFooter);
@@ -1476,8 +1492,9 @@ class PrintServices
       // bukan nyetak logo default bawaan aplikasi).
       if (!empty($branch->logo_header_src)) {
         $logoSrc = public_path(ltrim($branch->logo_header_src, '/'));
-        if (file_exists($logoSrc)) {
-          self::resizeGambar($logoSrc, 180, public_path('logo_resize.png'));
+        // cek hasil resize (=== true) -- kalau gagal, JANGAN muat logo_resize.png sisa lama
+        // (logo basi tercetak), cukup lewati logo.
+        if (file_exists($logoSrc) && self::resizeGambar($logoSrc, self::LOGO_PRINT_WIDTH, public_path('logo_resize.png')) === true) {
           $imageLogo = EscposImage::load(public_path("logo_resize.png"), false);
           $print->bitImage($imageLogo);
           $print->text("\n");
@@ -1518,8 +1535,7 @@ class PrintServices
 
       if (!empty($branch->image_footer_src)) {
         $footerSrc = public_path(ltrim($branch->image_footer_src, '/'));
-        if (file_exists($footerSrc)) {
-          self::resizeGambar($footerSrc, 150, public_path('footer_resize.png'));
+        if (file_exists($footerSrc) && self::resizeGambar($footerSrc, 150, public_path('footer_resize.png')) === true) {
           $imageFooter = EscposImage::load(public_path('footer_resize.png'), false);
           $print->text("\n");
           $print->bitImage($imageFooter);
@@ -3088,6 +3104,43 @@ class PrintServices
     return substr(str_repeat('1234567890', (int) ceil($length / 10)), 0, $length);
   }
 
+  // printBranchLogoForTest (2026-11-26) -- cetak logo header branch (mr_branch.logo_header_src)
+  // untuk tes print thermal, dengan lebar self::LOGO_PRINT_WIDTH (sama dengan PrintPayment()).
+  // Resize ke file SEMENTARA unik (bukan public/logo_resize.png yang dipakai bill), dihapus lagi
+  // setelah dipakai -- tes tidak menimpa file bill dan tidak mungkin mencetak logo basi.
+  // Return string keterangan yang dicetak di struk tes: "<lebar>px (asli <W>x<H>)" kalau logo
+  // tercetak, atau alasan tidak tercetak (tidak ada logo / file tidak ada / format tidak didukung).
+  private static function printBranchLogoForTest($print): string
+  {
+    $branch = BranchModel::first();
+    if (!$branch || empty($branch->logo_header_src)) {
+      return '(branch has no logo)';
+    }
+
+    $logoSrc = public_path(ltrim($branch->logo_header_src, '/'));
+    if (!file_exists($logoSrc)) {
+      return 'file not found: ' . $branch->logo_header_src;
+    }
+
+    $imageInfo = @getimagesize($logoSrc);
+    $original = $imageInfo ? ($imageInfo[0] . 'x' . $imageInfo[1]) : '?';
+
+    $tmpBase = tempnam(sys_get_temp_dir(), 'logo_test_');
+    $tmpPng = $tmpBase . '.png';
+    try {
+      $result = self::resizeGambar($logoSrc, self::LOGO_PRINT_WIDTH, $tmpPng);
+      if ($result !== true) {
+        return (string) $result;
+      }
+      $print->bitImage(EscposImage::load($tmpPng, false));
+      $print->text("\n");
+      return self::LOGO_PRINT_WIDTH . 'px (asli ' . $original . ')';
+    } finally {
+      @unlink($tmpBase);
+      @unlink($tmpPng);
+    }
+  }
+
   public static function PrintTest(int $station_id): string
   {
     $data_station = StationModel::where('id', $station_id)->first();
@@ -3103,6 +3156,11 @@ class PrintServices
         $charPerLine = $data_station->line_character ?: 40;
 
         $print->setJustification(Printer::JUSTIFY_CENTER);
+        // Logo header branch (2026-11-26) -- dicetak PALING ATAS, lebar SAMA dengan print payment
+        // (LOGO_PRINT_WIDTH), supaya tes ini menunjukkan ukuran logo sebenarnya di struk. Cuma
+        // station thermal (printer_type == 1, dicek lewat id/kode tipe, bukan nama) yang masuk ke
+        // blok ini; label (type 2) tidak. Hasilnya (ukuran/alasan tidak tercetak) dicetak di bawah.
+        $logoInfo = self::printBranchLogoForTest($print);
         $print->setEmphasis(true);
         $print->setTextSize(1, 2);
         $print->text("TEST PRINT\n");
@@ -3113,6 +3171,7 @@ class PrintServices
         $print->text("Station   : " . $data_station->name . "\n");
         $print->text("Printer   : " . $data_station->printer_name . "\n");
         $print->text("Char/Line : " . $charPerLine . "\n");
+        $print->text("Logo      : " . $logoInfo . "\n");
         $print->text("Time      : " . now() . "\n");
         $print->text(self::numberRuler($charPerLine) . "\n");
         $print->text(self::separator("=", $charPerLine));
